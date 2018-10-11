@@ -10,9 +10,9 @@ llvm-objdump.
 ## Building as part of LLVM tree
 
 1.  `mkdir $PWD/src && mkdir -p $PWD/build/llvm && cd src`
-2.  `git clone https://url-for-llvm && pushd llvm && git checkout master && popd`
-3.  `pushd llvm/tools && git clone https://url-for-clang && git checkout master && popd`
-4.  `pushd llvm/tools && git clone https://url-for-llvm-mctoll && git checkout master && popd`
+2.  `git clone https://github.com/llvm-mirror/llvm && pushd llvm && git checkout master && popd`
+3.  `pushd llvm/tools && git clone https://github.com/llvm-mirror/clang && git checkout master && popd`
+4.  `pushd llvm/tools && git clone https://github.com/Microsoft/llvm-mctoll && git checkout master && popd`
 7.  `cd ../build/llvm`
 7.  Run cmake command that you usually use to build llvm
 8.  Run `make llvm-mctoll` or `ninja llvm-mctoll`

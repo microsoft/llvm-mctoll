@@ -1,10 +1,5 @@
 # Introduction
-Tool to statically (AOT) translate binaries to LLVM IR.
-
-A tool to raise (or lift) compiled binaries to LLVM IR.
-
-The implementation uses disassembly functionality implemented in
-llvm-objdump.
+This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
 # Getting Started (Linux/Mac)
 ## Building as part of LLVM tree
@@ -17,29 +12,28 @@ llvm-objdump.
 7.  Run cmake command that you usually use to build llvm
 8.  Run `make llvm-mctoll` or `ninja llvm-mctoll`
 
-# Usage instructions:
+## Usage
+
+To generate LLVM IR for a binary:
 
 `llvm-mctoll -d <binary>`
-
-or
 
 To print debug output:
 
 `llvm-mctoll -d -print-after-all <binary>`
 
 To view Pass:
+
 `llvm-mctoll -d -debug-pass=Structure <binary>`
+
+## Build and Test
+
+Run the tests by invoking 'make check-mctoll' or 'ninja check-mctoll'
 
 # Current Status
 
-The tool is currently able to raise Linux x86_64 shared libraries and executables with `printf` calls.
-
-TODO :
-1. Cleanup llvm-objdump related functionality that is not relevant to this tool.
-
-# Build and Test
-
-Run the tests by invoking 'make check-mctoll' or 'ninja check-mctoll'
+The tool is currently able to raise Linux x86_64 and Arm32 shared libraries and executables with function calls that have variable 
+arguments (such as printf) to LLVM IR.
 
 # Contributing
 

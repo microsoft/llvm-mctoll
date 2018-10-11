@@ -1,0 +1,9 @@
+Dhrystone sources and test script
+1. dhry_funcs_mod.c - contains functions that can be successfully
+raised and tested for execution correctness.
+2. dhry_main.c - contains main function and other functions whose
+raised results need to be tested for execution correctness.
+3. dhry.h - Unmodified header file.
+4. README - for notes about the test
+
+NOTE: switch statement in Proc_6 has been temporarily changed to if-then-else

@@ -22,10 +22,6 @@ To print debug output:
 
 `llvm-mctoll -d -print-after-all <binary>`
 
-To view Pass:
-
-`llvm-mctoll -d -debug-pass=Structure <binary>`
-
 ## Build and Test
 
 Run the tests by invoking 'make check-mctoll' or 'ninja check-mctoll'

@@ -981,7 +981,8 @@ static std::set<StringRef> ELFCRTSymbols = {
     "__libc_csu_fini",
     "__libc_csu_init",
     "register_tm_clones",
-    "_start"};
+    "_start",
+    "_dl_relocate_static_pie"};
 
 /*
    A list of symbol entries corresponding to CRT functions added by

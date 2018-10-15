@@ -1286,10 +1286,19 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &mi,
       // Check that this is an instruction of the kind
       // mov %rax, 0x605798 which in reality is
       // mov %rax, 0x605798(X86::NoRegister, X86::NoRegister, 1)
-      assert(((BaseReg == X86::NoRegister) && (IndexReg == X86::NoRegister) &&
-              (ScaleAmt == 1)) &&
-             "Unhandled addressing mode in memory addr expression calculation");
-      memrefValue = getGlobalVariableValueAt(mi, Disp);
+      if (BaseReg == X86::NoRegister) {
+        assert(
+            ((IndexReg == X86::NoRegister) && (ScaleAmt == 1)) &&
+            "Unhandled index register in memory addr expression calculation");
+        memrefValue = getGlobalVariableValueAt(mi, Disp);
+        // Construct a PC-relative value if base register is RIP
+      } else if (BaseReg == X86::RIP) {
+        memrefValue = createPCRelativeAccesssValue(mi, curBlock);
+      } else {
+        assert(
+            false &&
+            "Unhandled addressing mode in memory addr expression calculation");
+      }
     }
   }
   assert((memrefValue != nullptr) && "Failed to get memory reference value");

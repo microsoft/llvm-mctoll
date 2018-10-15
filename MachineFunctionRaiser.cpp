@@ -255,17 +255,18 @@ bool ModuleRaiser::collectDynamicRelocations() {
     }
   }
   if (DotRelaDotPltSec.getObject() != nullptr) {
-    // Do some additional sanity checks
-    assert((DotGotDotPltSec.getObject() != nullptr) &&
-           "Failed to find .got.plt section");
-    auto DotRelaDotPltShdr = ElfFile->getSection(DotRelaDotPltSec.getIndex());
-    assert(DotRelaDotPltShdr && "Failed to find .rela.plt section");
-    assert((DotRelaDotPltShdr.get()->sh_info == DotGotDotPltSec.getIndex()) &&
-           ".rela.plt does not refer .got.plt section");
-    assert((DotRelaDotPltShdr.get()->sh_type == ELF::SHT_RELA) &&
-           "Unexpected type of section .rela.plt");
-    for (const RelocationRef &Reloc : DotRelaDotPltSec.relocations()) {
-      DynRelocs.push_back(Reloc);
+    // If the binary has .got.plt section, read the dynamic relocations.
+    if (DotGotDotPltSec.getObject() != nullptr) {
+      auto DotRelaDotPltShdr = ElfFile->getSection(DotRelaDotPltSec.getIndex());
+      // Perform some sanity checks
+      assert(DotRelaDotPltShdr && "Failed to find .rela.plt section");
+      assert((DotRelaDotPltShdr.get()->sh_info == DotGotDotPltSec.getIndex()) &&
+             ".rela.plt does not refer .got.plt section");
+      assert((DotRelaDotPltShdr.get()->sh_type == ELF::SHT_RELA) &&
+             "Unexpected type of section .rela.plt");
+      for (const RelocationRef &Reloc : DotRelaDotPltSec.relocations()) {
+        DynRelocs.push_back(Reloc);
+      }
     }
   }
   return true;

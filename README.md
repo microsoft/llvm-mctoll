@@ -18,18 +18,31 @@ To generate LLVM IR for a binary:
 
 `llvm-mctoll -d <binary>`
 
+The raised result is generated as `<binary>-dis.ll`.
+
+To check the correctness of `<binary>-dis.ll`
+1. compile `<binary>-dis.ll` to an executable (or to a shared library if `<binary>` is a shared library) using `clang`.
+2. run the resulting executable (or use the resulting shared library `<binary>-dis` in place of `<binary>`) to verify that its execution behavior is identical to that of the original `<binary>`.
+
+Tests in the tool repository are written following the above described methodology.
+
 To print debug output:
 
 `llvm-mctoll -d -print-after-all <binary>`
 
 ## Build and Test
 
-Run the tests by invoking 'make check-mctoll' or 'ninja check-mctoll'
+Run the tests by invoking `make check-mctoll` or `ninja check-mctoll`
+
+At present, the development and testing are done on Ubuntu 18.04. It is expected that build and test would work on Ubuntu 16.04, 17.04 and 17.10.
 
 # Current Status
 
-The tool is currently able to raise Linux x86_64 and Arm32 shared libraries and executables with function calls that have variable 
-arguments (such as printf) to LLVM IR.
+The tool is currently able to raise Linux x86_64 and Arm32 shared libraries and executables with function calls that have variable arguments (such as printf) to LLVM IR.
+
+Support for code generated for `switch` statement needs to be added.
+
+Raising of C++ binaries needs to be added.
 
 # Contributing
 

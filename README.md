@@ -57,3 +57,5 @@ repos using our CLA.
 This project has adopted the Microsoft Open Source Code of Conduct. For more information see the Code of Conduct FAQ or contact 
 opencode@microsoft.com with any additional questions or comments.
 
+## License
+LLVM is licensed under the [LLVM Release License](https://github.com/Microsoft/llvm-mctoll/blob/master/LICENSE)

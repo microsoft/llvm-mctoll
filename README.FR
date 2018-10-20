@@ -1,0 +1,26 @@
+<img width="150" height="150" align="left" style="float: left; margin: 0 10px 0 0;" alt="MS-DOS logo" src="https://github.com/Microsoft/MS-DOS/blob/master/msdos-logo.png">   
+
+# MS-DOS v1.25 and v2.0 Source Code
+Ce référentiel contient le code source d'origine et les fichiers binaires compilés pour MS-DOS v1.25 et MS-DOS v2.0.
+
+
+Il s’agit des mêmes fichiers [initialement partagés au Computer History Museum le 25 mars 2014]
+(http://www.computerhistory.org/atchm/microsoft-ms-dos-dos-early-source-code/) et qui sont en cours ) publiés dans ce référentiel
+afin de faciliter leur recherche, leur référence dans les écritures et les ouvrages externes,
+et pour permettre l’exploration etl’expérimentation de ceux intéressés par les premiers systèmes d’exploitation pour PC.
+
+# Licence
+All files within this repo are released under the [MIT (OSI) License]( https://en.wikipedia.org/wiki/MIT_License) as per the
+[LICENSE file](https://github.com/Microsoft/MS-DOS/blob/master/LICENSE.md) stored in the root of this repo.
+
+# Contribute!
+Les fichiers source de ce référentiel sont à titre de référence historique et resteront statiques.
+Merci de ne pas envoyer de demandes d'extraction suggérant des modifications aux fichiers source,😊.
+
+
+Si, toutefois, vous souhaitez soumettre du contenu non source supplémentaire ou des modifications à des fichiers non source (par exemple, ce fichier README),
+veuillez le soumettre par le biais de relations publiques.
+
+Ce projet a adopté le [code de conduite Microsoft en source ouverte] (https://opensource.microsoft.com/codeofconduct/). 
+Pour plus d'informations, consultez la [FAQ sur le code de conduite] (https://opensource.microsoft.com/codeofconduct/faq/)
+ou contactez [opencode@microsoft.com] (mailto: opencode@microsoft.com). commentaires.

@@ -1,3 +1,6 @@
+### *Read this in other languages.*
+[🇧🇷](translations/README.pt-br.md)
+
 # Introduction
 This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 

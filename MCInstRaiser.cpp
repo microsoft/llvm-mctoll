@@ -11,6 +11,7 @@
 // llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
+
 #include "MCInstRaiser.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Support/raw_ostream.h"
@@ -19,10 +20,8 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
                             const MCInstrInfo *MII) {
   bool PrintAll =
       (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
-
-  if (PrintAll) {
+  if (PrintAll)
     outs() << "Running buildCFG\n";
-  }
 
   // Set the first instruction index as the entry of current MBB
   // Walk the mcInstMap
@@ -86,11 +85,10 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
             }
             // Previous MCInst is not a branch. So, current instruction is a
             // target
-            else {
-              if ((mcInstIndex >= FuncStart) && (mcInstIndex <= FuncEnd)) {
-                prevMCInstTargets.push_back(mcInstIndex);
-              }
+            else if ((mcInstIndex >= FuncStart) && (mcInstIndex <= FuncEnd)) {
+              prevMCInstTargets.push_back(mcInstIndex);
             }
+
             // Add to MBB -> targets map
             MBBNumToMCInstTargetsMap.insert(
                 std::make_pair(MF.back().getNumber(), prevMCInstTargets));
@@ -107,12 +105,14 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
           }
         }
       }
+
       // Add the new MBB to MachineFunction
       if (mcInstorData.is_mcInst()) {
         MF.push_back(MF.CreateMachineBasicBlock());
         curMBBEntryInstIndex = mcInstIndex;
       }
     }
+
     if (mcInstorData.is_mcInst()) {
       // add raised MachineInstr to current MBB.
       MF.back().push_back(
@@ -155,11 +155,18 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
       }
     }
   }
+
   // Print the Machine function (which contains the reconstructed
   // MachineBasicBlocks.
-  if (PrintAll) {
+  if (PrintAll)
     MF.dump();
-  }
+}
+
+static inline int64_t raiseSignedImm(int64_t val, const DataLayout &dl) {
+  if (dl.getPointerSize() == 4)
+    return static_cast<int32_t>(val);
+  else 
+    return val;  
 }
 
 MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
@@ -171,30 +178,31 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
   MachineInstrBuilder builder =
       BuildMI(machineFunction, *debugLoc, mcInstrDesc);
 
-  const unsigned int defCount = mcInstrDesc.getNumDefs();
   // Get the number of declared MachineOperands for this
   // MachineInstruction and add them to the MachineInstr being
   // constructed. Any implicitDefs or implicitDefs would already have
   // been added while MachineInstr is created during the construction
   // of builder object above.
+  const unsigned int defCount = mcInstrDesc.getNumDefs();
   const unsigned int numOperands = mcInstrDesc.getNumOperands();
   for (unsigned int indx = 0; indx < numOperands; indx++) {
     // Raise operand
     MCOperand mcOperand = mcInst.getOperand(indx);
     if (mcOperand.isImm()) {
-      builder.addImm(mcOperand.getImm());
+      builder.addImm(
+        raiseSignedImm(mcOperand.getImm(), machineFunction.getDataLayout()));
     } else if (mcOperand.isReg()) {
       // The first defCount operands are defines (i.e., out operands).
-      if (indx < defCount) {
+      if (indx < defCount)
         builder.addDef(mcOperand.getReg());
-      } else {
+      else
         builder.addUse(mcOperand.getReg());
-      }
     } else {
       outs() << "**** Unhandled Operand : ";
       mcOperand.dump();
     }
   }
+
   LLVMContext &C = machineFunction.getFunction().getContext();
   // Creation of MDNode representing Metadata with mcInstIndex may be done using
   // the following couple of lines of code. But I just wanted to spell it out

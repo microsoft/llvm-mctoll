@@ -21,8 +21,8 @@ To generate LLVM IR for a binary:
 The raised result is generated as `<binary>-dis.ll`.
 
 To check the correctness of `<binary>-dis.ll`
-1. compile `<binary>-dis.ll` to an executable (or to a shared library if `<binary>` is a shared library) using `clang`.
-2. run the resulting executable (or use the resulting shared library `<binary>-dis` in place of `<binary>`) to verify that its execution behavior is identical to that of the original `<binary>`.
+1. Compile `<binary>-dis.ll` to an executable (or to a shared library if `<binary>` is a shared library) using `clang`.
+2. Run the resulting executable (or use the resulting shared library `<binary>-dis` in place of `<binary>`) to verify that its execution behavior is identical to that of the original `<binary>`.
 
 Tests in the tool repository are written following the above described methodology.
 

@@ -9,7 +9,7 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 3.  `pushd llvm/tools && git clone https://github.com/llvm-mirror/clang && git checkout master && popd`
 4.  `pushd llvm/tools && git clone https://github.com/Microsoft/llvm-mctoll && git checkout master && popd`
 7.  `cd ../build/llvm`
-7.  Run cmake command that you usually use to build llvm
+7.  Run cmake command that you usually use to build LLVM
 8.  Run `make llvm-mctoll` or `ninja llvm-mctoll`
 
 ## Usage
@@ -34,15 +34,15 @@ To print debug output:
 
 Run the tests by invoking `make check-mctoll` or `ninja check-mctoll`
 
-At present, the development and testing are done on Ubuntu 18.04. It is expected that build and test would work on Ubuntu 16.04, 17.04 and 17.10.
+At present, the development and testing are done on Ubuntu version 18.04. It is expected that the build and test would work on Ubuntu versions 16.04, 17.04 and 17.10.
 
 # Current Status
 
-The tool is currently able to raise Linux x86_64 and Arm32 shared libraries and executables with function calls that have variable arguments (such as printf) to LLVM IR.
+>The tool is currently able to raise Linux x86_64 and Arm32 shared libraries and executables with function calls that have variable arguments (such as printf) to LLVM IR.
 
-Support for code generated for `switch` statement needs to be added.
+>Support for code generated for `switch` statement needs to be added.
 
-Raising of C++ binaries needs to be added.
+>Raising of C++ binaries needs to be added.
 
 # Contributing
 

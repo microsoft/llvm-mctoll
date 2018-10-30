@@ -1,5 +1,5 @@
 # Introduction
-This tool statically (AOT) translates (or raises) binaries to LLVM IR.
+This tool statically (AOT) translates (or raises) binaries to [LLVM](https://llvm.org/) [IR](https://en.wikipedia.org/wiki/Intermediate_representation).
 
 # Getting Started (Linux/Mac)
 ## Building as part of LLVM tree

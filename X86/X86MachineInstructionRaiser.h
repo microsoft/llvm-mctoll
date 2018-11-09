@@ -117,7 +117,7 @@ private:
 
   // Helper functions
   int getMemoryRefOpIndex(const MachineInstr &);
-  Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
+  Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t, BasicBlock *);
   const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
                                                     Type *OffsetTy);
   Value *getMemoryAddressExprValue(const MachineInstr &, BasicBlock *);

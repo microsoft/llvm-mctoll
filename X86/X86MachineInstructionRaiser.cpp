@@ -563,7 +563,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
                         "memory access instruction.");
       }
     } else {
-      memrefValue = getGlobalVariableValueAt(mi, PCOffset);
+      memrefValue = getGlobalVariableValueAt(mi, PCOffset, curBlock);
     }
   } else if (EType == ELF::ET_REL) {
     const RelocationRef *TextReloc =
@@ -1028,14 +1028,47 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
             }
           }
           if (RODataValue == nullptr) {
-            // Type *ImmType = OffsetVal->getType();
-            Constant *GlobalInit = ConstantInt::get(OffsetTy, 0);
-            // Linkage is common since this is a BSS symbol
+            auto symb =
+                Elf64LEObjFile->getSymbol(GlobalDataSym.getRawDataRefImpl());
+            uint64_t symbSize = symb->st_size;
+            GlobalValue::LinkageTypes linkage;
+            switch (symb->getBinding()) {
+            case ELF::STB_GLOBAL:
+              linkage = GlobalValue::ExternalLinkage;
+              break;
+            default:
+              assert(false && "Unhandled global symbol binding type");
+            }
+            // By default, the symbol alignment is the symbol section
+            // alignment. Will be adjusted as needed based on the size of
+            // the symbol later.
+            auto GlobalDataSymSection = GlobalDataSym.getSection();
+            assert(GlobalDataSymSection &&
+                   "No section for global symbol found");
+            uint64_t GlobDataSymSectionAlignment =
+                GlobalDataSymSection.get()->getAlignment();
+            // Make sure the alignment is a power of 2
+            assert(((GlobDataSymSectionAlignment &
+                     (GlobDataSymSectionAlignment - 1)) == 0) &&
+                   "Section alignment not a power of 2");
+            // If symbol size is less than symbol section size, set alignment to
+            // symbol size.
+            if (symbSize < GlobDataSymSectionAlignment) {
+              GlobDataSymSectionAlignment = symbSize;
+            }
+            // symbSize is in number of bytes
+            Type *GlobalValTy = Type::getInt8Ty(llvmContext);
+            Constant *GlobalInit = nullptr;
+            if (symbSize > GlobDataSymSectionAlignment) {
+              GlobalValTy = ArrayType::get(GlobalValTy, symbSize);
+              GlobalInit = ConstantAggregateZero::get(GlobalValTy);
+            } else {
+              GlobalInit = ConstantInt::get(GlobalValTy, 0);
+            }
             auto GlobalVal = new GlobalVariable(
-                MR->getModule(), OffsetTy, false /* isConstant */,
-                GlobalValue::CommonLinkage, GlobalInit,
-                GlobalDataSymName->data());
-            GlobalVal->setAlignment(OffsetTy->getScalarSizeInBits() / 8);
+                MR->getModule(), GlobalValTy, true /* isConstant */, linkage,
+                GlobalInit, GlobalDataSymName.get());
+            GlobalVal->setAlignment(GlobDataSymSectionAlignment);
             GlobalVal->setDSOLocal(true);
             RODataValue = GlobalVal;
           }
@@ -1049,9 +1082,8 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
 
 // Return a value corresponding to global symbol at Offset referenced in
 // MachineInst mi.
-Value *
-X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &mi,
-                                                      uint64_t Offset) {
+Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
+    const MachineInstr &mi, uint64_t Offset, BasicBlock *curBlock) {
   Value *GlobalVariableValue = nullptr;
   const ELF64LEObjectFile *Elf64LEObjFile =
       dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
@@ -1085,21 +1117,25 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &mi,
   if (GlobalDataSymFound) {
     Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
     assert(GlobalDataSymName && "Failed to find global symbol name.");
-    // If this location is an offset from the start of GlobalDataSym, consider
-    // it to be a new global variable with the offset as suffix.
-    std::string DataSymNameIndexStr(GlobalDataSymName.get().data());
-    if (GlobalDataOffset) {
-      DataSymNameIndexStr.append(std::to_string(GlobalDataOffset));
-    }
     // Find if a global value associated with symbol name is already
     // created
-    StringRef GlobalDataSymNameIndexStrRef(DataSymNameIndexStr);
+    StringRef GlobalDataSymNameIndexStrRef(GlobalDataSymName.get());
     for (GlobalVariable &gv : MR->getModule().globals()) {
       if (gv.getName().compare(GlobalDataSymNameIndexStrRef) == 0) {
         GlobalVariableValue = &gv;
       }
     }
+    // By default, the symbol alignment is the symbol section alignment.
+    // Will be adjusted as needed based on the size of the symbol later.
+    auto GlobalDataSymSection = GlobalDataSym.getSection();
+    assert(GlobalDataSymSection && "No section for global symbol found");
+    uint64_t GlobDataSymAlignment = GlobalDataSymSection.get()->getAlignment();
+    // Make sure the alignment is a power of 2
+    assert(((GlobDataSymAlignment & (GlobDataSymAlignment - 1)) == 0) &&
+           "Section alignment not a power of 2");
+
     if (GlobalVariableValue == nullptr) {
+      Type *GlobalValTy = nullptr;
       // Get all necessary information about the global symbol.
       llvm::LLVMContext &llvmContext(MF.getFunction().getContext());
       DataRefImpl symbImpl = GlobalDataSym.getRawDataRefImpl();
@@ -1107,6 +1143,11 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &mi,
       auto symb = Elf64LEObjFile->getSymbol(symbImpl);
       // get symbol size
       uint64_t symbSize = symb->st_size;
+      // If symbol size is less than symbol section size, set alignment to
+      // symbol size.
+      if (symbSize < GlobDataSymAlignment) {
+        GlobDataSymAlignment = symbSize;
+      }
       GlobalValue::LinkageTypes linkage;
       switch (symb->getBinding()) {
       case ELF::STB_GLOBAL:
@@ -1119,25 +1160,12 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &mi,
       // Check that symbol type is data object, representing a variable or
       // array etc.
       assert((symb->getType() == ELF::STT_OBJECT) &&
-             "Function symbol type expected. Not found");
-      Type *GlobalValTy = nullptr;
-      unsigned short MemOpSize = getInstructionMemOpSize(mi.getOpcode());
-      switch (MemOpSize) {
-      case 8:
-        GlobalValTy = Type::getInt64Ty(llvmContext);
-        break;
-      case 4:
-        GlobalValTy = Type::getInt32Ty(llvmContext);
-        break;
-      case 2:
-        GlobalValTy = Type::getInt16Ty(llvmContext);
-        break;
-      case 1:
-        GlobalValTy = Type::getInt8Ty(llvmContext);
-        break;
-      default:
-        assert(false && "Unexpected symbol size");
-      }
+             "Object symbol type expected. Not found");
+
+      // Alignment is in bytes. So, need to multiply the alignment by 8 for the
+      // number of bits.
+      GlobalValTy = Type::getIntNTy(llvmContext, GlobDataSymAlignment * 8);
+
       // get symbol value - this is the virtual address of symbol's value
       uint64_t symVirtualAddr = symb->st_value;
 
@@ -1160,7 +1188,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &mi,
             unsigned index = symVirtualAddr - SecStart;
             const unsigned char *beg = SecData.bytes_begin() + index;
             char shift = 0;
-            while (symbSize-- > 0) {
+            uint64_t symSz = symbSize;
+            while (symSz-- > 0) {
               // We know this is little-endian
               symbVal = ((*beg++) << shift) | symbVal;
               shift += 8;
@@ -1169,13 +1198,35 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &mi,
           break;
         }
       }
-      Constant *GlobalInit = ConstantInt::get(GlobalValTy, symbVal);
+      Constant *GlobalInit = nullptr;
+      if (symbSize > GlobDataSymAlignment) {
+        // This is an aggregate blob of symbSize bytes
+        GlobalValTy = ArrayType::get(Type::getInt8Ty(llvmContext), symbSize);
+        GlobalInit = ConstantAggregateZero::get(GlobalValTy);
+      } else {
+        GlobalInit = ConstantInt::get(GlobalValTy, 0);
+      }
       auto GlobalVal = new GlobalVariable(
           MR->getModule(), GlobalValTy, false /* isConstant */, linkage,
           GlobalInit, GlobalDataSymNameIndexStrRef);
-      GlobalVal->setAlignment(MemOpSize);
+      GlobalVal->setAlignment(GlobDataSymAlignment);
       GlobalVal->setDSOLocal(true);
       GlobalVariableValue = GlobalVal;
+    }
+    assert(GlobalVariableValue->getType()->isPointerTy() &&
+           "Unexpected non-pointer type value in global data offset access");
+    if (GlobalVariableValue->getType()->getPointerElementType()->isArrayTy()) {
+      // First index - is 0
+      Value *FirstIndex =
+          ConstantInt::get(MF.getFunction().getContext(), APInt(32, 0));
+      // Offset index
+      Value *OffsetIndex = ConstantInt::get(MF.getFunction().getContext(),
+                                            APInt(32, GlobalDataOffset));
+      // Get the element
+      Instruction *GetElem = GetElementPtrInst::CreateInBounds(
+          GlobalVariableValue->getType()->getPointerElementType(),
+          GlobalVariableValue, {FirstIndex, OffsetIndex}, "", curBlock);
+      GlobalVariableValue = GetElem;
     }
   } else {
     GlobalVariableValue =
@@ -1290,7 +1341,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &mi,
         assert(
             ((IndexReg == X86::NoRegister) && (ScaleAmt == 1)) &&
             "Unhandled index register in memory addr expression calculation");
-        memrefValue = getGlobalVariableValueAt(mi, Disp);
+        memrefValue = getGlobalVariableValueAt(mi, Disp, curBlock);
         // Construct a PC-relative value if base register is RIP
       } else if (BaseReg == X86::RIP) {
         memrefValue = createPCRelativeAccesssValue(mi, curBlock);
@@ -2542,7 +2593,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &mi,
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an effective address value.
   assert((isa<AllocaInst>(memRefValue) || isEffectiveAddrValue(memRefValue) ||
-          isa<GlobalValue>(memRefValue)) &&
+          isa<GlobalValue>(memRefValue) ||
+          isa<GetElementPtrInst>(memRefValue)) &&
          "Unexpected type of memory reference in binary mem op instruction");
 
   if (isPCRelMemRef) {
@@ -2692,7 +2744,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &mi,
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an effective address value.
   assert((isa<AllocaInst>(memRefVal) || isEffectiveAddrValue(memRefVal) ||
-          isa<GlobalValue>(memRefVal)) &&
+          isa<GlobalValue>(memRefVal) || isa<GetElementPtrInst>(memRefVal)) &&
          "Unexpected type of memory reference in mem-to-reg instruction");
   bool loadEffAddr = isEffectiveAddrValue(memRefVal);
 
@@ -2719,13 +2771,15 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &mi,
   // is the source value that needs to be cast to match the type of
   // destination (i.e., memory). It needs to be sign extended as needed.
   Type *MatchTy = memRefVal->getType()->getPointerElementType();
-  if (SrcValue->getType() != MatchTy) {
-    Type *CastTy = MatchTy;
-    CastInst *CInst = CastInst::Create(
-        CastInst::getCastOpcode(SrcValue, false, CastTy, false), SrcValue,
-        CastTy);
-    curBlock->getInstList().push_back(CInst);
-    SrcValue = CInst;
+  if (!MatchTy->isArrayTy()) {
+    if (SrcValue->getType() != MatchTy) {
+      Type *CastTy = MatchTy;
+      CastInst *CInst = CastInst::Create(
+          CastInst::getCastOpcode(SrcValue, false, CastTy, false), SrcValue,
+          CastTy);
+      curBlock->getInstList().push_back(CInst);
+      SrcValue = CInst;
+    }
   }
 
   StoreInst *storeInst = new StoreInst(SrcValue, memRefVal);

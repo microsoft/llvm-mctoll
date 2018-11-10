@@ -2789,13 +2789,11 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &mi,
   return true;
 }
 
-// Raise idiv instruction.
-// TODO: Need to add support for div.
+// Raise idiv instruction with source operand with value srcValue.
 bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &mi,
                                                    BasicBlock *curBlock,
-                                                   Value *memRefValue) {
+                                                   Value *srcValue) {
   const MCInstrDesc &MIDesc = mi.getDesc();
-  unsigned int opcode = mi.getOpcode();
   LLVMContext &llvmContext(MF.getFunction().getContext());
 
   // idiv uses AX(AH:AL or DX:AX or EDX:EAX or RDX:RAX pairs as dividend and
@@ -2814,13 +2812,12 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &mi,
   Value *DividendHighBytes = getRegValue(UseDefReg_1);
   assert((DividendLowBytes != nullptr) && (DividendHighBytes != nullptr) &&
          "Unexpected use before definition in div instruction");
-  // Divisor is memRefValue.
+  // Divisor is srcValue.
   // Create a Value representing the dividend.
   // TODO: Not sure how the implicit use registers of IDIV8m are encode. Does
   // the instruction have AX as a single use/def register or does it have 2
   // use/def registers, viz., AH:AL pair similar to the other IDIV
   // instructions? Handle it when it is encountered.
-  assert((opcode != X86::IDIV8m) && "*** Need to handle IDIV8m");
   assert((DividendLowBytes->getType() == DividendHighBytes->getType()) &&
          "Unexpected types of dividend registers in idiv instruction");
   unsigned int UseDefRegSize =
@@ -2828,8 +2825,8 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &mi,
   // Generate the following code
   // %h = lshl DividendHighBytes, UseDefRegSize
   // %f = or %h, DividendLowBytes
-  // %quo = idiv %f, memRefValue
-  // %rem = irem %f, memRefValue
+  // %quo = idiv %f, srcValue
+  // %rem = irem %f, srcValue
   // UseDef_0 = %quo
   // UseDef_1 = %rem
 
@@ -2862,15 +2859,15 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &mi,
       BinaryOperator::CreateOr(LShlInst, DividendLowBytesDT);
   curBlock->getInstList().push_back(FullDividend);
 
-  // Cast divisor (memRefValue) to double type
-  CastInst *memRefValueDT = CastInst::Create(
-      CastInst::getCastOpcode(memRefValue, true, DoubleTy, true), memRefValue,
-      DoubleTy);
-  curBlock->getInstList().push_back(memRefValueDT);
+  // Cast divisor (srcValue) to double type
+  CastInst *srcValueDT =
+      CastInst::Create(CastInst::getCastOpcode(srcValue, true, DoubleTy, true),
+                       srcValue, DoubleTy);
+  curBlock->getInstList().push_back(srcValueDT);
 
   // quotient
   Instruction *QuotientDT =
-      BinaryOperator::CreateSDiv(FullDividend, memRefValueDT);
+      BinaryOperator::CreateSDiv(FullDividend, srcValueDT);
   curBlock->getInstList().push_back(QuotientDT);
 
   // Cast Quotient back to UseDef reg value type
@@ -2885,7 +2882,7 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &mi,
 
   // remainder
   Instruction *RemainderDT =
-      BinaryOperator::CreateSRem(FullDividend, memRefValueDT);
+      BinaryOperator::CreateSRem(FullDividend, srcValueDT);
   curBlock->getInstList().push_back(RemainderDT);
 
   // Cast RemainderDT back to UseDef reg value type
@@ -2900,6 +2897,7 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &mi,
 
   return true;
 }
+
 // Raise compare instruction. If the the instruction is a memory compare, it
 // is expected that this function is called from raiseMemRefMachineInstr after
 // verifying the accessibility of memory location and with isMemCompare set
@@ -3136,7 +3134,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
              "memory expected to be a register");
     } else if (!MIDesc.isCompare()) {
       switch (getInstructionKind(opcode)) {
-      case InstructionKind::DIVIDE_OP:
+      case InstructionKind::DIVIDE_MEM_OP:
       case InstructionKind::LOAD_FPU_REG:
         break;
       default:
@@ -3208,7 +3206,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   case InstructionKind::BINARY_OP_RM: {
     success = raiseBinaryOpMemToRegInstr(mi, curBlock, memoryRefValue);
   } break;
-  case InstructionKind::DIVIDE_OP: {
+  case InstructionKind::DIVIDE_MEM_OP: {
     success = raiseDivideInstr(mi, curBlock, memoryRefValue);
   } break;
   case InstructionKind::LOAD_FPU_REG:
@@ -3447,6 +3445,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::IMUL32rri8:
       case X86::IMUL64rri32:
         BinOpInstr = BinaryOperator::CreateMul(SrcOp1Value, SrcOp2Value);
+        break;
+      case X86::SHR8ri:
+      case X86::SHR16ri:
+      case X86::SHR32ri:
+      case X86::SHR64ri:
+        // Generate shr instruction
+        BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
         break;
       default:
         assert(false && "Unhandled reg to imm binary operator instruction");
@@ -3693,6 +3698,13 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
   case InstructionKind::FPU_REG_OP:
     success = raiseFPURegisterOpInstr(mi, curBlock);
     break;
+  case InstructionKind::DIVIDE_REG_OP: {
+    const MachineOperand &SrcOp = mi.getOperand(0);
+    assert(SrcOp.isReg() &&
+           "Expect register source operand of a div instruction");
+    Value *SrcVal = getRegValue(SrcOp.getReg());
+    success = raiseDivideInstr(mi, curBlock, SrcVal);
+  } break;
   default: {
     outs() << "*** Generic instruction not raised : ";
     mi.dump();

@@ -12,6 +12,8 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 7.  Run cmake command that you usually use to build llvm
 8.  Run `make llvm-mctoll` or `ninja llvm-mctoll`
 
+Note : The current tip of llvm-mctoll is tested using the commits recorded in LLVMVersion.txt. Make sure the corresponding repos used in your build correspond to those listed.
+
 ## Usage
 
 To generate LLVM IR for a binary:

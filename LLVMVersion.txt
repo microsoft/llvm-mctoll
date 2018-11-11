@@ -5,30 +5,14 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit f8fba9029f6973515711af39198fab1c940d927e
-Author: Anastasis Grammenos <anastasis.gramm2@gmail.com>
-Date:   Fri Aug 3 20:27:13 2018 +0000
+commit ac4b70f74612eccc851a1aa9ff389e2104a6c747 (HEAD -> master, origin/master, origin/HEAD)
+Author: Nico Weber <nicolasweber@gmx.de>
 
-    [TRE][DebugInfo] Preserve Debug Location in new branch instruction
-    
-    There are two branch instructions created
-    so the new test covers them both.
-    
-    Differential Revision: https://reviews.llvm.org/D50263
-    
-    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@338917 91177308-0d34-0410-b5e6-96231b3b80d8
-
+    Make initializeOutputStream() return false on error and true on success.
 
 tools/clang:
 
-commit 18481d833dc0b2f992b8b99e2a9d5347721bfd68
-Author: Reka Kovacs <rekanikolett@gmail.com>
-Date:   Fri Aug 3 20:42:02 2018 +0000
+commit 7dec0f05fefde9d87b465d57d739230563b26584 (HEAD -> master, origin/master, origin/HEAD)
+Author: Jonas Devlieghere <jonas@devlieghere.com>
 
-    [analyzer] Add test for a crash fixed in r338775.
-    
-    Do not crash if a CXXRecordDecl cannot be obtained for an object.
-    
-    Special thanks for the reproduction to Alexander Kornienko.
-    
-    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@338918 91177308-0d34-0410-b5e6-96231b3b80d8
+    Pass the function type instead of the return type to FunctionDecl::Create

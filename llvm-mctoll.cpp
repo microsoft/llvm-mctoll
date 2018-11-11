@@ -1101,8 +1101,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                                      TargetOptions(), /* RelocModel */ None));
   assert(Target && "Could not allocate target machine!");
 
-  // LLVMTargetMachine &llvmTgtMach = static_cast<LLVMTargetMachine&>(*Target);
-  MachineModuleInfo *machineModuleInfo = new MachineModuleInfo(Target.get());
+  LLVMTargetMachine &llvmTgtMach = static_cast<LLVMTargetMachine &>(*Target);
+  MachineModuleInfo *machineModuleInfo = new MachineModuleInfo(&llvmTgtMach);
   /* New Module instance with file name */
   Module module(Obj->getFileName(), llvmCtx);
   /* Set datalayout of the module to be the same as LLVMTargetMachine */

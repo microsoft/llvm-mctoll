@@ -10,6 +10,9 @@
 // CHECK: Result : 25
 // CHECK: Result : 250
 // CHECK: Result : 2500
+// CHECK: Int_1 = 1
+// CHECK: Int_2 = 13
+// CHECK: Int_3 = 7
 
 int main() {
   uint8_t a = 10;
@@ -26,5 +29,17 @@ int main() {
   printf("Result : %" PRIu16 "\n", b / 2);
   printf("Result : %" PRIu32 "\n", c / 2);
   printf("Result : %" PRIu64 "\n", d / 2);
+
+  int Int_1 = 3;
+  int Int_2 = 3;
+  int Int_3 = 7;
+
+  Int_2 = Int_2 * Int_1;
+  Int_1 = Int_2 / Int_3;
+  Int_2 = 7 * (Int_2 - Int_3) - Int_1;
+
+  printf("Int_1 = %d\n", Int_1);
+  printf("Int_2 = %d\n", Int_2);
+  printf("Int_3 = %d\n", Int_3);
   return 0;
 }

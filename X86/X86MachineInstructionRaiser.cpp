@@ -1034,7 +1034,8 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
             GlobalValue::LinkageTypes linkage;
             switch (symb->getBinding()) {
             case ELF::STB_GLOBAL:
-              linkage = GlobalValue::ExternalLinkage;
+              // Note that this is a symbol in BSS
+              linkage = GlobalValue::CommonLinkage;
               break;
             default:
               assert(false && "Unhandled global symbol binding type");
@@ -1066,7 +1067,7 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
               GlobalInit = ConstantInt::get(GlobalValTy, 0);
             }
             auto GlobalVal = new GlobalVariable(
-                MR->getModule(), GlobalValTy, true /* isConstant */, linkage,
+                MR->getModule(), GlobalValTy, false /* isConstant */, linkage,
                 GlobalInit, GlobalDataSymName.get());
             GlobalVal->setAlignment(GlobDataSymSectionAlignment);
             GlobalVal->setDSOLocal(true);
@@ -2859,6 +2860,17 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &mi,
       BinaryOperator::CreateOr(LShlInst, DividendLowBytesDT);
   curBlock->getInstList().push_back(FullDividend);
 
+  // If the srcValue is a stack allocation, load the value from the stack slot
+  if (isa<AllocaInst>(srcValue)) {
+    // Load the value from memory location
+    LoadInst *loadInst = new LoadInst(srcValue);
+    unsigned int memAlignment =
+        srcValue->getType()->getPointerElementType()->getPrimitiveSizeInBits() /
+        8;
+    loadInst->setAlignment(memAlignment);
+    curBlock->getInstList().push_back(loadInst);
+    srcValue = loadInst;
+  }
   // Cast divisor (srcValue) to double type
   CastInst *srcValueDT =
       CastInst::Create(CastInst::getCastOpcode(srcValue, true, DoubleTy, true),

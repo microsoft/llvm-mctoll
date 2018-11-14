@@ -726,7 +726,7 @@ Value *X86MachineInstructionRaiser::findPhysRegSSAValue(unsigned int PhysReg) {
 }
 
 Value *X86MachineInstructionRaiser::getStackAllocatedValue(
-    const MachineInstr &mi, BasicBlock *, X86AddressMode &memRef) {
+    const MachineInstr &mi, X86AddressMode &memRef, bool isStackPointerAdjust) {
   unsigned int stackFrameIndex;
 
   assert((memRef.BaseType == X86AddressMode::RegBase) &&
@@ -751,18 +751,15 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   if (CurSPVal == nullptr) {
     NewDisp = memRef.Disp;
   } else {
-    // Control should not reach here if the specified memory address has with 0
-    // offset from sp.
     assert((memRef.Disp != 0) && "Unexpected 0 offset value");
     // Find the stack offset of the allocation corresponding to current sp
-    bool StackIndexFound = false;
-    unsigned NumObjs = MFrameInfo.getNumObjects();
+    bool IndexFound = false;
+    unsigned ObjCount = MFrameInfo.getNumObjects();
     unsigned StackIndex = 0;
-    for (; ((StackIndex < NumObjs) && !StackIndexFound); StackIndex++) {
-      StackIndexFound =
-          (CurSPVal == MFrameInfo.getObjectAllocation(StackIndex));
+    for (; ((StackIndex < ObjCount) && !IndexFound); StackIndex++) {
+      IndexFound = (CurSPVal == MFrameInfo.getObjectAllocation(StackIndex));
     }
-    assert(StackIndexFound && "Failed to get current stack allocation index");
+    assert(IndexFound && "Failed to get current stack allocation index");
     // Get stack offset of the stack object at StackIndex-1 and add the
     // specified offset to get the displacement of the referenced stack object.
     NewDisp = MFrameInfo.getObjectOffset(StackIndex - 1) + memRef.Disp;
@@ -810,7 +807,8 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   typeAlignment = dataLayout.getPrefTypeAlignment(Ty);
 
   // Create alloca instruction to allocate stack slot
-  AllocaInst *alloca = new AllocaInst(Ty, allocaAddrSpace, 0, typeAlignment);
+  AllocaInst *alloca = new AllocaInst(Ty, allocaAddrSpace, 0, typeAlignment,
+                                      isStackPointerAdjust ? "StackAdj" : "");
 
   // Create a stack slot associated with the alloca instruction
   stackFrameIndex = MF.getFrameInfo().CreateStackObject(
@@ -963,7 +961,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
 
 // Return a global value corresponding to read-only  data.
 const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
-    int64_t Offset, Type *OffsetTy) {
+    int64_t Offset, Type *OffsetTy1) {
   // A negative offset implies that this is not an offset into ro-data section.
   // Just return nullptr.
   if (Offset < 0) {
@@ -1116,6 +1114,8 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
     }
   }
   if (GlobalDataSymFound) {
+    unsigned memAccessSize = getInstructionMemOpSize(mi.getOpcode());
+    assert((memAccessSize != 0) && "Unknown memory access size");
     Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
     assert(GlobalDataSymName && "Failed to find global symbol name.");
     // Find if a global value associated with symbol name is already
@@ -1163,9 +1163,9 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
       assert((symb->getType() == ELF::STT_OBJECT) &&
              "Object symbol type expected. Not found");
 
-      // Alignment is in bytes. So, need to multiply the alignment by 8 for the
-      // number of bits.
-      GlobalValTy = Type::getIntNTy(llvmContext, GlobDataSymAlignment * 8);
+      // Memory access is in bytes. So, need to multiply the alignment by 8 for
+      // the number of bits.
+      GlobalValTy = Type::getIntNTy(llvmContext, memAccessSize * 8);
 
       // get symbol value - this is the virtual address of symbol's value
       uint64_t symVirtualAddr = symb->st_value;
@@ -1200,10 +1200,15 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
         }
       }
       Constant *GlobalInit = nullptr;
-      if (symbSize > GlobDataSymAlignment) {
-        // This is an aggregate blob of symbSize bytes
-        GlobalValTy = ArrayType::get(Type::getInt8Ty(llvmContext), symbSize);
-        GlobalInit = ConstantAggregateZero::get(GlobalValTy);
+      if (symbSize > memAccessSize) {
+        // This is an aggregate array whose size is symbSize bytes or
+        // memAccessSize units. For example, if memAccessSize is 4, it is an
+        // array of size symbSize/memAccessSize ints.
+        unsigned ArraySz = (symbSize / memAccessSize) +
+                           (((symbSize % memAccessSize) == 0) ? 0 : 1);
+        Type *GlobalArrValTy = ArrayType::get(GlobalValTy, ArraySz);
+        GlobalInit = ConstantAggregateZero::get(GlobalArrValTy);
+        GlobalValTy = GlobalArrValTy;
       } else {
         GlobalInit = ConstantInt::get(GlobalValTy, 0);
       }
@@ -1221,8 +1226,9 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
       Value *FirstIndex =
           ConstantInt::get(MF.getFunction().getContext(), APInt(32, 0));
       // Offset index
-      Value *OffsetIndex = ConstantInt::get(MF.getFunction().getContext(),
-                                            APInt(32, GlobalDataOffset));
+      Value *OffsetIndex =
+          ConstantInt::get(MF.getFunction().getContext(),
+                           APInt(32, GlobalDataOffset / memAccessSize));
       // Get the element
       Instruction *GetElem = GetElementPtrInst::CreateInBounds(
           GlobalVariableValue->getType()->getPointerElementType(),
@@ -1729,10 +1735,6 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
 
       MF.getFrameInfo().setObjectOffset(stackFrameIndex, 0);
 
-      // Book-keeping: Add memory reference to the map
-      // X86AddressMode PushRef;
-      // PushRef.Base.Reg = find64BitSuperReg(mi.getOperand(0).getReg());
-      // memRefToFrameIndexMap.emplace(PushRef, stackFrameIndex);
       // Add the alloca instruction to entry block
       insertAllocaInEntryBlock(alloca);
       // The alloca corresponds to the current location of stack pointer
@@ -2083,7 +2085,7 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &mi,
         memoryRefOpIndex != -1 &&
         "Unable to find memory reference operand of a load/store instruction");
     X86AddressMode memRef = llvm::getAddressFromInstr(&mi, memoryRefOpIndex);
-    EffectiveAddrValue = getStackAllocatedValue(mi, curBlock, memRef);
+    EffectiveAddrValue = getStackAllocatedValue(mi, memRef, false);
   } else {
     MachineOperand ScaleAmtOp = mi.getOperand(OpIndex + X86::AddrScaleAmt);
     assert(ScaleAmtOp.isImm() &&
@@ -3169,7 +3171,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     uint64_t BaseSupReg = find64BitSuperReg(memRef.Base.Reg);
     if (BaseSupReg == x86RegisterInfo->getStackRegister() ||
         BaseSupReg == x86RegisterInfo->getFramePtr()) {
-      memoryRefValue = getStackAllocatedValue(mi, curBlock, memRef);
+      memoryRefValue = getStackAllocatedValue(mi, memRef, false);
     }
     // Handle PC-relative addressing.
 
@@ -3336,7 +3338,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
         assert(false && "SP computation - unhandled binary opcode instruction");
       }
 
-      Value *StackRefVal = getStackAllocatedValue(mi, curBlock, AdjSPRef);
+      Value *StackRefVal = getStackAllocatedValue(mi, AdjSPRef, true);
       assert((StackRefVal != nullptr) && "Reference to unallocated stack slot");
       updatePhysRegSSAValue(X86::RSP, StackRefVal);
     } else {
@@ -4130,9 +4132,75 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
       }
     }
   }
-  return raiseBranchMachineInstrs();
+  if (adjustStackAllocatedObjects()) {
+    return raiseBranchMachineInstrs();
+  }
+  return false;
 }
 
+// Adjust sizes of stack allocated objects. Ensure all allocations account for
+// the stack size of the function deduced from the machine code.
+bool X86MachineInstructionRaiser::adjustStackAllocatedObjects() {
+  MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
+  const DataLayout &dataLayout = MR->getModule().getDataLayout();
+  // Map of stack offset and stack index
+  std::map<int64_t, int> StackOffsetToIndexMap;
+  std::map<int64_t, int>::iterator StackOffsetToIndexMapIter;
+  LLVMContext &llvmContext(MF.getFunction().getContext());
+  for (int StackIndex = MFrameInfo.getObjectIndexBegin();
+       StackIndex < MFrameInfo.getObjectIndexEnd(); StackIndex++) {
+    int64_t ObjOffset = MFrameInfo.getObjectOffset(StackIndex);
+    assert(StackOffsetToIndexMap.find(ObjOffset) ==
+               StackOffsetToIndexMap.end() &&
+           "Multiple stack objects with same offset found");
+    StackOffsetToIndexMap.emplace(
+        std::pair<int64_t, int>(ObjOffset, StackIndex));
+  }
+
+  StackOffsetToIndexMapIter = StackOffsetToIndexMap.begin();
+  while (StackOffsetToIndexMapIter != StackOffsetToIndexMap.end()) {
+    auto Entry = *StackOffsetToIndexMapIter;
+    int64_t StackOffset = Entry.first;
+    int StackIndex = Entry.second;
+    AllocaInst *allocaInst =
+        const_cast<AllocaInst *>(MFrameInfo.getObjectAllocation(StackIndex));
+    // No need to look at the alloca instruction created to demarcate the stack
+    // pointer adjustment. It stack allocation does not have a corresponding
+    // reference in the binary being raised.
+    if (!allocaInst->getName().startswith("StackAdj")) {
+      auto NextEntryIter = std::next(StackOffsetToIndexMapIter);
+      if (NextEntryIter != StackOffsetToIndexMap.end()) {
+        int64_t NextStackOffset = NextEntryIter->first;
+        // Get stack slot size in bytes between current stack object
+        // and the next stack object
+        int SlotSize = abs(StackOffset - NextStackOffset);
+        // Slot size should be equal to or greater than sizeof alloca type times
+        // number of elements.
+        auto allocaBitCount = allocaInst->getAllocationSizeInBits(dataLayout);
+        assert(allocaBitCount.hasValue() &&
+               "Failed to get size of alloca instruction");
+        int allocaByteCount = allocaBitCount.getValue() / 8;
+        // assert((allocaByteCount >= SlotSize) &&
+        //       "Incorrect size of stack slot allocated");
+        if (allocaByteCount < SlotSize) {
+          // Change alloca size to match the slot size
+          // Value *sz = allocaInst->getArraySize();
+          // sz->dump();
+          int NewAllocaCount = ((SlotSize % allocaByteCount) == 0)
+                                   ? (SlotSize / allocaByteCount)
+                                   : (SlotSize / allocaByteCount) + 1;
+          Value *Count =
+              ConstantInt::get(llvmContext, APInt(32, NewAllocaCount));
+          allocaInst->setOperand(0, Count);
+          // allocaInst->dump();
+        }
+      }
+    }
+    // Go to next entry
+    StackOffsetToIndexMapIter++;
+  }
+  return true;
+}
 bool X86MachineInstructionRaiser::raise() { return raiseMachineFunction(); }
 
 #ifdef __cplusplus

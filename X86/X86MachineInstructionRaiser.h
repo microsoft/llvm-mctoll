@@ -102,6 +102,9 @@ private:
   bool raiseDirectBranchMachineInstr(ControlTransferInfo *);
   bool raiseIndirectBranchMachineInstr(ControlTransferInfo *);
 
+  // Adjust sizes of stack allocated objects
+  bool adjustStackAllocatedObjects();
+
   // Method to record information that is used in a second pass
   // to raise control transfer instructions in a second pass.
   bool recordMachineInstrInfo(const MachineInstr &, BasicBlock *);
@@ -135,8 +138,7 @@ private:
   Type *getFunctionReturnType();
   Type *getReturnTypeFromMBB(MachineBasicBlock &MBB);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
-  Value *getStackAllocatedValue(const MachineInstr &, BasicBlock *,
-                                X86AddressMode &);
+  Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);
   int getArgumentNumber(unsigned PReg);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);

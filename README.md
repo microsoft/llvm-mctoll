@@ -8,11 +8,24 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 2.  `git clone https://github.com/llvm-mirror/llvm && pushd llvm && git checkout master && popd`
 3.  `pushd llvm/tools && git clone https://github.com/llvm-mirror/clang && git checkout master && popd`
 4.  `pushd llvm/tools && git clone https://github.com/Microsoft/llvm-mctoll && git checkout master && popd`
-7.  `cd ../build/llvm`
-7.  Run cmake command that you usually use to build llvm
-8.  Run `make llvm-mctoll` or `ninja llvm-mctoll`
+5.  `cd ../build/llvm`
+6.  Run cmake command to create build files (make or ninja) with default build type (Debug).
 
-Note : The current tip of llvm-mctoll is tested using the commits recorded in LLVMVersion.txt. Make sure the corresponding repos used in your build correspond to those listed.
+    The tool build depends on LLVM artifacts built with X86 and ARM support.
+
+    For e.g., either of the following `cmake` commands is known to build the tool and its dependencies.
+
+    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DLLVM_TARGETS_TO_BUILD="X86;ARM"`
+
+    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm>`
+
+    You may also use the option `-G "Unix Makefiles"` instead of `-G "Ninja"`.
+
+7.  Run `make llvm-mctoll` or `ninja llvm-mctoll`
+
+#### _Note_ :
+1. The current tip of llvm-mctoll is tested using the commits recorded in LLVMVersion.txt. Make sure the corresponding repos used in your build correspond to those listed.
+2. Release build of llvm-mctoll (and of LLVM) has not been tested. Several tests in llvm-mctoll may fail.
 
 ## Usage
 
@@ -48,14 +61,13 @@ Raising of C++ binaries needs to be added.
 
 # Contributing
 
-This project welcomes contributions and suggestions. Most contributions require you to agree to a Contributor License Agreement (CLA) 
-declaring that you have the right to, and actually do, grant us the rights to use your contribution. For details, visit 
+This project welcomes contributions and suggestions. Most contributions require you to agree to a Contributor License Agreement (CLA)
+declaring that you have the right to, and actually do, grant us the rights to use your contribution. For details, visit
 https://cla.microsoft.com.
 
-When you submit a pull request, a CLA-bot will automatically determine whether you need to provide a CLA and decorate the PR 
-appropriately (e.g., label, comment). Simply follow the instructions provided by the bot. You will only need to do this once across all 
+When you submit a pull request, a CLA-bot will automatically determine whether you need to provide a CLA and decorate the PR
+appropriately (e.g., label, comment). Simply follow the instructions provided by the bot. You will only need to do this once across all
 repos using our CLA.
 
-This project has adopted the Microsoft Open Source Code of Conduct. For more information see the Code of Conduct FAQ or contact 
+This project has adopted the Microsoft Open Source Code of Conduct. For more information see the Code of Conduct FAQ or contact
 opencode@microsoft.com with any additional questions or comments.
-

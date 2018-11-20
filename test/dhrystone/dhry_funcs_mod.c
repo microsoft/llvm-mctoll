@@ -182,7 +182,6 @@ Enumeration *Enum_Ref_Par;
   if (! Func_3 (Enum_Val_Par))
     /* then, not executed */
     *Enum_Ref_Par = Ident_4;
-  #if 0
   switch (Enum_Val_Par)
   {
     case Ident_1:
@@ -202,20 +201,6 @@ Enumeration *Enum_Ref_Par;
       *Enum_Ref_Par = Ident_3;
       break;
   } /* switch */
-  #endif
-  if (Enum_Val_Par == Ident_1) {
-      *Enum_Ref_Par = Ident_1;
-  } else if (Enum_Val_Par ==  Ident_2) {
-      if (Int_Glob > 100)
-    /* then */
-      *Enum_Ref_Par = Ident_1;
-      else *Enum_Ref_Par = Ident_4;
-  } else if (Enum_Val_Par ==  Ident_3) { /* executed */
-      *Enum_Ref_Par = Ident_2;
-  }  else if (Enum_Val_Par ==  Ident_4) {
-  } else  if (Enum_Val_Par ==  Ident_5) {
-      *Enum_Ref_Par = Ident_3;
-  }
 } /* Proc_6 */
 
 

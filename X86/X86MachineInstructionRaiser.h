@@ -111,6 +111,11 @@ private:
 
   bool insertAllocaInEntryBlock(Instruction *alloca);
 
+  // Raise Machine Jumptable
+  bool raiseMachineJumpTable();
+
+  Instruction *raiseConditonforJumpTable(MachineBasicBlock &mbb);
+
   // FPU Stack access functions
   void FPURegisterStackPush(Value *);
   void FPURegisterStackPop();
@@ -144,5 +149,21 @@ private:
                               std::vector<Type *> &);
 
   Value *getRegValue(unsigned);
+
+  // JumpTableBlock - the Jumptable case.
+  using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
+
+  struct JumpTableInfo {
+    // Jump table index
+    unsigned jtIdx;
+
+    // Conditon Machine BasicBlock.
+    MachineBasicBlock *conditionMBB;
+
+    // Default Machine BasicBlock.
+    MachineBasicBlock *df_MBB;
+  };
+
+  std::vector<JumpTableInfo> jtList;
 };
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ELIMINATEPROLOGEPILOG_H

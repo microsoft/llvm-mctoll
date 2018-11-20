@@ -34,8 +34,6 @@ public:
       : FuncStart(fStart), FuncEnd(fEnd), dataInCode(false){};
   void addTarget(uint64_t targetIndex) {
     // Add targetIndex only if it falls within the function start and end
-    // assert((targetIndex >= FuncStart) && (targetIndex <= FuncEnd) &&
-    //       "Failed to add target that is outside the function range");
     if (!((targetIndex >= FuncStart) && (targetIndex <= FuncEnd))) {
       errs() << "*** WARNING Out of range target not added.\n";
       return;
@@ -64,11 +62,14 @@ public:
 
   // Get the MBB number that corresponds to MCInst at Offset.
   // MBB has the raised MachineInstr corresponding to MCInst at
-  // Offset is the first instruction
-  uint64_t getMBBNumberOfMCInstOffset(uint64_t Offset) const {
+  // Offset is the first instruction.
+  // return -1 if no MBB maps to the specified MCinst offset
+  int64_t getMBBNumberOfMCInstOffset(uint64_t Offset) const {
     auto iter = mcInstToMBBNum.find(Offset);
-    assert(iter != mcInstToMBBNum.end() && "Non-existent MCInst offset");
-    return (*iter).second;
+    if (iter != mcInstToMBBNum.end()) {
+      return (*iter).second;
+    }
+    return -1;
   }
 
   // Returns the iterator pointing to MCInstOrData at Offset in

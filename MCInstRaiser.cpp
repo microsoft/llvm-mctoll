@@ -112,9 +112,8 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
         curMBBEntryInstIndex = mcInstIndex;
       }
     }
-
     if (mcInstorData.is_mcInst()) {
-      // add raised MachineInstr to current MBB.
+      // Add raised MachineInstr to current MBB.
       MF.back().push_back(
           RaiseMCInst(*MII, MF, mcInstorData.get_mcInst(), mcInstIndex));
     }
@@ -165,8 +164,8 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
 static inline int64_t raiseSignedImm(int64_t val, const DataLayout &dl) {
   if (dl.getPointerSize() == 4)
     return static_cast<int32_t>(val);
-  else 
-    return val;  
+  else
+    return val;
 }
 
 MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
@@ -190,7 +189,7 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
     MCOperand mcOperand = mcInst.getOperand(indx);
     if (mcOperand.isImm()) {
       builder.addImm(
-        raiseSignedImm(mcOperand.getImm(), machineFunction.getDataLayout()));
+          raiseSignedImm(mcOperand.getImm(), machineFunction.getDataLayout()));
     } else if (mcOperand.isReg()) {
       // The first defCount operands are defines (i.e., out operands).
       if (indx < defCount)

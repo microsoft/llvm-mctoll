@@ -19,6 +19,12 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
     `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm>`
 
+     The corresponding `cmake` commands known to work for Release builds are as follows:
+
+     `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON`
+
+    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON`
+
     You may also use the option `-G "Unix Makefiles"` instead of `-G "Ninja"`.
 
 7.  Run `make llvm-mctoll` or `ninja llvm-mctoll`

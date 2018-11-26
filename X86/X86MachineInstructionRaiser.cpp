@@ -4398,7 +4398,7 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     // Get the number of MachineBasicBlock being looked at.
     int MBBNo = MBB.getNumber();
     // Name of the corresponding BasicBlock to be created
-    StringRef BBName = MBBNo == 0 ? "entry" : "bb." + std::to_string(MBBNo);
+    std::string BBName = MBBNo == 0 ? "entry" : "bb." + std::to_string(MBBNo);
     // Create a BasicBlock instance corresponding to MBB being looked at.
     // The raised form of MachineInstr of MBB will be added to curBlock.
     BasicBlock *CurIBB = BasicBlock::Create(llvmContext, BBName, curFunction);

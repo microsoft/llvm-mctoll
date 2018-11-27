@@ -19,10 +19,9 @@
 using namespace llvm;
 
 ARMMachineInstructionRaiser::ARMMachineInstructionRaiser(
-    MachineFunction &machFunc, Module &m, const ModuleRaiser *mr,
-    MCInstRaiser *mcir)
-    : MachineInstructionRaiser(machFunc, m, mr, mcir),
-      machRegInfo(MF.getRegInfo()), M(m) {}
+    MachineFunction &machFunc, const ModuleRaiser *mr, MCInstRaiser *mcir)
+    : MachineInstructionRaiser(machFunc, mr, mcir),
+      machRegInfo(MF.getRegInfo()) {}
 
 bool ARMMachineInstructionRaiser::raiseMachineFunction() {
   ModuleRaiser &rmr = const_cast<ModuleRaiser &>(*MR);
@@ -79,7 +78,7 @@ MachineInstructionRaiser *
 InitializeARMMachineInstructionRaiser(MachineFunction &machFunc, Module &m,
                                       const ModuleRaiser *mr,
                                       MCInstRaiser *mcir) {
-  return new ARMMachineInstructionRaiser(machFunc, m, mr, mcir);
+  return new ARMMachineInstructionRaiser(machFunc, mr, mcir);
 }
 #ifdef __cplusplus
 }

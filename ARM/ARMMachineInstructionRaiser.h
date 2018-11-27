@@ -20,8 +20,8 @@
 class ARMMachineInstructionRaiser : public MachineInstructionRaiser {
 public:
   ARMMachineInstructionRaiser() = delete;
-  ARMMachineInstructionRaiser(MachineFunction &machFunc, Module &m,
-                              const ModuleRaiser *mr, MCInstRaiser *mcir);
+  ARMMachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
+                              MCInstRaiser *mcir);
   bool raise();
   FunctionType *getRaisedFunctionPrototype();
   int getArgumentNumber(unsigned int);
@@ -33,7 +33,5 @@ private:
   bool raiseMachineFunction();
   // Commonly used LLVM data structures during this phase
   MachineRegisterInfo &machRegInfo;
-
-  Module &M;
 };
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMACHINEINSTRUCTIONRAISER_H

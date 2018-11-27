@@ -42,8 +42,8 @@ typedef struct {
 class MachineInstructionRaiser {
 public:
   MachineInstructionRaiser() = delete;
-  MachineInstructionRaiser(MachineFunction &machFunc, Module &m,
-                           const ModuleRaiser *mr, MCInstRaiser *mcir = nullptr)
+  MachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
+                           MCInstRaiser *mcir = nullptr)
       : MF(machFunc), raisedFunction(nullptr), mcInstRaiser(mcir), MR(mr),
         PrintPass(false) {}
   virtual ~MachineInstructionRaiser(){};

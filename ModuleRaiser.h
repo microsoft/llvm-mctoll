@@ -50,8 +50,6 @@ public:
     default:
       outs() << "\n" << arch << " not yet supported for raising\n";
     }
-    // Collect dynamic relocations.
-    collectDynamicRelocations();
   }
 
   // Function to create a MachineFunctionRaiser corresponding to Function f.

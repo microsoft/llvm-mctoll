@@ -36,9 +36,8 @@ using namespace mctoll;
 // Constructor
 
 X86MachineInstructionRaiser::X86MachineInstructionRaiser(
-    MachineFunction &machFunc, Module &m, const ModuleRaiser *mr,
-    MCInstRaiser *mcir)
-    : MachineInstructionRaiser(machFunc, m, mr, mcir),
+    MachineFunction &machFunc, const ModuleRaiser *mr, MCInstRaiser *mcir)
+    : MachineInstructionRaiser(machFunc, mr, mcir),
       machineRegInfo(MF.getRegInfo()),
       x86TargetInfo(MF.getSubtarget<X86Subtarget>()) {
   x86InstrInfo = x86TargetInfo.getInstrInfo();
@@ -4490,7 +4489,6 @@ bool X86MachineInstructionRaiser::adjustStackAllocatedObjects() {
           Value *Count =
               ConstantInt::get(llvmContext, APInt(32, NewAllocaCount));
           allocaInst->setOperand(0, Count);
-          // allocaInst->dump();
         }
       }
     }
@@ -4508,7 +4506,7 @@ MachineInstructionRaiser *
 InitializeX86MachineInstructionRaiser(MachineFunction &machFunc, Module &m,
                                       const ModuleRaiser *mr,
                                       MCInstRaiser *mcir) {
-  return new X86MachineInstructionRaiser(machFunc, m, mr, mcir);
+  return new X86MachineInstructionRaiser(machFunc, mr, mcir);
 }
 #ifdef __cplusplus
 }

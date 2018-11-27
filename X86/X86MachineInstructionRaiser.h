@@ -22,8 +22,8 @@ using MBBNumToBBMap = std::map<unsigned int, BasicBlock *>;
 class X86MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
   X86MachineInstructionRaiser() = delete;
-  X86MachineInstructionRaiser(MachineFunction &machFunc, Module &m,
-                              const ModuleRaiser *mr, MCInstRaiser *mcir);
+  X86MachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
+                              MCInstRaiser *mcir);
   bool raise();
 
 private:

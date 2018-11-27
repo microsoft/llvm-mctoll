@@ -1115,6 +1115,9 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (!moduleRaiser->isSupportedArch())
     return;
 
+  // Collect dynamic relocations.
+  moduleRaiser->collectDynamicRelocations();
+
   // Create a mapping, RelocSecs = SectionRelocMap[S], where sections
   // in RelocSecs contain the relocations for section S.
   std::error_code EC;

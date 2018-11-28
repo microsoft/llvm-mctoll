@@ -1497,11 +1497,14 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
     // Mark block as visited
     BlockVisited.set(N->getNumber());
     returnType = getReturnTypeFromMBB(*N);
-    if (returnType != nullptr) {
+    if (returnType != nullptr)
       return returnType;
-    }
+     
     for (auto P : N->predecessors()) {
-      WorkList.push_back(P);
+      // When a BasicBlock has the same predecessor and successor,
+      // push_back the block which was not visited.
+      if (!BlockVisited[P->getNumber()])
+        WorkList.push_back(P);
     }
   }
   return nullptr;
@@ -1525,8 +1528,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
       computeAndAddLiveIns(liveInPhysRegs, MBB);
     }
 
-    //    Get the live-in values of the entry block. These should be the
-    //    arguments.
+    // Get the live-in values of the entry block.
+    // These should be the arguments.
     MachineBasicBlock &MBB = MF.front();
     MBB.sortUniqueLiveIns();
 
@@ -1542,9 +1545,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     // type is void.
     // TODO : Refine this once support is added to discover arguments passed
     // on the stack??
-    if (returnType == nullptr) {
+    if (returnType == nullptr)
       returnType = Type::getVoidTy(MF.getFunction().getContext());
-    }
 
     // The Function object associated with current MachineFunction object
     // is only a place holder. It was created to facilitate creation of
@@ -1601,15 +1603,13 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
 int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
   const MCInstrDesc &Desc = mi.getDesc();
   int memOperandNo = X86II::getMemoryOperandNo(Desc.TSFlags);
-  if (memOperandNo >= 0) {
+  if (memOperandNo >= 0)
     memOperandNo += X86II::getOperandBias(Desc);
-  }
   return memOperandNo;
 }
 
-bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(
-    Instruction *alloca) {
-
+bool
+X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca) {
   // Avoid using BasicBlock InstrList iterators so that the tool can
   // use LLVM built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
   BasicBlock &EntryBlock = getRaisedFunction()->getEntryBlock();
@@ -1627,10 +1627,10 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(
       }
       Inst = Inst->getPrevNode();
     }
+     
     // If there is no alloca instruction yet, push to front
-    if (Inst == nullptr) {
+    if (Inst == nullptr)
       InstList.push_front(alloca);
-    }
   }
   return true;
 }

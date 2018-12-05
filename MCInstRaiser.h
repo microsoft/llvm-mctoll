@@ -35,7 +35,6 @@ public:
   void addTarget(uint64_t targetIndex) {
     // Add targetIndex only if it falls within the function start and end
     if (!((targetIndex >= FuncStart) && (targetIndex <= FuncEnd))) {
-      errs() << "*** WARNING Out of range target not added.\n";
       return;
     }
     targetIndices.insert(targetIndex);

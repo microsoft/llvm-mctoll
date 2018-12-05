@@ -72,7 +72,23 @@ bool MachineFunctionRaiser::runRaiserPasses() {
     // Raise MachineInstr to Instruction
     success = machineInstRaiser->raise();
   }
+  cleanupRaisedFunction();
   return success;
+}
+
+// Cleanup empty basic blocks from raised function
+void MachineFunctionRaiser::cleanupRaisedFunction() {
+  Function *RaisedFunc = getRaisedFunction();
+  std::vector<BasicBlock *> EmptyBlocks;
+  for (BasicBlock &BB : *RaisedFunc) {
+    if (BB.empty()) {
+      EmptyBlocks.push_back(&BB);
+    }
+  }
+  for (BasicBlock *BB : EmptyBlocks) {
+    BB->removeFromParent();
+  }
+  return;
 }
 
 /* NOTE : The following ModuleRaiser class functions are defined here as they

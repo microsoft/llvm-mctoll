@@ -238,6 +238,10 @@ static inline bool isEffectiveAddrValue(Value *val) {
         binOpVal->isBinaryOp(BinaryOperator::Mul)) {
       return true;
     }
+  } else if (val->getType()->isIntegerTy() &&
+             (val->getName().startswith("arg"))) {
+    // Consider an argument of integer type to be an address value type.
+    return true;
   }
   return false;
 }
@@ -1488,7 +1492,8 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
     }
   }
 
-  WorkList.push_back(RetBlock);
+  if (RetBlock != nullptr)
+    WorkList.push_back(RetBlock);
 
   while (!WorkList.empty()) {
     MachineBasicBlock *N = WorkList.pop_back_val();
@@ -1499,7 +1504,7 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
     returnType = getReturnTypeFromMBB(*N);
     if (returnType != nullptr)
       return returnType;
-     
+
     for (auto P : N->predecessors()) {
       // When a BasicBlock has the same predecessor and successor,
       // push_back the block which was not visited.
@@ -1608,8 +1613,8 @@ int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
   return memOperandNo;
 }
 
-bool
-X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca) {
+bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(
+    Instruction *alloca) {
   // Avoid using BasicBlock InstrList iterators so that the tool can
   // use LLVM built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
   BasicBlock &EntryBlock = getRaisedFunction()->getEntryBlock();
@@ -1627,7 +1632,7 @@ X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca) {
       }
       Inst = Inst->getPrevNode();
     }
-     
+
     // If there is no alloca instruction yet, push to front
     if (Inst == nullptr)
       InstList.push_front(alloca);
@@ -1679,24 +1684,57 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(const MachineInstr &mi,
   assert(!mi.isReturn() &&
          "Unexpected attempt to record info for a return instruction");
 
-  // Set common info of the record
-  ControlTransferInfo *CurCTInfo = new ControlTransferInfo;
-  CurCTInfo->CandidateMachineInstr = &mi;
-  CurCTInfo->CandidateBlock = curBlock;
+  // Check if this is jmp instruction that is in reality a tail call.
+  bool tailCall = false;
+  if (mi.isBranch()) {
+    const MCInstrDesc &MCID = mi.getDesc();
 
-  const MCInstrDesc &MCID = mi.getDesc();
-  // Save all values of implicitly used operands
-  unsigned ImplUsesCount = MCID.getNumImplicitUses();
-  if (ImplUsesCount > 0) {
-    const MCPhysReg *ImplUses = MCID.getImplicitUses();
-    for (unsigned i = 0; i < ImplUsesCount; i++) {
-      Value *val = getRegValue(ImplUses[i]);
-      CurCTInfo->RegValues.push_back(val);
+    if ((mi.getNumOperands() > 0) && mi.getOperand(0).isImm()) {
+      // Only if this is a direct branch instruction with an immediate offset
+      if (X86II::isImmPCRel(MCID.TSFlags)) {
+        // Get branch offset of the branch instruction
+        const MachineOperand &MO = mi.getOperand(0);
+        assert(MO.isImm() && "Expected immediate operand not found");
+        int64_t BranchOffset = MO.getImm();
+        MCInstRaiser *MCIR = getMCInstRaiser();
+        // Get MCInst offset - the offset of machine instruction in the binary
+        uint64_t MCInstOffset = MCIR->getMCInstIndex(mi);
+
+        assert(MCIR != nullptr && "MCInstRaiser not initialized");
+        int64_t BranchTargetOffset =
+            MCInstOffset + MCIR->getMCInstSize(MCInstOffset) + BranchOffset;
+        const int64_t TgtMBBNo =
+            MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset);
+
+        // If the target is not a known target basic block, attempt to raise
+        // this instruction as a call.
+        if (TgtMBBNo == -1) {
+          tailCall = raiseCallMachineInstr(mi, curBlock);
+        }
+      }
     }
   }
-  CurCTInfo->Raised = false;
-  CTInfo.push_back(CurCTInfo);
+  // If the instruction is not a tail-call record instruction info for
+  // processing at a later stage.
+  if (!tailCall) {
+    // Set common info of the record
+    ControlTransferInfo *CurCTInfo = new ControlTransferInfo;
+    CurCTInfo->CandidateMachineInstr = &mi;
+    CurCTInfo->CandidateBlock = curBlock;
 
+    const MCInstrDesc &MCID = mi.getDesc();
+    // Save all values of implicitly used operands
+    unsigned ImplUsesCount = MCID.getNumImplicitUses();
+    if (ImplUsesCount > 0) {
+      const MCPhysReg *ImplUses = MCID.getImplicitUses();
+      for (unsigned i = 0; i < ImplUsesCount; i++) {
+        Value *val = getRegValue(ImplUses[i]);
+        CurCTInfo->RegValues.push_back(val);
+      }
+    }
+    CurCTInfo->Raised = false;
+    CTInfo.push_back(CurCTInfo);
+  }
   return true;
 }
 
@@ -1717,8 +1755,8 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
   uint64_t MCIDTSFlags = MCIDesc.TSFlags;
 
   if ((MCIDTSFlags & X86II::FormMask) == X86II::AddRegFrm) {
-    // This is a register PUSH. If the source is register, create a slot on the
-    // stack.
+    // This is a register PUSH. If the source is register, create a slot on
+    // the stack.
     if (mi.getOperand(0).isReg()) {
       const DataLayout &dataLayout = MR->getModule().getDataLayout();
       unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
@@ -1762,8 +1800,9 @@ bool X86MachineInstructionRaiser::raisePopInstruction(const MachineInstr &mi) {
     if (mi.definesRegister(X86::RBP) || mi.definesRegister(X86::EBP)) {
       return true;
     } else {
-      assert(false && "Unhandled POP instruction that restores a register "
-                      "other than frame pointer");
+      // assert(false && "Unhandled POP instruction that restores a register "
+      //                "other than frame pointer");
+      return true;
     }
   } else {
     if (getInstructionKind(mi.getOpcode()) == InstructionKind::LEAVE_OP) {
@@ -2081,9 +2120,8 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &mi,
     // Get index of memory reference in the instruction.
     int memoryRefOpIndex = getMemoryRefOpIndex(mi);
     // Should have found the index of the memory reference operand
-    assert(
-        memoryRefOpIndex != -1 &&
-        "Unable to find memory reference operand of a load/store instruction");
+    assert(memoryRefOpIndex != -1 && "Unable to find memory reference "
+                                     "operand of a load/store instruction");
     X86AddressMode memRef = llvm::getAddressFromInstr(&mi, memoryRefOpIndex);
     EffectiveAddrValue = getStackAllocatedValue(mi, memRef, false);
   } else {
@@ -2162,8 +2200,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     Value *srcValue = getRegValue(SrcReg);
     Uses.push_back(srcValue);
   }
-  // Verify there are exactly 2 use operands.
-  assert(Uses.size() == 2 &&
+  // Verify there are exactly 2 use operands or source and dest operands are
+  // the same i.e., source operand tied to dest operand.
+  assert((Uses.size() == 2 ||
+          ((Uses.size() == 1) && (mi.findTiedOperandIdx(0) == 1))) &&
          "Expecting exactly two operands for register binary op instruction");
 
   // Figure out the destination register, corresponding value and the
@@ -2236,6 +2276,21 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstReg = X86::EFLAGS;
     dstValue = BinaryOperator::CreateAnd(Uses.at(0), Uses.at(1));
     break;
+  case X86::NEG8r:
+  case X86::NEG16r:
+  case X86::NEG32r:
+  case X86::NEG64r: {
+    // Verify source and dest are tied and are registers
+    const MachineOperand &DestOp = mi.getOperand(0);
+    assert(DestOp.isTied() && (mi.findTiedOperandIdx(0) == 1) &&
+           "Expect tied operand in neg instruction");
+    assert(DestOp.isReg() && "Expect reg operand in neg instruction");
+    assert((MCID.getNumDefs() == 1) &&
+           MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+           "Unexpected defines in a neg instruction");
+    dstReg = DestOp.getReg();
+    dstValue = BinaryOperator::CreateNeg(Uses.at(0));
+  } break;
   default:
     assert(false && "Unhandled binary instruction");
   }
@@ -3447,6 +3502,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::AND8ri:
       case X86::AND16ri:
       case X86::AND32ri:
+      case X86::AND32ri8:
       case X86::AND64ri8:
       case X86::AND64ri32:
         // Generate and instruction
@@ -3612,6 +3668,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
         case X86::JA_4:
           IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_UGT);
           break;
+        case X86::JAE_1:
         case X86::JAE_4:
           IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_UGE);
           break;
@@ -3826,23 +3883,24 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
     // Get the number of MachineBasicBlock being looked at.
     // If MBB has no terminators, insert a branch to the fall through edge.
     if (MBB.getFirstTerminator() == MBB.end()) {
-      assert(MBB.succ_size() == 1 && "Expect MachineBasicBlock with no "
-                                     "terminators to have successors 1");
-      // Find the BasicBlock corresponding to MBB
-      auto iter = mbbToBBMap.find(MBB.getNumber());
-      assert(iter != mbbToBBMap.end() &&
-             "Unable to find BasicBlock to insert unconditional branch");
-      BasicBlock *BB = iter->second;
+      if (MBB.succ_size() > 0) {
+        // Find the BasicBlock corresponding to MBB
+        auto iter = mbbToBBMap.find(MBB.getNumber());
+        assert(iter != mbbToBBMap.end() &&
+               "Unable to find BasicBlock to insert unconditional branch");
+        BasicBlock *BB = iter->second;
 
-      // Find the BasicBlock corresponding to the successor of MBB
-      MachineBasicBlock *SuccMBB = *(MBB.succ_begin());
-      iter = mbbToBBMap.find(SuccMBB->getNumber());
-      assert(iter != mbbToBBMap.end() && "Unable to find successor BasicBlock");
-      BasicBlock *SuccBB = iter->second;
+        // Find the BasicBlock corresponding to the successor of MBB
+        MachineBasicBlock *SuccMBB = *(MBB.succ_begin());
+        iter = mbbToBBMap.find(SuccMBB->getNumber());
+        assert(iter != mbbToBBMap.end() &&
+               "Unable to find successor BasicBlock");
+        BasicBlock *SuccBB = iter->second;
 
-      // Create a branch instruction targeting SuccBB
-      BranchInst *UncondBr = BranchInst::Create(SuccBB);
-      BB->getInstList().push_back(UncondBr);
+        // Create a branch instruction targeting SuccBB
+        BranchInst *UncondBr = BranchInst::Create(SuccBB);
+        BB->getInstList().push_back(UncondBr);
+      }
     }
   }
   return true;
@@ -3907,10 +3965,12 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
 bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     const MachineInstr &CallMI, BasicBlock *curBlock) {
   unsigned int opcode = CallMI.getOpcode();
+  bool success = false;
   switch (opcode) {
     // case X86::CALLpcrel16   :
     // case X86::CALLpcrel32   :
-  case X86::CALL64pcrel32: {
+  case X86::CALL64pcrel32:
+  case X86::JMP_4: {
     const MCInstrDesc &MCID = CallMI.getDesc();
     assert(X86II::isImmPCRel(MCID.TSFlags) &&
            "PC-Relative control transfer expected");
@@ -4077,6 +4137,11 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     // Construct call inst.
     CallInst *callInst =
         CallInst::Create(CalledFunc, ArrayRef<Value *>(CallInstFuncArgs));
+
+    // If this is a branch being turned to a tail call set the flag accordingly.
+    if (CallMI.isBranch())
+      callInst->setTailCall(true);
+
     curBlock->getInstList().push_back(callInst);
     // A function call with a non-void return will modify
     // RAX.
@@ -4084,13 +4149,19 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     if (!RetType->isVoidTy()) {
       updatePhysRegSSAValue(X86::RAX, callInst);
     }
+    if (CallMI.isBranch()) {
+      // Emit ret void since there will be no ret instruction in the binary
+      Instruction *retInstr = ReturnInst::Create(MF.getFunction().getContext());
+      curBlock->getInstList().push_back(retInstr);
+    }
+    success = true;
   } break;
   default: {
     assert(false && "Unhandled call instruction");
   } break;
   }
 
-  return true;
+  return success;
 }
 
 // Top-level function that calls appropriate function that raises
@@ -4160,11 +4231,14 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
           }
         }
 
-        assert((DataContent != nullptr) &&
-               "Failed to get content of section with jump table base address");
+        // Section with jump table base has no content.
+        if (DataContent == nullptr)
+          return true;
+
         // A vector of switch target MBBs
         std::vector<MachineBasicBlock *> JmpTgtMBBvec;
-        // Get the 32-bit value at JmpTblBaseMemAddress in section data content.
+        // Get the 32-bit value at JmpTblBaseMemAddress in section data
+        // content.
         size_t CurReadByteOffset = 0;
         uint32_t JmpTgtMemAddr =
             *(reinterpret_cast<const uint32_t *>(DataContent)) +
@@ -4175,15 +4249,15 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(JmpTgtMemAddr -
                                                       TextSectionAddress);
 
-        // Continue reading 4-byte offsets from the section contents till there
-        // is no valid MBB corresponding to jump target offset or section end is
-        // reached.
+        // Continue reading 4-byte offsets from the section contents till
+        // there is no valid MBB corresponding to jump target offset or
+        // section end is reached.
         while (MBBNo != -1) {
           MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);
           JmpTgtMBBvec.push_back(MBB);
-          // Attempt to get the next table entry value. Assuming that each table
-          // entry is 4 bytes long.
-          // Stop before attempting to read past Section data size.
+          // Attempt to get the next table entry value. Assuming that each
+          // table entry is 4 bytes long. Stop before attempting to read past
+          // Section data size.
           CurReadByteOffset += 4;
           if (CurReadByteOffset > DataSize) {
             break;
@@ -4203,12 +4277,13 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         // Construct jump table. Current block is the block which would
         // potentially contain the start of jump targets. If current block has
         // multiple predecessors this may not be a jump table. For now assert
-        // this to discover potential situations in binaries. Change the assert
-        // to and continue if the assumption is correct.
+        // this to discover potential situations in binaries. Change the
+        // assert to and continue if the assumption is correct.
         assert((JmpTblBaseCalcMBB.pred_size() == 1) &&
                "Expect a single predecessor during jump table discovery");
         MachineBasicBlock *JmpTblPredMBB = *(JmpTblBaseCalcMBB.pred_begin());
-        // Predecessor block of current block (MBB) - which is jump table block
+        // Predecessor block of current block (MBB) - which is jump table
+        // block
         // - is expected to have exactly two successors; one the current block
         // and the other which should become the default MBB for the switch.
         assert((JmpTblPredMBB->succ_size() == 2) &&
@@ -4229,14 +4304,14 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         JmpTblInfo.jtIdx = JTI->createJumpTableIndex(JmpTgtMBBvec);
         // Verify the branch instruction of JmpTblPredMBB is a conditional jmp
         // that uses eflags. Go to the most recent instruction that defines
-        // eflags. Remove that instruction as well as any subsequent instruction
-        // that uses the register defined by that instruction.
+        // eflags. Remove that instruction as well as any subsequent
+        // instruction that uses the register defined by that instruction.
         MachineInstr &BranchInstr = JmpTblPredMBB->instr_back();
         std::vector<MachineInstr *> MBBInstrsToErase;
         if (BranchInstr.isConditionalBranch() &&
             BranchInstr.getDesc().hasImplicitUseOfPhysReg(X86::EFLAGS)) {
-          // Walk the basic block backwards to find the most recent instruction
-          // that implicitly defines eflags.
+          // Walk the basic block backwards to find the most recent
+          // instruction that implicitly defines eflags.
           bool EflagsModifierFound = false;
           MachineBasicBlock::reverse_instr_iterator CurInstrIter =
               JmpTblPredMBB->instr_rbegin();
@@ -4260,7 +4335,8 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
           MachineInstr &EflagsModInstr = *CurInstrIter;
           std::set<unsigned int> EflagsDefRegs;
           for (auto MO : EflagsModInstr.defs()) {
-            // Create a set of all physical registers this instruction defines.
+            // Create a set of all physical registers this instruction
+            // defines.
             if (MO.isReg()) {
               unsigned int DefReg = MO.getReg();
               if (TargetRegisterInfo::isPhysicalRegister(DefReg)) {

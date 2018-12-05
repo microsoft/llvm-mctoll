@@ -50,9 +50,10 @@ public:
   }
   const ModuleRaiser *getModuleRaiser() { return MR; }
 
-  virtual ~MachineFunctionRaiser() {
-    delete mcInstRaiser;
-  }
+  // Cleanup orphaned empty basic blocks from raised function
+  void cleanupRaisedFunction();
+
+  virtual ~MachineFunctionRaiser() { delete mcInstRaiser; }
 
 private:
   MachineFunction &MF;

@@ -57,6 +57,8 @@ Run the tests by invoking `make check-mctoll` or `ninja check-mctoll`
 
 At present, the development and testing are done on Ubuntu 18.04. It is expected that build and test would work on Ubuntu 16.04, 17.04 and 17.10.
 
+The tool is also known to build and run tests successfully on CentOS 7.5.
+
 # Current Status
 
 The tool is currently able to raise Linux x86_64 and Arm32 shared libraries and executables with function calls that have variable arguments (such as printf) to LLVM IR.

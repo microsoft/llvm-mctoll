@@ -9,6 +9,7 @@ if(NOT LLVM_MCTOLL_BUILT_STANDALONE)
 endif()
 
 add_llvm_library(ARMRaiser
+  ARMModuleRaiser.cpp
   ARMFunctionPrototype.cpp
   ARMEliminatePrologEpilog.cpp
   ARMMachineInstructionRaiser.cpp

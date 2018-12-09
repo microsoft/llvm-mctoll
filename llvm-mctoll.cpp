@@ -443,9 +443,11 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
       TargetRegistry::lookupTarget(ArchName, TheTriple, Error);
   if (!TheTarget) {
     if (Obj)
-      report_error(Obj->getFileName(), "can't find target: " + Error);
+      report_error(Obj->getFileName(), "Support for raising " +
+                                           TheTriple.getArchName() +
+                                           " not included");
     else
-      error("can't find target: " + Error);
+      error("Unsupported target " + TheTriple.getArchName());
   }
 
   // Update the triple name and return the found target.
@@ -1036,6 +1038,31 @@ static bool disasmSection(const ObjectFile *Obj, StringRef &sectionName) {
   return false;
 }
 
+namespace RaiserContext {
+SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
+
+bool isSupportedArch(Triple::ArchType arch) {
+  for (auto m : ModuleRaiserRegistry)
+    if (m->getArchType() == arch)
+      return true;
+
+  return false;
+}
+
+ModuleRaiser *getModuleRaiser(const TargetMachine *tm) {
+  ModuleRaiser *mr = nullptr;
+  auto arch = tm->getTargetTriple().getArch();
+  for (auto m : ModuleRaiserRegistry)
+    if (m->getArchType() == arch) {
+      mr = m;
+      break;
+    }
+  assert(nullptr != mr && "This arch has not yet supported for raising!\n");
+  return mr;
+}
+
+} // namespace RaiserContext
+
 static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (StartAddress > StopAddress)
     error("Start address should be less than stop address");
@@ -1108,12 +1135,15 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   /* Set datalayout of the module to be the same as LLVMTargetMachine */
   module.setDataLayout(Target->createDataLayout());
   machineModuleInfo->doInitialization(module);
-  ModuleRaiser *moduleRaiser =
-      new ModuleRaiser(module, Target.get(), machineModuleInfo, MIA.get(),
-                       MII.get(), Obj, DisAsm.get());
-
-  if (!moduleRaiser->isSupportedArch())
-    return;
+  // Initialize all module raisers that are supported and are part of current
+  // LLVM build.
+  ModuleRaiser::InitializeAllModuleRaisers();
+  // Get the module raiser for Target of the binary being raised
+  ModuleRaiser *moduleRaiser = RaiserContext::getModuleRaiser(Target.get());
+  assert((moduleRaiser != nullptr) && "Failed to build module raiser");
+  // Set data of module raiser
+  moduleRaiser->setModuleRaiserInfo(&module, Target.get(), machineModuleInfo,
+                                    MIA.get(), MII.get(), Obj, DisAsm.get());
 
   // Collect dynamic relocations.
   moduleRaiser->collectDynamicRelocations();
@@ -1403,12 +1433,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         }
         Function *Func = Function::Create(FTy, GlobalValue::ExternalLinkage,
                                           FunctionName, &module);
-        // While PassManager is running FunctionPasses, it will check if current
-        // Function is empty or not. If the Function is empty, it will be
-        // skipped. So add an empty BasicBlock to Functions at here to guarantee
-        // the corresponding MachineFunction can be run.
-        // TODO: This BasicBlock should be removed when add real BasicBlocks.
-        BasicBlock::Create(Func->getContext(), "Useless", Func);
 
         // New function symbol encountered. Record all targets collected to
         // current MachineFunctionRaiser before we start parsing the new

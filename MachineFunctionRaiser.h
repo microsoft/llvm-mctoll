@@ -45,6 +45,9 @@ public:
   MachineInstructionRaiser *getMachineInstrRaiser() {
     return machineInstRaiser;
   }
+  void setMachineInstrRaiser(MachineInstructionRaiser *r) {
+    machineInstRaiser = r;
+  }
   Function *getRaisedFunction() {
     return machineInstRaiser->getRaisedFunction();
   }

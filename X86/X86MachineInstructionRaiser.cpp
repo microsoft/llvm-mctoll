@@ -13,7 +13,9 @@
 //===----------------------------------------------------------------------===//
 #include "X86MachineInstructionRaiser.h"
 #include "ExternalFunctions.h"
+#include "MachineFunctionRaiser.h"
 #include "X86InstrBuilder.h"
+#include "X86ModuleRaiser.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -479,7 +481,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
                "Failed to find symbol associated with dynamic relocation.");
         // Find if a global value associated with symbol name is already
         // created
-        for (GlobalVariable &gv : MR->getModule().globals()) {
+        for (GlobalVariable &gv : MR->getModule()->globals()) {
           if (gv.getName().compare(Symname.get()) == 0) {
             memrefValue = &gv;
           }
@@ -554,7 +556,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
             }
           }
           Constant *GlobalInit = ConstantInt::get(GlobalValTy, symbVal);
-          auto GlobalVal = new GlobalVariable(MR->getModule(), GlobalValTy,
+          auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                               false /* isConstant */, linkage,
                                               GlobalInit, Symname->data());
           // Don't use symbSize as it was modified.
@@ -582,7 +584,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
              "Failed to find symbol associated with text relocation.");
       // Find if a global value associated with symbol name is already
       // created
-      for (GlobalVariable &gv : MR->getModule().globals()) {
+      for (GlobalVariable &gv : MR->getModule()->globals()) {
         if (gv.getName().compare(Symname.get()) == 0) {
           memrefValue = &gv;
         }
@@ -664,7 +666,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
         }
 
         Constant *GlobalInit = ConstantInt::get(GlobalValTy, symInitVal);
-        auto GlobalVal = new GlobalVariable(MR->getModule(), GlobalValTy,
+        auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                             false /* isConstant */, linkage,
                                             GlobalInit, Symname->data());
         // Don't use symSize as it was modified.
@@ -787,7 +789,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   Type *Ty = nullptr;
   unsigned int typeAlignment;
   LLVMContext &llvmContext(MF.getFunction().getContext());
-  const DataLayout &dataLayout = MR->getModule().getDataLayout();
+  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
   unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
   unsigned stackObjectSize = getInstructionMemOpSize(mi.getOpcode());
   switch (stackObjectSize) {
@@ -954,7 +956,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
         // This is an undefined function symbol. Look through the list of
         // known glibc interfaces and construct a Function accordingly.
         CalledFunc =
-            ExternalFunctions::Create(*CalledFuncSymName, MR->getModule());
+            ExternalFunctions::Create(*CalledFuncSymName, *(MR->getModule()));
       }
       // Found the section we are looking for
       break;
@@ -994,7 +996,7 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
           Constant *StrConstant =
               ConstantDataArray::getString(llvmContext, ROStringRef);
           auto GlobalStrConstVal = new GlobalVariable(
-              MR->getModule(), StrConstant->getType(), true /* isConstant */,
+              *(MR->getModule()), StrConstant->getType(), true /* isConstant */,
               GlobalValue::PrivateLinkage, StrConstant, "RO-String");
           // Record the mapping between offset and global value
           MR->addRODataValueAt(GlobalStrConstVal, Offset);
@@ -1024,7 +1026,7 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
                  "Failed to find symbol name for global address");
           // Find if a global value associated with symbol name is
           // already created
-          for (GlobalVariable &gv : MR->getModule().globals()) {
+          for (GlobalVariable &gv : MR->getModule()->globals()) {
             if (gv.getName().compare(GlobalDataSymName.get()) == 0) {
               RODataValue = &gv;
             }
@@ -1069,8 +1071,8 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
               GlobalInit = ConstantInt::get(GlobalValTy, 0);
             }
             auto GlobalVal = new GlobalVariable(
-                MR->getModule(), GlobalValTy, false /* isConstant */, linkage,
-                GlobalInit, GlobalDataSymName.get());
+                *(MR->getModule()), GlobalValTy, false /* isConstant */,
+                linkage, GlobalInit, GlobalDataSymName.get());
             GlobalVal->setAlignment(GlobDataSymSectionAlignment);
             GlobalVal->setDSOLocal(true);
             RODataValue = GlobalVal;
@@ -1125,7 +1127,7 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
     // Find if a global value associated with symbol name is already
     // created
     StringRef GlobalDataSymNameIndexStrRef(GlobalDataSymName.get());
-    for (GlobalVariable &gv : MR->getModule().globals()) {
+    for (GlobalVariable &gv : MR->getModule()->globals()) {
       if (gv.getName().compare(GlobalDataSymNameIndexStrRef) == 0) {
         GlobalVariableValue = &gv;
       }
@@ -1217,7 +1219,7 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
         GlobalInit = ConstantInt::get(GlobalValTy, 0);
       }
       auto GlobalVal = new GlobalVariable(
-          MR->getModule(), GlobalValTy, false /* isConstant */, linkage,
+          *(MR->getModule()), GlobalValTy, false /* isConstant */, linkage,
           GlobalInit, GlobalDataSymNameIndexStrRef);
       GlobalVal->setAlignment(GlobDataSymAlignment);
       GlobalVal->setDSOLocal(true);
@@ -1562,21 +1564,21 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     // correct Function object being created now.
     // 1. Get the current function name
     StringRef functionName = MF.getFunction().getName();
-    Module &module = MR->getModule();
+    Module *module = MR->getModule();
     // 2. Get the corresponding Function* registered in module
-    Function *tempFunctionPtr = module.getFunction(functionName);
+    Function *tempFunctionPtr = module->getFunction(functionName);
     assert(tempFunctionPtr != nullptr && "Function not found in module list");
     // 4. Delete the tempFunc from module list to allow for the creation of
     //    the real function to add the correct one to FunctionList of the
     //    module.
-    module.getFunctionList().remove(tempFunctionPtr);
+    module->getFunctionList().remove(tempFunctionPtr);
     // 3. Now create a function type using the discovered argument
     //    types and return value.
     FunctionType *FT =
         FunctionType::get(returnType, argTypeVector, false /* isVarArg*/);
     // 4. Create the real Function now that we have discovered the arguments.
     raisedFunction = Function::Create(FT, GlobalValue::ExternalLinkage,
-                                      functionName, &module);
+                                      functionName, module);
 
     // Set global linkage
     raisedFunction->setLinkage(GlobalValue::ExternalLinkage);
@@ -1652,7 +1654,7 @@ Value *X86MachineInstructionRaiser::matchSSAValueToSrcRegSize(
     const MachineInstr &mi, unsigned SrcOpIndex, BasicBlock *curBlock) {
   unsigned SrcOpSize = getPhysRegOperandSize(mi, SrcOpIndex);
   Value *SrcOpValue = getRegValue(mi.getOperand(SrcOpIndex).getReg());
-  const DataLayout &dataLayout = MR->getModule().getDataLayout();
+  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
 
   // Generate the appropriate cast instruction if the sizes of the current
   // source value and that of the source register do not match.
@@ -1758,7 +1760,7 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
     // This is a register PUSH. If the source is register, create a slot on
     // the stack.
     if (mi.getOperand(0).isReg()) {
-      const DataLayout &dataLayout = MR->getModule().getDataLayout();
+      const DataLayout &dataLayout = MR->getModule()->getDataLayout();
       unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
 
       // Create alloca instruction to allocate stack slot
@@ -2820,7 +2822,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &mi,
     // Load the value from memory location
     LoadInst *loadInst = new LoadInst(memRefVal);
     loadInst->setAlignment(
-        memRefVal->getPointerAlignment(MR->getModule().getDataLayout()));
+        memRefVal->getPointerAlignment(MR->getModule()->getDataLayout()));
     curBlock->getInstList().push_back(loadInst);
   }
 
@@ -3019,7 +3021,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     // Load the value from memory location
     LoadInst *loadInst = new LoadInst(memRefValue);
     loadInst->setAlignment(
-        memRefValue->getPointerAlignment(MR->getModule().getDataLayout()));
+        memRefValue->getPointerAlignment(MR->getModule()->getDataLayout()));
     curBlock->getInstList().push_back(loadInst);
     // save it at the appropriate index of operand value array
     if (memoryRefOpIndex == 0) {
@@ -4515,7 +4517,7 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
 // for the stack size of the function deduced from the machine code.
 bool X86MachineInstructionRaiser::adjustStackAllocatedObjects() {
   MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
-  const DataLayout &dataLayout = MR->getModule().getDataLayout();
+  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
   // Map of stack offset and stack index
   std::map<int64_t, int> StackOffsetToIndexMap;
   std::map<int64_t, int>::iterator StackOffsetToIndexMapIter;
@@ -4575,15 +4577,19 @@ bool X86MachineInstructionRaiser::adjustStackAllocatedObjects() {
 }
 bool X86MachineInstructionRaiser::raise() { return raiseMachineFunction(); }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-MachineInstructionRaiser *
-InitializeX86MachineInstructionRaiser(MachineFunction &machFunc, Module &m,
-                                      const ModuleRaiser *mr,
-                                      MCInstRaiser *mcir) {
-  return new X86MachineInstructionRaiser(machFunc, mr, mcir);
+/* NOTE : The following X86ModuleRaiser class function is defined here as they
+ * reference MachineFunctionRaiser class that has a forward declaration in
+ * ModuleRaiser.h.
+ */
+// Create a new MachineFunctionRaiser object and add it to the list of
+// MachineFunction raiser objects of this module.
+MachineFunctionRaiser *X86ModuleRaiser::CreateAndAddMachineFunctionRaiser(
+    Function *f, const ModuleRaiser *mr, uint64_t start, uint64_t end) {
+  MachineFunctionRaiser *mfRaiser = new MachineFunctionRaiser(
+      *M, mr->getMachineModuleInfo()->getOrCreateMachineFunction(*f), mr, start,
+      end);
+  mfRaiser->setMachineInstrRaiser(new X86MachineInstructionRaiser(
+      mfRaiser->getMachineFunction(), mr, mfRaiser->getMCInstRaiser()));
+  mfRaiserVector.push_back(mfRaiser);
+  return mfRaiser;
 }
-#ifdef __cplusplus
-}
-#endif

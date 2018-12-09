@@ -1,3 +1,7 @@
+if(NOT (LLVM_TARGETS_TO_BUILD MATCHES "X86" OR LLVM_TARGETS_TO_BUILD MATCHES "ARM"))
+  return()
+endif()
+
 set(LLVM_MCTOLL_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLVM_MCTOLL_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -9,16 +13,26 @@ llvm_map_components_to_libnames(llvm_libs
 )
 
 set(LLVM_MCTOLL_LIB_DEPS ${llvm_libs})
+set(LLVM_MCTOLL_SUPPORTED_ARCHS "")
 
 if(LLVM_TARGETS_TO_BUILD MATCHES "X86")
+  set(LLVM_MCTOLL_SUPPORTED_ARCHS
+    "${LLVM_MCTOLL_SUPPORTED_ARCHS}MODULE_RAISER(X86)\n")
   add_subdirectory(X86)
   list(APPEND LLVM_MCTOLL_LIB_DEPS X86Raiser)
 endif()
 
 if(LLVM_TARGETS_TO_BUILD MATCHES "ARM")
+  set(LLVM_MCTOLL_SUPPORTED_ARCHS
+    "${LLVM_MCTOLL_SUPPORTED_ARCHS}MODULE_RAISER(ARM)\n")
   add_subdirectory(ARM)
   list(APPEND LLVM_MCTOLL_LIB_DEPS ARMRaiser)
 endif()
+
+configure_file(
+  ${LLVM_MCTOLL_SOURCE_DIR}/Raisers.def.in
+  ${LLVM_INCLUDE_DIR}/Raisers.def
+  )
 
 add_subdirectory(test)
 

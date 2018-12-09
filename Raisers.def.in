@@ -1,0 +1,29 @@
+/*===- Raisers.def.in - Supported Raiser Architectures------*- C++ -*-===*|
+|*                                                                            *|
+|*                     The LLVM Compiler Infrastructure                       *|
+|*                                                                            *|
+|* This file is distributed under the University of Illinois Open Source      *|
+|* License. See LICENSE.TXT for details.                                      *|
+|*                                                                            *|
+|*===----------------------------------------------------------------------===*|
+|*                                                                            *|
+|* This file enumerates all of the architectures supported by          *|
+|* this build of the binary raiser llvm-mctoll. Clients of this file          *|
+|* should define the  MODULE_RAISER  macro to be a function-like     *|
+|* macro with a single parameter (the name of the target); including            *|
+|* this file will then                                                        *|
+|* enumerate all of the raise source architectures.                           *|
+|*                                                                            *|
+|* The set of architectures supported by the raiser is generated at  *|
+|* configuration time, at which point this header is generated. Do not        *|
+|*  modify this header directly.                                              *|
+|*                                                                            *|
+\*===----------------------------------------------------------------------===*/
+
+#ifndef MODULE_RAISER
+#  error Please define the macro MODULE_RAISER(TargetName)
+#endif
+
+@LLVM_MCTOLL_SUPPORTED_ARCHS@
+
+#undef MODULE_RAISER

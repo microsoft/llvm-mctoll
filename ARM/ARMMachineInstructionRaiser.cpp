@@ -15,6 +15,8 @@
 #include "ARMMachineInstructionRaiser.h"
 #include "ARMEliminatePrologEpilog.h"
 #include "ARMFunctionPrototype.h"
+#include "ARMModuleRaiser.h"
+#include "MachineFunctionRaiser.h"
 
 using namespace llvm;
 
@@ -35,7 +37,6 @@ bool ARMMachineInstructionRaiser::raiseMachineFunction() {
 
 bool ARMMachineInstructionRaiser::raise() {
   raiseMachineFunction();
-
   return true;
 }
 
@@ -71,15 +72,15 @@ FunctionType *ARMMachineInstructionRaiser::getRaisedFunctionPrototype() {
   return raisedFunction->getFunctionType();
 }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-MachineInstructionRaiser *
-InitializeARMMachineInstructionRaiser(MachineFunction &machFunc, Module &m,
-                                      const ModuleRaiser *mr,
-                                      MCInstRaiser *mcir) {
-  return new ARMMachineInstructionRaiser(machFunc, mr, mcir);
+// Create a new MachineFunctionRaiser object and add it to the list of
+// MachineFunction raiser objects of this module.
+MachineFunctionRaiser *ARMModuleRaiser::CreateAndAddMachineFunctionRaiser(
+    Function *f, const ModuleRaiser *mr, uint64_t start, uint64_t end) {
+  MachineFunctionRaiser *mfRaiser = new MachineFunctionRaiser(
+      *M, mr->getMachineModuleInfo()->getOrCreateMachineFunction(*f), mr, start,
+      end);
+  mfRaiser->setMachineInstrRaiser(new ARMMachineInstructionRaiser(
+      mfRaiser->getMachineFunction(), mr, mfRaiser->getMCInstRaiser()));
+  mfRaiserVector.push_back(mfRaiser);
+  return mfRaiser;
 }
-#ifdef __cplusplus
-}
-#endif

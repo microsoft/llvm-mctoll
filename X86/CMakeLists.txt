@@ -9,6 +9,7 @@ if(NOT LLVM_MCTOLL_BUILT_STANDALONE)
 endif()
 
 add_llvm_library(X86Raiser
+  X86ModuleRaiser.cpp
   X86MachineInstructionRaiser.cpp
 
   DEPENDS

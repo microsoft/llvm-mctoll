@@ -13,60 +13,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "MachineFunctionRaiser.h"
-#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// ARM Raiser passes
-MachineInstructionRaiser *
-InitializeARMMachineInstructionRaiser(MachineFunction &machFunc, Module &m,
-                                      const ModuleRaiser *mr,
-                                      MCInstRaiser *mcir);
-
-// X86 Raiser passes
-MachineInstructionRaiser *
-InitializeX86MachineInstructionRaiser(MachineFunction &machFunc, Module &m,
-                                      const ModuleRaiser *mr,
-                                      MCInstRaiser *mcir);
-#ifdef __cplusplus
-}
-#endif
 
 void MachineFunctionRaiser::init(uint64_t start, uint64_t end) {
   mcInstRaiser = new MCInstRaiser(start, end);
   machineInstRaiser = nullptr;
-  auto arch = MR->getTargetMachine()->getTargetTriple().getArch();
-
-  // Double check supported architecture.
-  if (!MR->isSupportedArch()) {
-    outs() << arch << "Unsupported architecture\n";
-    return;
-  }
-
-  switch (arch) {
-  case Triple::x86_64:
-    machineInstRaiser =
-        InitializeX86MachineInstructionRaiser(MF, module, MR, mcInstRaiser);
-    break;
-  case Triple::arm:
-    machineInstRaiser =
-        InitializeARMMachineInstructionRaiser(MF, module, MR, mcInstRaiser);
-    break;
-  // Add default case to pacify the compiler warnings.
-  default:
-    outs() << "\n" << arch << " not yet supported for raising\n";
-  }
 }
 
 bool MachineFunctionRaiser::runRaiserPasses() {
   bool success = false;
-  // Do not run raise binaries of an unsupported architecture.
-  if (!MR->isSupportedArch())
-    return false;
-
   // Raise MCInst to MachineInstr and Build CFG
   if (machineInstRaiser != nullptr) {
     // Raise MachineInstr to Instruction
@@ -95,16 +50,6 @@ void MachineFunctionRaiser::cleanupRaisedFunction() {
  * reference MachineFunctionRaiser class that has a forward declaration in
  * ModuleRaiser.h.
  */
-// Create a new MachineFunctionRaiser object and add it to the list of
-// MachineFunction raiser objects of this module.
-MachineFunctionRaiser *ModuleRaiser::CreateAndAddMachineFunctionRaiser(
-    Function *f, const ModuleRaiser *mr, uint64_t start, uint64_t end) {
-  MachineFunctionRaiser *mfRaiser = new MachineFunctionRaiser(
-      M, mr->getMachineModuleInfo()->getOrCreateMachineFunction(*f), mr, start,
-      end);
-  mfRaiserVector.push_back(mfRaiser);
-  return mfRaiser;
-}
 
 Function *ModuleRaiser::getFunctionAt(uint64_t Index) const {
   int64_t TextSecAddr = getTextSectionAddress();
@@ -234,60 +179,6 @@ bool ModuleRaiser::collectTextSectionRelocs(const SectionRef &TextSec) {
   return true;
 }
 
-bool ModuleRaiser::collectDynamicRelocations() {
-
-  if (!Obj->isELF()) {
-    return false;
-  }
-
-  const ELF64LEObjectFile *Elf64LEObjFile = dyn_cast<ELF64LEObjectFile>(Obj);
-  if (!Elf64LEObjFile) {
-    return false;
-  }
-
-  std::vector<SectionRef> DynRelSec = Obj->dynamic_relocation_sections();
-
-  for (const SectionRef &Section : DynRelSec) {
-    for (const RelocationRef &Reloc : Section.relocations()) {
-      DynRelocs.push_back(Reloc);
-    }
-  }
-
-  // Get relocations of .got.plt section from .rela.plt if it exists. I do not
-  // see an API in ObjectFile class to get at these.
-
-  // Find .got.plt and .rela.plt sections Note: A lot of verification and double
-  // checking done in the following code.
-  const ELFFile<ELF64LE> *ElfFile = Elf64LEObjFile->getELFFile();
-  // Find .rela.plt
-  SectionRef DotGotDotPltSec, DotRelaDotPltSec;
-  for (const SectionRef Section : Obj->sections()) {
-    StringRef SecName;
-    Section.getName(SecName);
-    if (SecName.equals(".rela.plt")) {
-      DotRelaDotPltSec = Section;
-    } else if (SecName.equals(".got.plt")) {
-      DotGotDotPltSec = Section;
-    }
-  }
-  if (DotRelaDotPltSec.getObject() != nullptr) {
-    // If the binary has .got.plt section, read the dynamic relocations.
-    if (DotGotDotPltSec.getObject() != nullptr) {
-      auto DotRelaDotPltShdr = ElfFile->getSection(DotRelaDotPltSec.getIndex());
-      // Perform some sanity checks
-      assert(DotRelaDotPltShdr && "Failed to find .rela.plt section");
-      assert((DotRelaDotPltShdr.get()->sh_info == DotGotDotPltSec.getIndex()) &&
-             ".rela.plt does not refer .got.plt section");
-      assert((DotRelaDotPltShdr.get()->sh_type == ELF::SHT_RELA) &&
-             "Unexpected type of section .rela.plt");
-      for (const RelocationRef &Reloc : DotRelaDotPltSec.relocations()) {
-        DynRelocs.push_back(Reloc);
-      }
-    }
-  }
-  return true;
-}
-
 // Return text section address; or -1 if text section is not found
 int64_t ModuleRaiser::getTextSectionAddress() const {
   if (!Obj->isELF()) {
@@ -317,4 +208,19 @@ void ModuleRaiser::addRODataValueAt(Value *v, uint64_t offset) const {
          "Attempt to insert value for already existing rodata location");
   GlobalRODataValues.emplace(offset, v);
   return;
+}
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define MODULE_RAISER(TargetName) void Initialize##TargetName##ModuleRaiser();
+#include "Raisers.def"
+#ifdef __cplusplus
+}
+#endif
+
+void ModuleRaiser::InitializeAllModuleRaisers() {
+#define MODULE_RAISER(TargetName) Initialize##TargetName##ModuleRaiser();
+#include "Raisers.def"
 }

@@ -15,6 +15,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_MODULERAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_MODULERAISER_H
 
+#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCInstrAnalysis.h"
@@ -33,23 +34,28 @@ using namespace object;
 // module.
 class ModuleRaiser {
 public:
-  ModuleRaiser(Module &m, const TargetMachine *tm, MachineModuleInfo *mmi,
-               const MCInstrAnalysis *mia, const MCInstrInfo *mii,
-               const ObjectFile *o, MCDisassembler *dis)
-      : M(m), TM(tm), MMI(mmi), MIA(mia), MII(mii), Obj(o), DisAsm(dis),
-        TextSectionIndex(-1) {
-    supportedArch = false;
-    auto arch = tm->getTargetTriple().getArch();
-    switch (arch) {
-    case Triple::x86_64:
-      supportedArch = true;
-      break;
-    case Triple::arm:
-      supportedArch = true;
-      break;
-    default:
-      outs() << "\n" << arch << " not yet supported for raising\n";
-    }
+  ModuleRaiser()
+      : M(nullptr), TM(nullptr), MMI(nullptr), MIA(nullptr), MII(nullptr),
+        Obj(nullptr), DisAsm(nullptr), TextSectionIndex(-1),
+        Arch(Triple::ArchType::UnknownArch), InfoSet(false) {}
+
+  static void InitializeAllModuleRaisers();
+
+  void setModuleRaiserInfo(Module *m, const TargetMachine *tm,
+                           MachineModuleInfo *mmi, const MCInstrAnalysis *mia,
+                           const MCInstrInfo *mii, const ObjectFile *o,
+                           MCDisassembler *dis) {
+    assert((InfoSet == false) &&
+           "Module Raiser information can be set only once");
+    M = m;
+    TM = tm;
+    MMI = mmi;
+    MIA = mia;
+    MII = mii;
+    Obj = o;
+    DisAsm = dis;
+    TextSectionIndex = -1;
+    InfoSet = true;
   }
 
   // Function to create a MachineFunctionRaiser corresponding to Function f.
@@ -57,10 +63,9 @@ public:
   // creation of MachineFunction. The Function object representing raising
   // of MachineFunction is accessible by calling getRaisedFunction()
   // on the MachineFunctionRaiser object.
-  MachineFunctionRaiser *CreateAndAddMachineFunctionRaiser(Function *f,
-                                                           const ModuleRaiser *,
-                                                           uint64_t start,
-                                                           uint64_t end);
+  virtual MachineFunctionRaiser *
+  CreateAndAddMachineFunctionRaiser(Function *f, const ModuleRaiser *,
+                                    uint64_t start, uint64_t end) = 0;
 
   MachineFunctionRaiser *getCurrentMachineFunctionRaiser() {
     if (mfRaiserVector.size() > 0) {
@@ -78,20 +83,19 @@ public:
   }
 
   bool collectTextSectionRelocs(const SectionRef &);
-  bool collectDynamicRelocations();
+  virtual bool collectDynamicRelocations() = 0;
 
   MachineFunction *getMachineFunction(Function *);
 
   // Member getters
-  Module &getModule() const { return M; }
+  Module *getModule() const { return M; }
   const TargetMachine *getTargetMachine() const { return TM; }
   MachineModuleInfo *getMachineModuleInfo() const { return MMI; }
   const MCInstrAnalysis *getMCInstrAnalysis() const { return MIA; }
   const MCInstrInfo *getMCInstrInfo() const { return MII; }
   const ObjectFile *getObjectFile() const { return Obj; }
   const MCDisassembler *getMCDisassembler() const { return DisAsm; }
-
-  bool isSupportedArch() const { return supportedArch; }
+  Triple::ArchType getArchType() { return Arch; }
 
   bool runMachineFunctionPasses();
 
@@ -115,7 +119,7 @@ public:
 
   virtual ~ModuleRaiser() {}
 
-private:
+protected:
   // A sequential list of MachineFunctionRaiser objects created
   // as the instructions of the input binary are parsed. Each of
   // these correspond to a "machine function". A machine function
@@ -138,16 +142,18 @@ private:
   mutable std::map<uint64_t, Value *> GlobalRODataValues;
 
   // Commonly used data structures
-  Module &M;
+  Module *M;
   const TargetMachine *TM;
   MachineModuleInfo *MMI;
   const MCInstrAnalysis *MIA;
   const MCInstrInfo *MII;
-  bool supportedArch;
   const ObjectFile *Obj;
   MCDisassembler *DisAsm;
   // Index of text section whose instructions are raised
   int64_t TextSectionIndex;
+  Triple::ArchType Arch;
+  // Flag to indicate that fields are set. Resetting is not allowed/expected.
+  bool InfoSet;
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_MODULERAISER_H

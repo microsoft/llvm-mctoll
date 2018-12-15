@@ -16,6 +16,7 @@
 #include "MachineFunctionRaiser.h"
 #include "X86InstrBuilder.h"
 #include "X86ModuleRaiser.h"
+#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -1535,16 +1536,34 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
       computeAndAddLiveIns(liveInPhysRegs, MBB);
     }
 
-    // Get the live-in values of the entry block.
-    // These should be the arguments.
-    MachineBasicBlock &MBB = MF.front();
-    MBB.sortUniqueLiveIns();
-
+    // Walk the CFG DFS to discover first register usage
     std::set<MCPhysReg> LiveInRegs;
+    MachineBasicBlock *Entry = &(MF.front());
+    df_iterator_default_set<MachineBasicBlock *, 16> Visited;
+    const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
 
-    for (const auto &LI : MBB.liveins()) {
-      LiveInRegs.emplace(LI.PhysReg);
+    for (MachineBasicBlock *MBB : depth_first_ext(Entry, Visited)) {
+      for (const auto &LI : MBB->liveins()) {
+        MCPhysReg PhysReg = LI.PhysReg;
+        bool found = false;
+        // Check if any of the sub-registers of PhysReg is in LiveRegs
+        for (MCSubRegIterator SubRegs(PhysReg, TRI, /*IncludeSelf=*/true);
+             (SubRegs.isValid() && !found); ++SubRegs) {
+          found = (LiveInRegs.find(*SubRegs) != LiveInRegs.end());
+        }
+        // Check if any of the super-registers of PhysReg is in LiveRegs
+        for (MCSuperRegIterator SupRegs(PhysReg, TRI, /*IncludeSelf=*/true);
+             (SupRegs.isValid() && !found); ++SupRegs) {
+          found = (LiveInRegs.find(*SupRegs) != LiveInRegs.end());
+        }
+        // If neither sub or super registers of PhysReg is in LiveRegs set,
+        // insert it.
+        if (!found)
+          LiveInRegs.emplace(LI.PhysReg);
+      }
     }
+    // Use the first register usage list to form argument vector using first
+    // argument register usage.
     buildFuncArgTypeVector(LiveInRegs, argTypeVector);
     // 2. Discover function return type
     returnType = getFunctionReturnType();

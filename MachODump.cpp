@@ -1194,9 +1194,9 @@ static void ProcessMachO(StringRef Name, MachOObjectFile *MachOOF,
   // If we are doing some processing here on the Mach-O file print the header
   // info.  And don't print it otherwise like in the case of printing the
   // UniversalHeaders or ArchiveHeaders.
-  if (Disassemble || PrivateHeaders || ExportsTrie || Rebase || Bind ||
-      SymbolTable || LazyBind || WeakBind || IndirectSymbols || DataInCode ||
-      LinkOptHints || DylibsUsed || DylibId || ObjcMetaData ||
+  if (Disassemble /* || PrivateHeaders || ExportsTrie || Rebase || Bind ||
+      SymbolTable || LazyBind || WeakBind || IndirectSymbols */
+      || DataInCode || LinkOptHints || DylibsUsed || DylibId || ObjcMetaData ||
       (FilterSections.size() != 0)) {
     if (!NoLeadingHeaders) {
       outs() << Name;
@@ -1250,8 +1250,6 @@ static void ProcessMachO(StringRef Name, MachOObjectFile *MachOOF,
     PrintDylibs(MachOOF, false);
   if (DylibId)
     PrintDylibs(MachOOF, true);
-  if (SymbolTable)
-    PrintSymbolTable(MachOOF, ArchiveName, ArchitectureName);
   if (UnwindInfo)
     printMachOUnwindInfo(MachOOF);
   if (PrivateHeaders) {
@@ -1262,16 +1260,6 @@ static void ProcessMachO(StringRef Name, MachOObjectFile *MachOOF,
     printMachOFileHeader(MachOOF);
   if (ObjcMetaData)
     printObjcMetaData(MachOOF, !NonVerbose);
-  if (ExportsTrie)
-    printExportsTrie(MachOOF);
-  if (Rebase)
-    printRebaseTable(MachOOF);
-  if (Bind)
-    printBindTable(MachOOF);
-  if (LazyBind)
-    printLazyBindTable(MachOOF);
-  if (WeakBind)
-    printWeakBindTable(MachOOF);
 }
 
 // printUnknownCPUType() helps print_fat_headers for unknown CPU's.

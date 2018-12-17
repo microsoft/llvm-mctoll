@@ -120,29 +120,6 @@ cl::alias Disassembled("d", cl::desc("Alias for -raise"),
                        cl::aliasopt(Disassemble), cl::cat(LLVMMCToLLCategory),
                        cl::NotHidden);
 
-cl::opt<bool>
-    llvm::Relocations("r",
-                      cl::desc("Display the relocation entries in the file"));
-
-cl::opt<bool> llvm::SymbolTable("t", cl::desc("Display the symbol table"));
-
-cl::opt<bool> llvm::ExportsTrie("exports-trie",
-                                cl::desc("Display mach-o exported symbols"));
-
-cl::opt<bool> llvm::Rebase("rebase", cl::desc("Display mach-o rebasing info"));
-
-cl::opt<bool> llvm::Bind("bind", cl::desc("Display mach-o binding info"));
-
-cl::opt<bool> llvm::LazyBind("lazy-bind",
-                             cl::desc("Display mach-o lazy binding info"));
-
-cl::opt<bool> llvm::WeakBind("weak-bind",
-                             cl::desc("Display mach-o weak binding info"));
-
-cl::opt<bool> llvm::RawClangAST(
-    "raw-clang-ast",
-    cl::desc("Dump the raw binary contents of the clang AST section"));
-
 static cl::opt<bool>
     MachOOpt("macho", cl::desc("Use MachO specific object file parser"));
 static cl::alias MachOm("m", cl::desc("Alias for --macho"),
@@ -212,21 +189,6 @@ cl::opt<bool>
 
 cl::opt<bool> PrintFaultMaps("fault-map-section",
                              cl::desc("Display contents of faultmap section"));
-
-cl::opt<bool> PrintSource(
-    "source",
-    cl::desc(
-        "Display source inlined with disassembly. Implies disassmble object"));
-
-cl::alias PrintSourceShort("S", cl::desc("Alias for -source"),
-                           cl::aliasopt(PrintSource));
-
-cl::opt<bool> PrintLines("line-numbers",
-                         cl::desc("Display source line numbers with "
-                                  "disassembly. Implies disassemble object"));
-
-cl::alias PrintLinesShort("l", cl::desc("Alias for -line-numbers"),
-                          cl::aliasopt(PrintLines));
 
 cl::opt<unsigned long long>
     StartAddress("start-address", cl::desc("Disassemble beginning at address"),
@@ -540,88 +502,6 @@ bool llvm::RelocAddressLess(RelocationRef a, RelocationRef b) {
 }
 
 namespace {
-class SourcePrinter {
-protected:
-  DILineInfo OldLineInfo;
-  const ObjectFile *Obj;
-  std::unique_ptr<symbolize::LLVMSymbolizer> Symbolizer;
-  // File name to file contents of source
-  std::unordered_map<std::string, std::unique_ptr<MemoryBuffer>> SourceCache;
-  // Mark the line endings of the cached source
-  std::unordered_map<std::string, std::vector<StringRef>> LineCache;
-
-private:
-  bool cacheSource(std::string File);
-
-public:
-  virtual ~SourcePrinter() {}
-  SourcePrinter() : Obj(nullptr), Symbolizer(nullptr) {}
-  SourcePrinter(const ObjectFile *Obj, StringRef DefaultArch) : Obj(Obj) {
-    symbolize::LLVMSymbolizer::Options SymbolizerOpts(
-        DILineInfoSpecifier::FunctionNameKind::None, true, false, false,
-        DefaultArch);
-    Symbolizer.reset(new symbolize::LLVMSymbolizer(SymbolizerOpts));
-  }
-  virtual void printSourceLine(raw_ostream &OS, uint64_t Address,
-                               StringRef Delimiter = "; ");
-};
-
-bool SourcePrinter::cacheSource(std::string File) {
-  auto BufferOrError = MemoryBuffer::getFile(File);
-  if (!BufferOrError)
-    return false;
-  // Chomp the file to get lines
-  size_t BufferSize = (*BufferOrError)->getBufferSize();
-  const char *BufferStart = (*BufferOrError)->getBufferStart();
-  for (const char *Start = BufferStart, *End = BufferStart;
-       End < BufferStart + BufferSize; End++)
-    if (*End == '\n' || End == BufferStart + BufferSize - 1 ||
-        (*End == '\r' && *(End + 1) == '\n')) {
-      LineCache[File].push_back(StringRef(Start, End - Start));
-      if (*End == '\r')
-        End++;
-      Start = End + 1;
-    }
-  SourceCache[File] = std::move(*BufferOrError);
-  return true;
-}
-
-void SourcePrinter::printSourceLine(raw_ostream &OS, uint64_t Address,
-                                    StringRef Delimiter) {
-  if (!Symbolizer)
-    return;
-  DILineInfo LineInfo = DILineInfo();
-  auto ExpectecLineInfo =
-      Symbolizer->symbolizeCode(Obj->getFileName(), Address);
-  if (!ExpectecLineInfo)
-    consumeError(ExpectecLineInfo.takeError());
-  else
-    LineInfo = *ExpectecLineInfo;
-
-  if ((LineInfo.FileName == "<invalid>") || OldLineInfo.Line == LineInfo.Line ||
-      LineInfo.Line == 0)
-    return;
-
-  if (PrintLines)
-    OS << Delimiter << LineInfo.FileName << ":" << LineInfo.Line << "\n";
-  if (PrintSource) {
-    if (SourceCache.find(LineInfo.FileName) == SourceCache.end())
-      if (!cacheSource(LineInfo.FileName))
-        return;
-    auto FileBuffer = SourceCache.find(LineInfo.FileName);
-    if (FileBuffer != SourceCache.end()) {
-      auto LineBuffer = LineCache.find(LineInfo.FileName);
-      if (LineBuffer != LineCache.end()) {
-        if (LineInfo.Line > LineBuffer->second.size())
-          return;
-        // Vector begins at 0, line numbers are non-zero
-        OS << Delimiter << LineBuffer->second[LineInfo.Line - 1].ltrim()
-           << "\n";
-      }
-    }
-  }
-  OldLineInfo = LineInfo;
-}
 
 static bool isArmElf(const ObjectFile *Obj) {
   return (Obj->isELF() &&
@@ -638,9 +518,7 @@ public:
   virtual void printInst(MCInstPrinter &IP, const MCInst *MI,
                          ArrayRef<uint8_t> Bytes, uint64_t Address,
                          raw_ostream &OS, StringRef Annot,
-                         MCSubtargetInfo const &STI, SourcePrinter *SP) {
-    if (SP && (PrintSource || PrintLines))
-      SP->printSourceLine(OS, Address);
+                         MCSubtargetInfo const &STI) {
     if (!NoLeadingAddr)
       OS << format("%8" PRIx64 ":", Address);
     if (!NoShowRawInsn) {
@@ -654,132 +532,9 @@ public:
   }
 };
 PrettyPrinter PrettyPrinterInst;
-class HexagonPrettyPrinter : public PrettyPrinter {
-public:
-  void printLead(ArrayRef<uint8_t> Bytes, uint64_t Address, raw_ostream &OS) {
-    uint32_t opcode =
-        (Bytes[3] << 24) | (Bytes[2] << 16) | (Bytes[1] << 8) | Bytes[0];
-    if (!NoLeadingAddr)
-      OS << format("%8" PRIx64 ":", Address);
-    if (!NoShowRawInsn) {
-      OS << "\t";
-      dumpBytes(Bytes.slice(0, 4), OS);
-      OS << format("%08" PRIx32, opcode);
-    }
-  }
-  void printInst(MCInstPrinter &IP, const MCInst *MI, ArrayRef<uint8_t> Bytes,
-                 uint64_t Address, raw_ostream &OS, StringRef Annot,
-                 MCSubtargetInfo const &STI, SourcePrinter *SP) override {
-    if (SP && (PrintSource || PrintLines))
-      SP->printSourceLine(OS, Address, "");
-    if (!MI) {
-      printLead(Bytes, Address, OS);
-      OS << " <unknown>";
-      return;
-    }
-    std::string Buffer;
-    {
-      raw_string_ostream TempStream(Buffer);
-      IP.printInst(MI, TempStream, "", STI);
-    }
-    StringRef Contents(Buffer);
-    // Split off bundle attributes
-    auto PacketBundle = Contents.rsplit('\n');
-    // Split off first instruction from the rest
-    auto HeadTail = PacketBundle.first.split('\n');
-    auto Preamble = " { ";
-    auto Separator = "";
-    while (!HeadTail.first.empty()) {
-      OS << Separator;
-      Separator = "\n";
-      if (SP && (PrintSource || PrintLines))
-        SP->printSourceLine(OS, Address, "");
-      printLead(Bytes, Address, OS);
-      OS << Preamble;
-      Preamble = "   ";
-      StringRef Inst;
-      auto Duplex = HeadTail.first.split('\v');
-      if (!Duplex.second.empty()) {
-        OS << Duplex.first;
-        OS << "; ";
-        Inst = Duplex.second;
-      } else
-        Inst = HeadTail.first;
-      OS << Inst;
-      Bytes = Bytes.slice(4);
-      Address += 4;
-      HeadTail = HeadTail.second.split('\n');
-    }
-    OS << " } " << PacketBundle.second;
-  }
-};
-HexagonPrettyPrinter HexagonPrettyPrinterInst;
-
-class AMDGCNPrettyPrinter : public PrettyPrinter {
-public:
-  void printInst(MCInstPrinter &IP, const MCInst *MI, ArrayRef<uint8_t> Bytes,
-                 uint64_t Address, raw_ostream &OS, StringRef Annot,
-                 MCSubtargetInfo const &STI, SourcePrinter *SP) override {
-    if (SP && (PrintSource || PrintLines))
-      SP->printSourceLine(OS, Address);
-
-    if (!MI) {
-      OS << " <unknown>";
-      return;
-    }
-
-    SmallString<40> InstStr;
-    raw_svector_ostream IS(InstStr);
-
-    IP.printInst(MI, IS, "", STI);
-
-    OS << left_justify(IS.str(), 60) << format("// %012" PRIX64 ": ", Address);
-    typedef support::ulittle32_t U32;
-    for (auto D : makeArrayRef(reinterpret_cast<const U32 *>(Bytes.data()),
-                               Bytes.size() / sizeof(U32)))
-      // D should be explicitly casted to uint32_t here as it is passed
-      // by format to snprintf as vararg.
-      OS << format("%08" PRIX32 " ", static_cast<uint32_t>(D));
-
-    if (!Annot.empty())
-      OS << "// " << Annot;
-  }
-};
-AMDGCNPrettyPrinter AMDGCNPrettyPrinterInst;
-
-class BPFPrettyPrinter : public PrettyPrinter {
-public:
-  void printInst(MCInstPrinter &IP, const MCInst *MI, ArrayRef<uint8_t> Bytes,
-                 uint64_t Address, raw_ostream &OS, StringRef Annot,
-                 MCSubtargetInfo const &STI, SourcePrinter *SP) override {
-    if (SP && (PrintSource || PrintLines))
-      SP->printSourceLine(OS, Address);
-    if (!NoLeadingAddr)
-      OS << format("%8" PRId64 ":", Address / 8);
-    if (!NoShowRawInsn) {
-      OS << "\t";
-      dumpBytes(Bytes, OS);
-    }
-    if (MI)
-      IP.printInst(MI, OS, "", STI);
-    else
-      OS << " <unknown>";
-  }
-};
-BPFPrettyPrinter BPFPrettyPrinterInst;
 
 PrettyPrinter &selectPrettyPrinter(Triple const &Triple) {
-  switch (Triple.getArch()) {
-  default:
-    return PrettyPrinterInst;
-  case Triple::hexagon:
-    return HexagonPrettyPrinterInst;
-  case Triple::amdgcn:
-    return AMDGCNPrettyPrinterInst;
-  case Triple::bpfel:
-  case Triple::bpfeb:
-    return BPFPrettyPrinterInst;
-  }
+  return PrettyPrinterInst;
 }
 } // namespace
 
@@ -1026,18 +781,6 @@ static bool isAFunctionSymbol(const ObjectFile *Obj,
   return false;
 }
 
-static bool disasmSection(const ObjectFile *Obj, StringRef &sectionName) {
-  if (Obj->isELF()) {
-    return (ELFSectionsToDisassemble.find(sectionName) !=
-            ELFSectionsToDisassemble.end());
-  }
-  if (Obj->isMachO()) {
-    // Already picking up the text section
-    return true;
-  }
-  return false;
-}
-
 namespace RaiserContext {
 SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
 
@@ -1119,8 +862,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                  "no instruction printer for target " + TripleName);
   IP->setPrintImmHex(PrintImmHex);
   PrettyPrinter &PIP = selectPrettyPrinter(Triple(TripleName));
-
-  SourcePrinter SP(Obj, TheTarget->getName());
 
   LLVMContext llvmCtx;
   std::unique_ptr<TargetMachine> Target(
@@ -1235,9 +976,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     StringRef SectionName;
     Section.getName(SectionName);
 
-    if (SectionName.compare(".text") != 0) {
-      continue;
-    }
     uint64_t SectionAddr = Section.getAddress();
     uint64_t SectSize = Section.getSize();
     if (!SectSize)
@@ -1294,11 +1032,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       DataRefImpl DR = Section.getRawDataRefImpl();
       SegmentName = MachO->getSectionFinalSegmentName(DR);
     }
+
     StringRef name;
-    error(Section.getName(name));
-    if (!disasmSection(Obj, name)) {
-      continue;
-    }
 
     bool PrintAll =
         (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() >
@@ -1608,7 +1343,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
           errs() << "**** Warning: Failed to decode instruction\n";
           PIP.printInst(*IP, Disassembled ? &Inst : nullptr,
                         Bytes.slice(Index, Size), SectionAddr + Index, outs(),
-                        "", *STI, &SP);
+                        "", *STI);
           outs() << CommentStream.str();
           Comments.clear();
           errs() << "\n";
@@ -1849,21 +1584,6 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
   }
 }
 
-static void PrintUnwindInfo(const ObjectFile *o) {
-  outs() << "Unwind info:\n\n";
-
-  if (const COFFObjectFile *coff = dyn_cast<COFFObjectFile>(o)) {
-    printCOFFUnwindInfo(coff);
-  } else if (const MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
-    printMachOUnwindInfo(MachO);
-  else {
-    // TODO: Extract DWARF dump tool to objdump.
-    errs() << "This operation is only currently supported "
-              "for COFF and MachO object files.\n";
-    return;
-  }
-}
-
 void llvm::printExportsTrie(const ObjectFile *o) {
   outs() << "Exports trie:\n";
   if (const MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
@@ -1952,68 +1672,11 @@ void llvm::printRawClangAST(const ObjectFile *Obj) {
   outs().write(ClangASTContents.data(), ClangASTContents.size());
 }
 
-static void printFaultMaps(const ObjectFile *Obj) {
-  const char *FaultMapSectionName = nullptr;
-
-  if (isa<ELFObjectFileBase>(Obj)) {
-    FaultMapSectionName = ".llvm_faultmaps";
-  } else if (isa<MachOObjectFile>(Obj)) {
-    FaultMapSectionName = "__llvm_faultmaps";
-  } else {
-    errs() << "This operation is only currently supported "
-              "for ELF and Mach-O executable files.\n";
-    return;
-  }
-
-  Optional<object::SectionRef> FaultMapSection;
-
-  for (auto Sec : ToolSectionFilter(*Obj)) {
-    StringRef Name;
-    Sec.getName(Name);
-    if (Name == FaultMapSectionName) {
-      FaultMapSection = Sec;
-      break;
-    }
-  }
-
-  outs() << "FaultMap table:\n";
-
-  if (!FaultMapSection.hasValue()) {
-    outs() << "<not found>\n";
-    return;
-  }
-
-  StringRef FaultMapContents;
-  error(FaultMapSection.getValue().getContents(FaultMapContents));
-
-  FaultMapParser FMP(FaultMapContents.bytes_begin(),
-                     FaultMapContents.bytes_end());
-
-  outs() << FMP;
-}
-
-static void printPrivateFileHeaders(const ObjectFile *o, bool onlyFirst) {
-  if (o->isELF())
-    return printELFFileHeader(o);
-  if (o->isCOFF())
-    return printCOFFFileHeader(o);
-  if (o->isWasm())
-    return printWasmFileHeader(o);
-  if (o->isMachO()) {
-    printMachOFileHeader(o);
-    if (!onlyFirst)
-      printMachOLoadCommands(o);
-    return;
-  }
-  report_error(o->getFileName(), "Invalid/Unsupported object file format");
-}
-
 static void DumpObject(ObjectFile *o, const Archive *a = nullptr) {
-  StringRef ArchiveName = a != nullptr ? a->getFileName() : "";
   bool PrintAll =
       (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
   // Avoid other output when using a raw option.
-  if (!RawClangAST && PrintAll) {
+  if (PrintAll) {
     outs() << '\n';
     if (a)
       outs() << a->getFileName() << "(" << o->getFileName() << ")";
@@ -2022,44 +1685,13 @@ static void DumpObject(ObjectFile *o, const Archive *a = nullptr) {
     outs() << ":\tfile format " << o->getFileFormatName() << "\n\n";
   }
 
-  if (Disassemble)
-    DisassembleObject(o, Relocations);
-  if (SectionHeaders)
-    PrintSectionHeaders(o);
-  if (SymbolTable)
-    PrintSymbolTable(o, ArchiveName);
-  if (UnwindInfo)
-    PrintUnwindInfo(o);
-  if (PrivateHeaders || FirstPrivateHeader)
-    printPrivateFileHeaders(o, FirstPrivateHeader);
-  if (ExportsTrie)
-    printExportsTrie(o);
-  if (Rebase)
-    printRebaseTable(o);
-  if (Bind)
-    printBindTable(o);
-  if (LazyBind)
-    printLazyBindTable(o);
-  if (WeakBind)
-    printWeakBindTable(o);
-  if (RawClangAST)
-    printRawClangAST(o);
-  if (PrintFaultMaps)
-    printFaultMaps(o);
+  assert(Disassemble && "Disassemble not set!");
+  DisassembleObject(o, /* InlineRelocations */ false);
 }
 
 static void DumpObject(const COFFImportFile *I, const Archive *A) {
-  StringRef ArchiveName = A ? A->getFileName() : "";
-
-  // Avoid other output when using a raw option.
-  if (!RawClangAST)
-    outs() << '\n'
-           << ArchiveName << "(" << I->getFileName() << ")"
-           << ":\tfile format COFF-import-file"
-           << "\n\n";
-
-  if (SymbolTable)
-    printCOFFSymbolTable(I);
+  assert(false &&
+         "This function needs to be deleted and is not expected to be called.");
 }
 
 /// @brief Dump each object file in \a a;
@@ -2142,22 +1774,9 @@ int main(int argc, char **argv) {
   if (InputFilenames.size() == 0)
     InputFilenames.push_back("a.out");
 
-  if (/* DisassembleAll || */ PrintSource || PrintLines)
-    Disassemble = true;
-  if (!Disassemble && !Relocations &&
-      !SectionHeaders
-      //&& !SectionContents
-      && !SymbolTable && !UnwindInfo && !PrivateHeaders &&
-      !FirstPrivateHeader && !ExportsTrie && !Rebase && !Bind && !LazyBind &&
-      !WeakBind && !RawClangAST && !(UniversalHeaders && MachOOpt) &&
-      !(ArchiveHeaders && MachOOpt) && !(IndirectSymbols && MachOOpt) &&
-      !(DataInCode && MachOOpt) && !(LinkOptHints && MachOOpt) &&
-      !(InfoPlist && MachOOpt) && !(DylibsUsed && MachOOpt) &&
-      !(DylibId && MachOOpt) && !(ObjcMetaData && MachOOpt) &&
-      !(FilterSections.size() != 0 && MachOOpt) && !PrintFaultMaps) {
-    cl::PrintHelpMessage();
-    return 2;
-  }
+  // Disassemble contents of .text section.
+  Disassemble = true;
+  FilterSections.addValue(".text");
 
   std::for_each(InputFilenames.begin(), InputFilenames.end(), DumpInput);
 

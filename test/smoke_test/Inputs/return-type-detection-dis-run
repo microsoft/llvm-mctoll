@@ -1,0 +1,4 @@
+/* Expected output when raised binary of return-type-detection is run */
+
+// CHECK: Val = 5
+// CHECK: Val = 42

@@ -1419,10 +1419,15 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
   // RAX) would have to be defined in the return block.
   // TODO : We may have to revisit this assumption, if needed.
 
+  // Walk the return block backwards
   MachineBasicBlock::const_iterator I(MBB.back());
   if (I != MBB.begin()) {
     do {
       --I;
+      // Do not inspect the last call instruction or instructions prior to
+      // the last call instruction.
+      if (I->isCall())
+        break;
       // Check if any of RAX, EAX, AX or AL are defined
       if (I->getDesc().getNumDefs() != 0) {
         const MachineOperand &MO = I->getOperand(0);

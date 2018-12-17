@@ -1,0 +1,5 @@
+/* Expected void return function prototype in the raised output of
+   return-type-detection binary */
+
+// CHECK: define dso_local void @void_return_function()
+// CHECK: call void @void_return_function()

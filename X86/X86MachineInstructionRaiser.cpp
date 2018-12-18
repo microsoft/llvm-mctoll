@@ -2236,9 +2236,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   // binary operator.
   unsigned int dstReg = X86::NoRegister;
   Value *dstValue = nullptr;
-
+  unsigned opc = mi.getOpcode();
   // Construct the appropriate binary operation instruction
-  switch (mi.getOpcode()) {
+  switch (opc) {
   case X86::ADD64rr:
   case X86::ADD32rr:
     // Verify the def operand is a register.
@@ -2265,11 +2265,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstReg = mi.getOperand(0).getReg();
     dstValue = BinaryOperator::CreateNSWMul(Uses.at(0), Uses.at(1));
     break;
+
+  case X86::OR32rr:
+  case X86::OR64rr:
   case X86::XOR32rr:
   case X86::XOR64rr: {
     // Verify the def operand is a register.
     const MachineOperand &DestOp = mi.getOperand(0);
-    // const MachineOperand &Use1Op = mi.getOperand(1);
     const MachineOperand &Use2Op = mi.getOperand(2);
     assert(DestOp.isReg() &&
            "Expecting destination of xor instruction to be a register operand");
@@ -2288,7 +2290,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     } else {
       assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
              "Unhandled situation: register used before initialization in xor");
-      dstValue = BinaryOperator::CreateXor(Uses.at(0), Uses.at(1));
+      switch (opc) {
+      case X86::OR32rr:
+      case X86::OR64rr:
+        dstValue = BinaryOperator::CreateOr(Uses.at(0), Uses.at(1));
+        break;
+      case X86::XOR32rr:
+      case X86::XOR64rr:
+        dstValue = BinaryOperator::CreateXor(Uses.at(0), Uses.at(1));
+        break;
+      default:
+        assert(false && "Reached unexpected location");
+      }
     }
   } break;
   case X86::TEST32rr:
@@ -3548,6 +3561,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::SHR64ri:
         // Generate shr instruction
         BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
+        break;
+      case X86::SHL32ri:
+        // Generate shl instruction
+        BinOpInstr = BinaryOperator::CreateShl(SrcOp1Value, SrcOp2Value);
         break;
       default:
         assert(false && "Unhandled reg to imm binary operator instruction");

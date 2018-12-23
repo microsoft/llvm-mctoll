@@ -1,25 +1,48 @@
 // RUN: clang -o %t.so %S/Inputs/switch_func.c -shared -fPIC
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll
-// RUN: %t1 2>&1 | FileCheck %s
-// CHECK: Switch 1
-// CHECK-NEXT: Return 15
-// CHECK-NEXT: Switch 2
-// CHECK-NEXT: Return 17
-// CHECK-NEXT: Switch 3
-// CHECK-NEXT: Return 18
-// CHECK-NEXT: Switch 4
-// CHECK-NEXT: Return 14
-// CHECK-NEXT: Switch 5
-// CHECK-NEXT: Return 16
-// CHECK-NEXT: Switch 6
-// CHECK-NEXT: Return 18
-// CHECK-NEXT: Switch 7
-// CHECK-NEXT: Return 22
-// CHECK-NEXT: Switch 8
-// CHECK-NEXT: Return 23
-// CHECK-NEXT: Switch 9
-// CHECK-NEXT: Return 22
+// RUN: %t1 2>&1 | FileCheck %s -check-prefix=DSO
+// DSO: Switch 1
+// DSO-NEXT: Return 15
+// DSO-NEXT: Switch 2
+// DSO-NEXT: Return 17
+// DSO-NEXT: Switch 3
+// DSO-NEXT: Return 18
+// DSO-NEXT: Switch 4
+// DSO-NEXT: Return 14
+// DSO-NEXT: Switch 5
+// DSO-NEXT: Return 16
+// DSO-NEXT: Switch 6
+// DSO-NEXT: Return 18
+// DSO-NEXT: Switch 7
+// DSO-NEXT: Return 22
+// DSO-NEXT: Switch 8
+// DSO-NEXT: Return 23
+// DSO-NEXT: Switch 9
+// DSO-NEXT: Return 22
+
+// RUN: clang -o %t %s %S/Inputs/switch_func.c
+// RUN: llvm-mctoll -d %t
+// RUN: clang -o %t1 %t-dis.ll
+// RUN: %t1 2>&1 | FileCheck %s -check-prefix=EXEC
+// EXEC: Switch 1
+// EXEC-NEXT: Return 15
+// EXEC-NEXT: Switch 2
+// EXEC-NEXT: Return 17
+// EXEC-NEXT: Switch 3
+// EXEC-NEXT: Return 18
+// EXEC-NEXT: Switch 4
+// EXEC-NEXT: Return 14
+// EXEC-NEXT: Switch 5
+// EXEC-NEXT: Return 16
+// EXEC-NEXT: Switch 6
+// EXEC-NEXT: Return 18
+// EXEC-NEXT: Switch 7
+// EXEC-NEXT: Return 22
+// EXEC-NEXT: Switch 8
+// EXEC-NEXT: Return 23
+// EXEC-NEXT: Switch 9
+// EXEC-NEXT: Return 22
 
 #include <stdio.h>
 #include <stdlib.h>

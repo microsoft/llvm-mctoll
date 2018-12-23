@@ -22,7 +22,8 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
         {"__isoc99_scanf", {"i32", {"i8*"}, true}},
         {"time", {"i64", {"i64*"}, false}},
-        {"puts", {"i32", {"i8*"}, false}}};
+        {"puts", {"i32", {"i8*"}, false}},
+        {"atoi", {"i32", {"i8*"}, false}}};
 
 // Given the primitive type's string representation, return the Type*
 // corresponding to it.

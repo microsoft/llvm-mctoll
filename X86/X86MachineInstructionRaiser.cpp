@@ -1100,6 +1100,8 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
   SymbolRef GlobalDataSym;
   bool GlobalDataSymFound = false;
   unsigned GlobalDataOffset = 0;
+  llvm::LLVMContext &llvmContext(MF.getFunction().getContext());
+
   for (auto Symbol : Elf64LEObjFile->symbols()) {
     if (Symbol.getELFType() == ELF::STT_OBJECT) {
       auto SymAddr = Symbol.getAddress();
@@ -1144,7 +1146,6 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
     if (GlobalVariableValue == nullptr) {
       Type *GlobalValTy = nullptr;
       // Get all necessary information about the global symbol.
-      llvm::LLVMContext &llvmContext(MF.getFunction().getContext());
       DataRefImpl symbImpl = GlobalDataSym.getRawDataRefImpl();
       // get symbol
       auto symb = Elf64LEObjFile->getSymbol(symbImpl);
@@ -1207,13 +1208,12 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
       }
       Constant *GlobalInit = nullptr;
       if (symbSize > memAccessSize) {
-        // This is an aggregate array whose size is symbSize bytes or
-        // memAccessSize units. For example, if memAccessSize is 4, it is an
-        // array of size symbSize/memAccessSize ints.
-        unsigned ArraySz = (symbSize / memAccessSize) +
-                           (((symbSize % memAccessSize) == 0) ? 0 : 1);
-        Type *GlobalArrValTy = ArrayType::get(GlobalValTy, ArraySz);
+        // This is an aggregate array whose size is symbSize bytes
+        Type *ByteType = Type::getInt8Ty(llvmContext);
+        Type *GlobalArrValTy = ArrayType::get(ByteType, symbSize);
         GlobalInit = ConstantAggregateZero::get(GlobalArrValTy);
+        // Change the global value type to byte type to indicate that the data
+        // is interpreted as bytes.
         GlobalValTy = GlobalArrValTy;
       } else {
         GlobalInit = ConstantInt::get(GlobalValTy, 0);
@@ -1228,13 +1228,47 @@ Value *X86MachineInstructionRaiser::getGlobalVariableValueAt(
     assert(GlobalVariableValue->getType()->isPointerTy() &&
            "Unexpected non-pointer type value in global data offset access");
     if (GlobalVariableValue->getType()->getPointerElementType()->isArrayTy()) {
+      assert(GlobalVariableValue->getType()
+                 ->getPointerElementType()
+                 ->getArrayElementType()
+                 ->isIntegerTy() &&
+             "Non-integer array types not yet supported.");
       // First index - is 0
       Value *FirstIndex =
           ConstantInt::get(MF.getFunction().getContext(), APInt(32, 0));
+      // Find the size of array element
+      size_t ArrayElemByteSz = GlobalVariableValue->getType()
+                                   ->getPointerElementType()
+                                   ->getArrayElementType()
+                                   ->getScalarSizeInBits() /
+                               8;
+      assert(ArrayElemByteSz && "Unexpected size of array element encountered");
+      unsigned ScaledOffset = GlobalDataOffset / memAccessSize;
       // Offset index
-      Value *OffsetIndex =
-          ConstantInt::get(MF.getFunction().getContext(),
-                           APInt(32, GlobalDataOffset / memAccessSize));
+      Value *OffsetIndex = ConstantInt::get(MF.getFunction().getContext(),
+                                            APInt(32, ScaledOffset));
+      // If the array element size (in bytes) is not equal to that of the access
+      // size of the instructions, cast the array accordingly.
+      if (memAccessSize != ArrayElemByteSz) {
+        // Note the scaled offset is already calculated appropriately.
+        // Get the size of global array
+        uint64_t GlobalArraySize = GlobalVariableValue->getType()
+                                       ->getPointerElementType()
+                                       ->getArrayNumElements();
+        // Construct integer type of size memAccessSize bytes. Note that It has
+        // been asserted that array element is of integral type.
+        PointerType *CastToArrTy = PointerType::get(
+            ArrayType::get(Type::getIntNTy(llvmContext, memAccessSize * 8),
+                           GlobalArraySize / memAccessSize),
+            0);
+
+        CastInst *CInst =
+            CastInst::Create(CastInst::getCastOpcode(GlobalVariableValue, false,
+                                                     CastToArrTy, false),
+                             GlobalVariableValue, CastToArrTy);
+        curBlock->getInstList().push_back(CInst);
+        GlobalVariableValue = CInst;
+      }
       // Get the element
       Instruction *GetElem = GetElementPtrInst::CreateInBounds(
           GlobalVariableValue->getType()->getPointerElementType(),
@@ -2384,18 +2418,32 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
       memRefValue = convIntToPtr;
     }
   }
-  LoadInst *loadInst = nullptr;
+  Value *loadValue = nullptr;
   if (isMemRefGlobalVal) {
     // Load the global value.
-    loadInst =
+    LoadInst *loadInst =
         new LoadInst(dyn_cast<LoadInst>(memRefValue)->getPointerOperand());
+    loadInst->setAlignment(memAlignment);
+    loadValue = loadInst;
   } else {
-    loadInst = new LoadInst(memRefValue);
+    LoadInst *loadInst = new LoadInst(memRefValue);
+    loadInst->setAlignment(memAlignment);
+    loadValue = loadInst;
   }
   // Insert the instruction that loads memory reference
-  loadInst->setAlignment(memAlignment);
-  curBlock->getInstList().push_back(loadInst);
+  curBlock->getInstList().push_back(dyn_cast<Instruction>(loadValue));
   Instruction *BinOpInst = nullptr;
+
+  // Generate cast instruction to ensure source and destination types are
+  // consistent, as needed.
+  if (DestValue->getType() != loadValue->getType()) {
+    Type *DestValueTy = DestValue->getType();
+    Instruction *CInst = CastInst::Create(
+        CastInst::getCastOpcode(loadValue, false, DestValueTy, false),
+        loadValue, DestValueTy);
+    curBlock->getInstList().push_back(CInst);
+    loadValue = CInst;
+  }
 
   switch (opcode) {
   case X86::ADD64rm:
@@ -2403,16 +2451,16 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::ADD16rm:
   case X86::ADD8rm: {
     // Create add instruction
-    BinOpInst = BinaryOperator::CreateAdd(DestValue, loadInst);
+    BinOpInst = BinaryOperator::CreateAdd(DestValue, loadValue);
   } break;
   case X86::OR32rm: {
     // Create add instruction
-    BinOpInst = BinaryOperator::CreateOr(DestValue, loadInst);
+    BinOpInst = BinaryOperator::CreateOr(DestValue, loadValue);
   } break;
   case X86::IMUL32rm: {
     // One-operand form of IMUL
     // Create mul instruction
-    BinOpInst = BinaryOperator::CreateMul(DestValue, loadInst);
+    BinOpInst = BinaryOperator::CreateMul(DestValue, loadValue);
   } break;
   case X86::IMUL16rmi:
   case X86::IMUL16rmi8:
@@ -2433,9 +2481,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
            "Expect immediate operand in imul instruction");
     // Construct the value corresponding to immediate operand
     Value *SecondSourceVal =
-        ConstantInt::get(loadInst->getType(), SecondSourceOp.getImm());
+        ConstantInt::get(loadValue->getType(), SecondSourceOp.getImm());
     // Create mul instruction
-    BinOpInst = BinaryOperator::CreateMul(SecondSourceVal, loadInst);
+    BinOpInst = BinaryOperator::CreateMul(SecondSourceVal, loadValue);
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");
@@ -4180,7 +4228,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     CallInst *callInst =
         CallInst::Create(CalledFunc, ArrayRef<Value *>(CallInstFuncArgs));
 
-    // If this is a branch being turned to a tail call set the flag accordingly.
+    // If this is a branch being turned to a tail call set the flag
+    // accordingly.
     if (CallMI.isBranch())
       callInst->setTailCall(true);
 

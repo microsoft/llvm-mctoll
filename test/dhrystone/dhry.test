@@ -1,40 +1,81 @@
 // RUN: clang -o %t.so %S/dhry_funcs_mod.c -shared -fPIC -g -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %S/dhry_main.c %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
-// RUN: %t1 2>&1| FileCheck %s
+// RUN: %t1 2>&1| FileCheck %s -check-prefix=DSO
 
-// CHECK: Dhrystone Benchmark, Version 2.1 (Language: C)
-// CHECK: Program compiled without 'register' attribute
-// CHECK: Execution starts, 100000000 runs through Dhrystone
-// CHECK: Execution ends
+// DSO: Dhrystone Benchmark, Version 2.1 (Language: C)
+// DSO: Program compiled without 'register' attribute
+// DSO: Execution starts, 100000000 runs through Dhrystone
+// DSO: Execution ends
 
-// CHECK: Final values of the variables used in the benchmark:
-// CHECK: Int_Glob:            5
-// CHECK: Bool_Glob:           1
-// CHECK: Ch_1_Glob:           A
-// CHECK: Ch_2_Glob:           B
-// CHECK: Arr_1_Glob[8]:       7
-// CHECK: Arr_2_Glob[8][7]:    100000010
+// DSO: Final values of the variables used in the benchmark:
+// DSO: Int_Glob:            5
+// DSO: Bool_Glob:           1
+// DSO: Ch_1_Glob:           A
+// DSO: Ch_2_Glob:           B
+// DSO: Arr_1_Glob[8]:       7
+// DSO: Arr_2_Glob[8][7]:    100000010
 
-// CHECK: Ptr_Glob->
-// CHECK: Ptr_Comp: {{[0-9]+}}
-// CHECK: Discr:             0
-// CHECK: Enum_Comp:         2
-// CHECK: Int_Comp:          17
-// CHECK: Str_Comp:          DHRYSTONE PROGRAM, SOME STRING
+// DSO: Ptr_Glob->
+// DSO: Ptr_Comp: {{[0-9]+}}
+// DSO: Discr:             0
+// DSO: Enum_Comp:         2
+// DSO: Int_Comp:          17
+// DSO: Str_Comp:          DHRYSTONE PROGRAM, SOME STRING
 
-// CHECK: Next_Ptr_Glob->
-// CHECK: Ptr_Comp: {{[0-9]+}}
-// CHECK: Discr:             0
-// CHECK: Enum_Comp:         1
-// CHECK: Int_Comp:          18
-// CHECK: Str_Comp:          DHRYSTONE PROGRAM, SOME STRING
-// CHECK: Int_1_Loc:           5
-// CHECK: Int_2_Loc:           13
-// CHECK: Int_3_Loc:           7
-// CHECK: Enum_Loc:            1
-// CHECK: Str_1_Loc:           DHRYSTONE PROGRAM, 1'ST STRING
-// CHECK: Str_2_Loc:           DHRYSTONE PROGRAM, 2'ND STRING
+// DSO: Next_Ptr_Glob->
+// DSO: Ptr_Comp: {{[0-9]+}}
+// DSO: Discr:             0
+// DSO: Enum_Comp:         1
+// DSO: Int_Comp:          18
+// DSO: Str_Comp:          DHRYSTONE PROGRAM, SOME STRING
+// DSO: Int_1_Loc:           5
+// DSO: Int_2_Loc:           13
+// DSO: Int_3_Loc:           7
+// DSO: Enum_Loc:            1
+// DSO: Str_1_Loc:           DHRYSTONE PROGRAM, 1'ST STRING
+// DSO: Str_2_Loc:           DHRYSTONE PROGRAM, 2'ND STRING
 
-// CHECK: Microseconds for one run through Dhrystone:    {{[0-9]+}}.{{[0-9]+}}
-// CHECK: Dhrystones per Second:                      {{[0-9]+}}.{{[0-9]+}}
+// DSO: Microseconds for one run through Dhrystone:    {{[0-9]+}}.{{[0-9]+}}
+// DSO: Dhrystones per Second:                      {{[0-9]+}}.{{[0-9]+}}
+
+// RUN: clang -o %t %S/dhry_main.c %S/dhry_funcs_mod.c -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mno-sse -mno-implicit-float
+// RUN: llvm-mctoll -d %t
+// RUN: clang -o %t1 %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
+// RUN: %t1 2>&1| FileCheck %s -check-prefix=EXEC
+
+// EXEC: Dhrystone Benchmark, Version 2.1 (Language: C)
+// EXEC: Program compiled without 'register' attribute
+// EXEC: Execution starts, 100000000 runs through Dhrystone
+// EXEC: Execution ends
+
+// EXEC: Final values of the variables used in the benchmark:
+// EXEC: Int_Glob:            5
+// EXEC: Bool_Glob:           1
+// EXEC: Ch_1_Glob:           A
+// EXEC: Ch_2_Glob:           B
+// EXEC: Arr_1_Glob[8]:       7
+// EXEC: Arr_2_Glob[8][7]:    100000010
+
+// EXEC: Ptr_Glob->
+// EXEC: Ptr_Comp: {{[0-9]+}}
+// EXEC: Discr:             0
+// EXEC: Enum_Comp:         2
+// EXEC: Int_Comp:          17
+// EXEC: Str_Comp:          DHRYSTONE PROGRAM, SOME STRING
+
+// EXEC: Next_Ptr_Glob->
+// EXEC: Ptr_Comp: {{[0-9]+}}
+// EXEC: Discr:             0
+// EXEC: Enum_Comp:         1
+// EXEC: Int_Comp:          18
+// EXEC: Str_Comp:          DHRYSTONE PROGRAM, SOME STRING
+// EXEC: Int_1_Loc:           5
+// EXEC: Int_2_Loc:           13
+// EXEC: Int_3_Loc:           7
+// EXEC: Enum_Loc:            1
+// EXEC: Str_1_Loc:           DHRYSTONE PROGRAM, 1'ST STRING
+// EXEC: Str_2_Loc:           DHRYSTONE PROGRAM, 2'ND STRING
+
+// EXEC: Microseconds for one run through Dhrystone:    {{[0-9]+}}.{{[0-9]+}}
+// EXEC: Dhrystones per Second:                      {{[0-9]+}}.{{[0-9]+}}

@@ -11,17 +11,17 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 5.  `cd ../build/llvm`
 6.  Run cmake command to create build files (make or ninja) with default build type (Debug).
 
-    The tool build depends on LLVM artifacts built with X86 and ARM support.
+     Support for X86-64 and ARM raisers will be built into the tool based on the LLVM build targets. There is no interdependency. Consequently,  support to raise only X86-64 binaries is built during X86-only LLVM builds; support to raise only ARM binaries is built during ARM-only LLVM builds. The tool is not built during an LLVM build with targets that do not include either X86 or ARM.
 
     For e.g., either of the following `cmake` commands is known to build the tool and its dependencies.
 
-    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DLLVM_TARGETS_TO_BUILD="X86;ARM"`
+    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DLLVM_TARGETS_TO_BUILD="`*TARGET_ARCH*`"`
 
     `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm>`
 
      The corresponding `cmake` commands known to work for Release builds are as follows:
 
-     `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON`
+     `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DLLVM_TARGETS_TO_BUILD="`*TARGET_ARCH*`" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON`
 
     `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm> </full/path/to/github/src/llvm> -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON`
 
@@ -31,7 +31,6 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
 #### _Note_ :
 1. The current tip of llvm-mctoll is tested using the commits recorded in LLVMVersion.txt. Make sure the corresponding repos used in your build correspond to those listed.
-2. Release build of llvm-mctoll (and of LLVM) has not been tested. Several tests in llvm-mctoll may fail.
 
 ## Usage
 
@@ -61,9 +60,7 @@ The tool is also known to build and run tests successfully on CentOS 7.5.
 
 # Current Status
 
-The tool is currently able to raise Linux x86_64 and Arm32 shared libraries and executables with function calls that have variable arguments (such as printf) to LLVM IR.
-
-Support for code generated for `switch` statement needs to be added.
+At present, the tool is capable of raising Linux X86-64 and Arm32 shared libraries and executables with function calls that have variable arguments (such as printf) to LLVM IR.
 
 Raising of C++ binaries needs to be added.
 

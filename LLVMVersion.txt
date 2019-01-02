@@ -5,14 +5,17 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit ac4b70f74612eccc851a1aa9ff389e2104a6c747 (HEAD -> master, origin/master, origin/HEAD)
-Author: Nico Weber <nicolasweber@gmx.de>
+commit 08d71b25d5948285f8c1d481a1a2aeb8623a6f9e
+Author: Jessica Paquette <jpaquette@apple.com>
+Date:   Fri Dec 21 17:05:26 2018 +0000
 
-    Make initializeOutputStream() return false on error and true on success.
+    [GlobalISel][AArch64] Add support for widening G_FCEIL
 
 tools/clang:
 
-commit 7dec0f05fefde9d87b465d57d739230563b26584 (HEAD -> master, origin/master, origin/HEAD)
-Author: Jonas Devlieghere <jonas@devlieghere.com>
+commit 3410781dffff51e89751a2494bd8dfe7e7d83541
+Author: Richard Smith <richard-llvm@metafoo.co.uk>
+Date:   Thu Dec 20 20:58:53 2018 +0000
 
-    Pass the function type instead of the return type to FunctionDecl::Create
+    Make the "too many braces in scalar initialization" extension cause
+    SFINAE failures.

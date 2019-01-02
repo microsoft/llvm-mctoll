@@ -2272,8 +2272,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   unsigned opc = mi.getOpcode();
   // Construct the appropriate binary operation instruction
   switch (opc) {
-  case X86::ADD64rr:
+  case X86::ADD8rr:
   case X86::ADD32rr:
+  case X86::ADD64rr:
     // Verify the def operand is a register.
     assert(mi.getOperand(0).isReg() &&
            "Expecting destination of add instruction to be a register operand");
@@ -2337,6 +2338,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       }
     }
   } break;
+  case X86::TEST8rr:
+  case X86::TEST16rr:
   case X86::TEST32rr:
   case X86::TEST64rr:
     assert((MCID.getNumDefs() == 0) &&
@@ -3380,7 +3383,6 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
 bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(const MachineInstr &mi,
                                                          BasicBlock *curBlock) {
   const MCInstrDesc &MIDesc = mi.getDesc();
-  LLVMContext &llvmContext(MF.getFunction().getContext());
   bool success = false;
 
   assert(MIDesc.getNumDefs() == 1 &&
@@ -3420,7 +3422,7 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(const MachineInstr &mi,
     // the constituent flags as seperate values ???
     Value *EflagsVal = getRegValue(X86::EFLAGS);
     Value *OneConstVal =
-        ConstantInt::get(Type::getInt1Ty(llvmContext), 1, false /* isSigned */);
+        ConstantInt::get(EflagsVal->getType(), 1, false /* isSigned */);
     CmpInst *cmp = new ICmpInst(pred, EflagsVal, OneConstVal);
     curBlock->getInstList().push_back(cmp);
     updatePhysRegSSAValue(DestOp.getReg(), cmp);
@@ -3609,7 +3611,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
         // Generate shr instruction
         BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
         break;
+      case X86::SHL8ri:
+      case X86::SHL16ri:
       case X86::SHL32ri:
+      case X86::SHL64ri:
         // Generate shl instruction
         BinOpInstr = BinaryOperator::CreateShl(SrcOp1Value, SrcOp2Value);
         break;

@@ -2251,6 +2251,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     const MachineInstr &mi, BasicBlock *curBlock) {
 
   auto MCID = mi.getDesc();
+  // Convenience variables for instructions with a dest and one or two operands
+  const unsigned DestOpIndex = 0, UseOp1Index = 1, UseOp2Index = 2;
   std::vector<Value *> Uses;
   for (const MachineOperand &MO : mi.explicit_uses()) {
     assert(MO.isReg() &&
@@ -2262,8 +2264,52 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   // Verify there are exactly 2 use operands or source and dest operands are
   // the same i.e., source operand tied to dest operand.
   assert((Uses.size() == 2 ||
-          ((Uses.size() == 1) && (mi.findTiedOperandIdx(0) == 1))) &&
-         "Expecting exactly two operands for register binary op instruction");
+          ((Uses.size() == 1) &&
+           (mi.findTiedOperandIdx(DestOpIndex) == UseOp1Index))) &&
+         "Unexpected number of operands in register binary op instruction");
+
+  // If the instruction has two use operands, ensure that their values are of
+  // the same type and non-pointer type.
+  if (Uses.size() == 2) {
+    Value *Src1Value = Uses.at(0);
+    Value *Src2Value = Uses.at(1);
+    // The user operand values can be null if the instruction is 'xor op op'.
+    // See below.
+    if ((Src1Value != nullptr) && (Src2Value != nullptr)) {
+      // If this is a pointer type, convert it to int type
+      while (Src1Value->getType()->isPointerTy()) {
+        PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
+            Src1Value, Src1Value->getType()->getPointerElementType());
+        curBlock->getInstList().push_back(ConvPtrToInst);
+        Src1Value = ConvPtrToInst;
+      }
+
+      // If this is a pointer type, convert it to int type
+      while (Src2Value->getType()->isPointerTy()) {
+        PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
+            Src2Value, Src2Value->getType()->getPointerElementType());
+        curBlock->getInstList().push_back(ConvPtrToInst);
+        Src2Value = ConvPtrToInst;
+      }
+      assert(
+          Src1Value->getType()->isIntegerTy() &&
+          Src2Value->getType()->isIntegerTy() &&
+          "Unhandled operand value types in reg-to-reg binary op instruction");
+      if (Src1Value->getType() != Src2Value->getType()) {
+        // Cast the second operand to the type of second.
+        // NOTE : The choice of target cast type is rather arbitrary. May need a
+        // closer look.
+        Type *DestValueTy = Src1Value->getType();
+        Instruction *CInst = CastInst::Create(
+            CastInst::getCastOpcode(Src2Value, false, DestValueTy, false),
+            Src2Value, DestValueTy);
+        curBlock->getInstList().push_back(CInst);
+        Src2Value = CInst;
+      }
+      Uses[0] = Src1Value;
+      Uses[1] = Src2Value;
+    }
+  }
 
   // Figure out the destination register, corresponding value and the
   // binary operator.
@@ -2276,27 +2322,27 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::ADD32rr:
   case X86::ADD64rr:
     // Verify the def operand is a register.
-    assert(mi.getOperand(0).isReg() &&
+    assert(mi.getOperand(DestOpIndex).isReg() &&
            "Expecting destination of add instruction to be a register operand");
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected number of defines in an add instruction");
     assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
            "Unhandled situation: register is used before initialization in "
            "add");
-    dstReg = mi.getOperand(0).getReg();
+    dstReg = mi.getOperand(DestOpIndex).getReg();
     dstValue = BinaryOperator::CreateNSWAdd(Uses.at(0), Uses.at(1));
     break;
   case X86::IMUL32rr:
   case X86::IMUL64rr:
     // Verify the def operand is a register.
-    assert(mi.getOperand(0).isReg() &&
+    assert(mi.getOperand(DestOpIndex).isReg() &&
            "Expecting destination of mul instruction to be a register operand");
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected number of defines in a mul instruction");
     assert(
         (Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
         "Unhandled situation: register is used before initialization in mul");
-    dstReg = mi.getOperand(0).getReg();
+    dstReg = mi.getOperand(DestOpIndex).getReg();
     dstValue = BinaryOperator::CreateNSWMul(Uses.at(0), Uses.at(1));
     break;
 
@@ -2305,8 +2351,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::XOR32rr:
   case X86::XOR64rr: {
     // Verify the def operand is a register.
-    const MachineOperand &DestOp = mi.getOperand(0);
-    const MachineOperand &Use2Op = mi.getOperand(2);
+    const MachineOperand &DestOp = mi.getOperand(DestOpIndex);
+    const MachineOperand &Use2Op = mi.getOperand(UseOp2Index);
     assert(DestOp.isReg() &&
            "Expecting destination of xor instruction to be a register operand");
     assert((MCID.getNumDefs() == 1) &&
@@ -2356,8 +2402,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::NEG32r:
   case X86::NEG64r: {
     // Verify source and dest are tied and are registers
-    const MachineOperand &DestOp = mi.getOperand(0);
-    assert(DestOp.isTied() && (mi.findTiedOperandIdx(0) == 1) &&
+    const MachineOperand &DestOp = mi.getOperand(DestOpIndex);
+    assert(DestOp.isTied() &&
+           (mi.findTiedOperandIdx(DestOpIndex) == UseOp1Index) &&
            "Expect tied operand in neg instruction");
     assert(DestOp.isReg() && "Expect reg operand in neg instruction");
     assert((MCID.getNumDefs() == 1) &&
@@ -2404,16 +2451,20 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   // Load the value from memory location of memRefValue.
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an LoadInst that loads an address in memory..
-  assert((isa<AllocaInst>(memRefValue) || isa<LoadInst>(memRefValue) ||
+  assert((isa<AllocaInst>(memRefValue) || isEffectiveAddrValue(memRefValue) ||
           isa<GlobalValue>(memRefValue)) &&
          "Unexpected type of memory reference in binary mem op instruction");
   bool isMemRefGlobalVal = false;
-  // If it is a load instruction, convert it to a pointer.
-  if (isa<LoadInst>(memRefValue)) {
-    LoadInst *ldInst = dyn_cast<LoadInst>(memRefValue);
-    if (isa<GlobalValue>(ldInst->getPointerOperand())) {
-      isMemRefGlobalVal = true;
+  // If it is an effective address
+  if (isEffectiveAddrValue(memRefValue)) {
+    // Check if this is a load if a global value
+    if (isa<LoadInst>(memRefValue)) {
+      LoadInst *ldInst = dyn_cast<LoadInst>(memRefValue);
+      if (isa<GlobalValue>(ldInst->getPointerOperand())) {
+        isMemRefGlobalVal = true;
+      }
     } else {
+      // This is an effective address computation
       // Cast it to a pointer of type of destination operand.
       PointerType *PtrTy = PointerType::get(DestopTy, 0);
       IntToPtrInst *convIntToPtr = new IntToPtrInst(memRefValue, PtrTy);
@@ -3601,6 +3652,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
         BinOpInstr = BinaryOperator::CreateXor(SrcOp1Value, SrcOp2Value);
         break;
       case X86::IMUL32rri8:
+      case X86::IMUL64rri8:
       case X86::IMUL64rri32:
         BinOpInstr = BinaryOperator::CreateMul(SrcOp1Value, SrcOp2Value);
         break;

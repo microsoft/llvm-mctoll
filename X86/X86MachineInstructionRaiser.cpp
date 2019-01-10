@@ -1817,25 +1817,36 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
     // This is a register PUSH. If the source is register, create a slot on
     // the stack.
     if (mi.getOperand(0).isReg()) {
-      const DataLayout &dataLayout = MR->getModule()->getDataLayout();
-      unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
+      const DataLayout &DL = MR->getModule()->getDataLayout();
+      unsigned AllocaAddrSpace = DL.getAllocaAddrSpace();
 
       // Create alloca instruction to allocate stack slot
       Type *Ty = getPhysRegOperandType(mi, 0);
-      AllocaInst *alloca = new AllocaInst(Ty, allocaAddrSpace, 0,
-                                          dataLayout.getPrefTypeAlignment(Ty));
+      AllocaInst *Alloca =
+          new AllocaInst(Ty, AllocaAddrSpace, 0, DL.getPrefTypeAlignment(Ty));
 
       // Create a stack slot associated with the alloca instruction
-      unsigned int stackFrameIndex = MF.getFrameInfo().CreateStackObject(
-          (Ty->getPrimitiveSizeInBits() / 8),
-          dataLayout.getPrefTypeAlignment(Ty), false /* isSpillSlot */, alloca);
+      unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(
+          (Ty->getPrimitiveSizeInBits() / 8), DL.getPrefTypeAlignment(Ty),
+          false /* isSpillSlot */, Alloca);
 
-      MF.getFrameInfo().setObjectOffset(stackFrameIndex, 0);
+      // Compute size of new stack object.
+      const MachineFrameInfo &MFI = MF.getFrameInfo();
+      // Size of currently allocated object size
+      int64_t ObjectSize = MFI.getObjectSize(StackFrameIndex);
+      // Size of object at previous index; 0 if this is the first object on
+      // stack.
+      int64_t PrevObjectSize =
+          (StackFrameIndex != 0) ? MFI.getObjectOffset(StackFrameIndex - 1) : 0;
+      int64_t Offset = PrevObjectSize - ObjectSize;
+
+      // Set object size.
+      MF.getFrameInfo().setObjectOffset(StackFrameIndex, Offset);
 
       // Add the alloca instruction to entry block
-      insertAllocaInEntryBlock(alloca);
+      insertAllocaInEntryBlock(Alloca);
       // The alloca corresponds to the current location of stack pointer
-      updatePhysRegSSAValue(X86::RSP, alloca);
+      updatePhysRegSSAValue(X86::RSP, Alloca);
       return true;
     } else {
       assert(false && "Unhandled PUSH instruction with a non-register operand");

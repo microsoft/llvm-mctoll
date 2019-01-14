@@ -1410,11 +1410,13 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &mi,
 //        Use getRegValue(unsigned PReg) instead.
 
 // Find SSA value associated with physical register PReg.
-// If the PReg is an argument register and hence does not have a
-// previous definition, function prototype is consulted to return
-// the corresponding value. In that case, return argument value
-// associated with physical register PReg according to C calling
-// convention.
+// If the PReg is an argument register and hence does not have a previous
+// definition, function prototype is consulted to return the corresponding
+// value. In that case, return argument value associated with physical register
+// PReg according to C calling convention. This function simply returns the
+// value of PReg. It does not make any attempt to cast it to match the PReg
+// type. Use getRegOperandValue() to accomplish that.
+
 // NOTE : This is the preferred API to get the SSA value associated
 //        with PReg. Do not use findPhysRegSSAValue(unsigned) as you
 //        do not need to. See comment of that function for more details.
@@ -1435,6 +1437,32 @@ Value *X86MachineInstructionRaiser::getRegValue(unsigned PReg) {
         Function::arg_iterator argIter = raisedFunction->arg_begin() + pos - 1;
         PRegValue = argIter;
       }
+    }
+  }
+  return PRegValue;
+}
+// Find SSA value associated with operand at OpIndex, if it is a physical
+// register. This function calls getRegValue() and generates a cast instruction
+// to match the type of operand register.
+
+Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
+                                                       unsigned OpIndex,
+                                                       BasicBlock *CurBlock) {
+  const MachineOperand &MO = MI.getOperand(OpIndex);
+  Value *PRegValue = nullptr; // Unknown, to start with.
+  if (MO.isReg()) {
+    PRegValue = getRegValue(MO.getReg());
+  }
+  if (PRegValue != nullptr) {
+    // Cast the value in accordance with the register size of the operand, as
+    // needed.
+    Type *PRegTy = getPhysRegOperandType(MI, OpIndex);
+    if (PRegTy != PRegValue->getType()) {
+      Instruction *CInst = CastInst::Create(
+          CastInst::getCastOpcode(PRegValue, false, PRegTy, false), PRegValue,
+          PRegTy);
+      CurBlock->getInstList().push_back(CInst);
+      PRegValue = CInst;
     }
   }
   return PRegValue;
@@ -2048,10 +2076,9 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
          "Expecting exactly two operands for move reg-to-reg instructions");
 
   unsigned int DstPReg = mi.getOperand(DstIndex).getReg();
-  unsigned int SrcPReg = mi.getOperand(SrcIndex).getReg();
 
-  // Get source value
-  Value *srcValue = getRegValue(SrcPReg);
+  // Get source operand value
+  Value *SrcValue = getRegOperandValue(mi, SrcIndex, curBlock);
 
   switch (opcode) {
   case X86::MOVSX16rr8:
@@ -2068,7 +2095,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     Type *Ty = nullptr;
     Instruction::CastOps Cast;
     // Check for sanity of source value
-    assert(srcValue &&
+    assert(SrcValue &&
            "Encountered instruction with undefined source register");
 
     switch (opcode) {
@@ -2106,7 +2133,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     case X86::MOVZX32rr8:
     case X86::MOVZX32rr16: {
       assert(is32BitPhysReg(DstPReg) &&
-             "Not found expected 32-bit destination register - movsx "
+             "Not found expected 32-bit destination register - movzx "
              "instruction");
       Ty = Type::getInt32Ty(llvmContext);
       Cast = Instruction::ZExt;
@@ -2114,17 +2141,19 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     case X86::MOVZX64rr8:
     case X86::MOVZX64rr16: {
       assert(is64BitPhysReg(DstPReg) &&
-             "Not found expected 64-bit destination register - movsx "
+             "Not found expected 64-bit destination register - movzx "
              "instruction");
       Ty = Type::getInt64Ty(llvmContext);
       Cast = Instruction::ZExt;
     } break;
     default:
-      assert(false && "Should not reach here! - movsx instruction");
+      assert(false &&
+             "Should not reach here! - mov with extension instruction");
     }
-
-    assert(Ty != nullptr && "Failed to set type - movsx instruction");
-    CastInst *CInst = CastInst::Create(Cast, srcValue, Ty);
+    assert(Ty != nullptr &&
+           "Failed to set type - mov with extension instruction");
+    // Now create the cast instruction corresponding to the instruction.
+    CastInst *CInst = CastInst::Create(Cast, SrcValue, Ty);
     curBlock->getInstList().push_back(CInst);
 
     // Update the value mapping of dstReg
@@ -2145,13 +2174,13 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     assert(DstPRegSize != 0 && DstPRegSize == SrcPRegSize &&
            "Unexpected sizes of source and destination registers size differ "
            "in mov instruction");
-    assert(srcValue &&
+    assert(SrcValue &&
            "Encountered mov instruction with undefined source register");
-    assert(srcValue->getType()->isSized() &&
+    assert(SrcValue->getType()->isSized() &&
            "Unsized source value in move instruction");
-    srcValue = matchSSAValueToSrcRegSize(mi, SrcIndex, curBlock);
+    SrcValue = matchSSAValueToSrcRegSize(mi, SrcIndex, curBlock);
     // Update the value mapping of dstReg
-    updatePhysRegSSAValue(DstPReg, srcValue);
+    updatePhysRegSSAValue(DstPReg, SrcValue);
     success = true;
   } break;
   default:
@@ -2262,7 +2291,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     const MachineInstr &mi, BasicBlock *curBlock) {
 
   auto MCID = mi.getDesc();
-  // Convenience variables for instructions with a dest and one or two operands
+  // Convenience variables for instructions with a dest and one or two
+  // operands
   const unsigned DestOpIndex = 0, UseOp1Index = 1, UseOp2Index = 2;
   std::vector<Value *> Uses;
   for (const MachineOperand &MO : mi.explicit_uses()) {
@@ -2302,14 +2332,14 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         curBlock->getInstList().push_back(ConvPtrToInst);
         Src2Value = ConvPtrToInst;
       }
-      assert(
-          Src1Value->getType()->isIntegerTy() &&
-          Src2Value->getType()->isIntegerTy() &&
-          "Unhandled operand value types in reg-to-reg binary op instruction");
+      assert(Src1Value->getType()->isIntegerTy() &&
+             Src2Value->getType()->isIntegerTy() &&
+             "Unhandled operand value types in reg-to-reg binary op "
+             "instruction");
       if (Src1Value->getType() != Src2Value->getType()) {
         // Cast the second operand to the type of second.
-        // NOTE : The choice of target cast type is rather arbitrary. May need a
-        // closer look.
+        // NOTE : The choice of target cast type is rather arbitrary. May need
+        // a closer look.
         Type *DestValueTy = Src1Value->getType();
         Instruction *CInst = CastInst::Create(
             CastInst::getCastOpcode(Src2Value, false, DestValueTy, false),
@@ -2357,6 +2387,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstValue = BinaryOperator::CreateNSWMul(Uses.at(0), Uses.at(1));
     break;
 
+  case X86::AND8rr:
+  case X86::AND16rr:
+  case X86::AND32rr:
+  case X86::AND64rr:
   case X86::OR32rr:
   case X86::OR64rr:
   case X86::XOR32rr:
@@ -2382,6 +2416,12 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
              "Unhandled situation: register used before initialization in xor");
       switch (opc) {
+      case X86::AND8rr:
+      case X86::AND16rr:
+      case X86::AND32rr:
+      case X86::AND64rr:
+        dstValue = BinaryOperator::CreateAnd(Uses.at(0), Uses.at(1));
+        break;
       case X86::OR32rr:
       case X86::OR64rr:
         dstValue = BinaryOperator::CreateOr(Uses.at(0), Uses.at(1));
@@ -3651,12 +3691,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::AND8i8:
       case X86::AND8ri:
       case X86::AND16ri:
+      case X86::AND16ri8:
       case X86::AND32ri:
       case X86::AND32ri8:
       case X86::AND64ri8:
       case X86::AND64ri32:
         // Generate and instruction
         BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
+        break;
+      case X86::OR32ri:
+      case X86::OR32ri8:
+        // Generate or instruction
+        BinOpInstr = BinaryOperator::CreateOr(SrcOp1Value, SrcOp2Value);
         break;
       case X86::XOR8ri:
         // Generate xor instruction
@@ -3810,9 +3856,9 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     // instruction based on condition of the branch.
 
     Value *Cond = CTRec->RegValues[0];
-    Instruction *Inst = dyn_cast<Instruction>(Cond);
-    if (isa<CmpInst>(Inst)) {
-      if (ICmpInst *IntCmpInst = dyn_cast<ICmpInst>(Inst)) {
+    // Instruction *Inst = dyn_cast<Instruction>(Cond);
+    if (isa<CmpInst>(Cond)) {
+      if (ICmpInst *IntCmpInst = dyn_cast<ICmpInst>(Cond)) {
         // Detect the appropriate predicate
         switch (MI->getOpcode()) {
         case X86::JE_1:
@@ -3853,7 +3899,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
           MI->dump();
           assert(false && "Unhandled conditional branch");
         }
-      } else if (FCmpInst *FC = dyn_cast<FCmpInst>(Inst)) {
+      } else if (FCmpInst *FC = dyn_cast<FCmpInst>(Cond)) {
         assert(false && "Unhandled FCMP based branch raising");
       }
     }

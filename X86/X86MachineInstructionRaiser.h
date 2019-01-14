@@ -148,7 +148,9 @@ private:
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
 
-  Value *getRegValue(unsigned);
+  Value *getRegValue(unsigned PReg);
+  Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex,
+                            BasicBlock *curBlock);
 
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;

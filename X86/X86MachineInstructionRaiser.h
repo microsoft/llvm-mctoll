@@ -62,7 +62,7 @@ private:
   bool raiseMachineFunction();
   FunctionType *getRaisedFunctionPrototype();
   // This raises MachineInstr to MachineInstruction
-  bool raiseMachineInstr(MachineInstr &, BasicBlock *);
+  bool raiseMachineInstr(MachineInstr &);
   // Cleanup MachineBasicBlocks
   bool deleteNOOPInstrMI(MachineBasicBlock &, MachineBasicBlock::iterator);
   bool deleteNOOPInstrMF();
@@ -71,32 +71,30 @@ private:
   bool raisePushInstruction(const MachineInstr &);
   bool raisePopInstruction(const MachineInstr &);
 
-  bool raiseMemRefMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseReturnMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseGenericMachineInstr(const MachineInstr &, BasicBlock *);
+  bool raiseMemRefMachineInstr(const MachineInstr &);
+  bool raiseReturnMachineInstr(const MachineInstr &);
+  bool raiseGenericMachineInstr(const MachineInstr &);
 
-  bool raiseConvertBWWDDQMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseConvertWDDQQOMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseLEAMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseMoveRegToRegMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseMoveImmToRegMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseBinaryOpRegToRegMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseBinaryOpImmToRegMachineInstr(const MachineInstr &, BasicBlock *);
-  bool raiseSetCCMachineInstr(const MachineInstr &, BasicBlock *);
+  bool raiseConvertBWWDDQMachineInstr(const MachineInstr &);
+  bool raiseConvertWDDQQOMachineInstr(const MachineInstr &);
+  bool raiseLEAMachineInstr(const MachineInstr &);
+  bool raiseMoveRegToRegMachineInstr(const MachineInstr &);
+  bool raiseMoveImmToRegMachineInstr(const MachineInstr &);
+  bool raiseBinaryOpRegToRegMachineInstr(const MachineInstr &);
+  bool raiseBinaryOpImmToRegMachineInstr(const MachineInstr &);
+  bool raiseSetCCMachineInstr(const MachineInstr &);
 
-  bool raiseCompareMachineInstr(const MachineInstr &, BasicBlock *, bool,
-                                Value *);
+  bool raiseCompareMachineInstr(const MachineInstr &, bool, Value *);
 
-  bool raiseCallMachineInstr(const MachineInstr &, BasicBlock *);
+  bool raiseCallMachineInstr(const MachineInstr &);
 
-  bool raiseMoveToMemInstr(const MachineInstr &, BasicBlock *, Value *);
-  bool raiseMoveFromMemInstr(const MachineInstr &, BasicBlock *, Value *);
-  bool raiseBinaryOpMemToRegInstr(const MachineInstr &, BasicBlock *, Value *);
-  bool raiseDivideInstr(const MachineInstr &, BasicBlock *, Value *);
-  bool raiseLoadIntToFloatRegInstr(const MachineInstr &, BasicBlock *, Value *);
-  bool raiseStoreIntToFloatRegInstr(const MachineInstr &, BasicBlock *,
-                                    Value *);
-  bool raiseFPURegisterOpInstr(const MachineInstr &, BasicBlock *);
+  bool raiseMoveToMemInstr(const MachineInstr &, Value *);
+  bool raiseMoveFromMemInstr(const MachineInstr &, Value *);
+  bool raiseBinaryOpMemToRegInstr(const MachineInstr &, Value *);
+  bool raiseDivideInstr(const MachineInstr &, Value *);
+  bool raiseLoadIntToFloatRegInstr(const MachineInstr &, Value *);
+  bool raiseStoreIntToFloatRegInstr(const MachineInstr &, Value *);
+  bool raiseFPURegisterOpInstr(const MachineInstr &);
 
   bool raiseBranchMachineInstrs();
   bool raiseDirectBranchMachineInstr(ControlTransferInfo *);
@@ -107,7 +105,7 @@ private:
 
   // Method to record information that is used in a second pass
   // to raise control transfer instructions in a second pass.
-  bool recordMachineInstrInfo(const MachineInstr &, BasicBlock *);
+  bool recordMachineInstrInfo(const MachineInstr &);
 
   bool insertAllocaInEntryBlock(Instruction *alloca);
 
@@ -125,18 +123,17 @@ private:
 
   // Helper functions
   int getMemoryRefOpIndex(const MachineInstr &);
-  Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t, BasicBlock *);
+  Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
   const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
                                                     Type *OffsetTy);
-  Value *getMemoryAddressExprValue(const MachineInstr &, BasicBlock *);
-  Value *createPCRelativeAccesssValue(const MachineInstr &, BasicBlock *);
+  Value *getMemoryAddressExprValue(const MachineInstr &);
+  Value *createPCRelativeAccesssValue(const MachineInstr &);
 
   bool changePhysRegToVirtReg(MachineInstr &);
 
   unsigned int find64BitSuperReg(unsigned int);
   Value *findPhysRegSSAValue(unsigned int);
-  Value *matchSSAValueToSrcRegSize(const MachineInstr &mi, unsigned SrcOpIndex,
-                                   BasicBlock *curBlock);
+  Value *matchSSAValueToSrcRegSize(const MachineInstr &mi, unsigned SrcOpIndex);
 
   std::pair<std::map<unsigned int, Value *>::iterator, bool>
   updatePhysRegSSAValue(unsigned int PhysReg, Value *);
@@ -149,8 +146,9 @@ private:
                               std::vector<Type *> &);
 
   Value *getRegValue(unsigned PReg);
-  Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex,
-                            BasicBlock *curBlock);
+  Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex);
+
+  BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
 
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;

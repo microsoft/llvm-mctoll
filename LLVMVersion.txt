@@ -5,17 +5,47 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit 08d71b25d5948285f8c1d481a1a2aeb8623a6f9e
-Author: Jessica Paquette <jpaquette@apple.com>
-Date:   Fri Dec 21 17:05:26 2018 +0000
+commit e8bd282da5b5dc104d74e9e867d349f9ddb8d06a
+Author: Alex Bradbury <asb@lowrisc.org>
+Date:   Tue Jan 22 05:06:57 2019 +0000
 
-    [GlobalISel][AArch64] Add support for widening G_FCEIL
+    [RISCV] Fix build after r351778
+
+    Also add a comment to explain the expansion strategy for atomicrmw
+    {fadd,fsub}.
+
+
+
+    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@351782 91177308-0d34-0410-b5e6-96231b3b80d8
 
 tools/clang:
 
-commit 3410781dffff51e89751a2494bd8dfe7e7d83541
-Author: Richard Smith <richard-llvm@metafoo.co.uk>
-Date:   Thu Dec 20 20:58:53 2018 +0000
+commit 12ab032c299151930251e64b550bc1eaf7770e46
+Author: Eli Friedman <efriedma@codeaurora.org>
+Date:   Tue Jan 22 00:11:17 2019 +0000
 
-    Make the "too many braces in scalar initialization" extension cause
-    SFINAE failures.
+    [CodeGen] Always use string computed in Sema for PredefinedExpr
+
+    We can't use any other string, anyway, because its type wouldn't
+    match the type of the PredefinedExpr.
+
+    With this change, we don't compute a "nice" name for the __func__ global
+    when it's used in the initializer for a constant. This doesn't seem like
+    a great loss, and I'm not sure how to fix it without either storing more
+    information in the AST, or somehow threading through the information
+    from ExprConstant.cpp.
+
+    This could break some situations involving BlockDecl; currently,
+    CodeGenFunction::EmitPredefinedLValue has some logic to intentionally
+    emit a string different from what Sema computed.  This code skips that
+    logic... but that logic can't work correctly in general anyway.  (For
+    example, sizeof(__func__) returns the wrong result.) Hopefully this
+    doesn't affect practical code.
+
+    Fixes https://bugs.llvm.org/show_bug.cgi?id=40313 .
+
+    Differential Revision: https://reviews.llvm.org/D56821
+
+
+
+    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@351766 91177308-0d34-0410-b5e6-96231b3b80d8

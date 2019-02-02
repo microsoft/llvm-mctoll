@@ -81,7 +81,7 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, Module &module) {
       assert(false &&
              "Failed to construct function type for external function");
     }
-    Constant *FC = module.getOrInsertFunction(CFuncName, FuncType);
+    Value* FC = module.getOrInsertFunction(CFuncName, FuncType).getCallee();
     assert(isa<Function>(FC) && "Expect Function");
 
     Func = reinterpret_cast<Function *>(FC);

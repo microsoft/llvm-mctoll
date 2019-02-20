@@ -81,10 +81,10 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, Module &module) {
       assert(false &&
              "Failed to construct function type for external function");
     }
-    Constant *FC = module.getOrInsertFunction(CFuncName, FuncType);
-    assert(isa<Function>(FC) && "Expect Function");
+    FunctionCallee FunCallee = module.getOrInsertFunction(CFuncName, FuncType);
+    assert(isa<Function>(FunCallee.getCallee()) && "Expect Function");
 
-    Func = reinterpret_cast<Function *>(FC);
+    Func = reinterpret_cast<Function *>(FunCallee.getCallee());
     Func->setCallingConv(CallingConv::C);
     Func->setDSOLocal(true);
   }

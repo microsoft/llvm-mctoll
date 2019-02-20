@@ -4220,8 +4220,6 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
     Type *St0ValTy = St0Val->getType();
     assert(St0ValTy->isFloatingPointTy() &&
            "Unexpected non-FP value on FPU register stack");
-    assert((MI.getNumDefs() == 0) &&
-           "Unexpected number of defs in FP register op instruction format");
     assert(
         (MI.getNumExplicitOperands() == 1) &&
         "Unexpected number of operands in FP register op instruction format");

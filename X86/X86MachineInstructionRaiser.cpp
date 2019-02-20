@@ -3644,6 +3644,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
       switch (MI.getOpcode()) {
       case X86::ADD8i8:
+      case X86::ADD16ri:
+      case X86::ADD16ri8:
       case X86::ADD32ri:
       case X86::ADD32ri8:
       case X86::ADD64ri8:
@@ -3751,6 +3753,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       Instruction *BinOpInstr = nullptr;
       switch (MI.getOpcode()) {
       case X86::ADD8i8:
+      case X86::ADD16ri:
+      case X86::ADD16ri8:
       case X86::ADD32ri:
       case X86::ADD32ri8:
       case X86::ADD64ri8:
@@ -3803,6 +3807,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::SHL64ri:
         // Generate shl instruction
         BinOpInstr = BinaryOperator::CreateShl(SrcOp1Value, SrcOp2Value);
+        break;
+      case X86::SAR8ri:
+      case X86::SAR16ri:
+      case X86::SAR32ri:
+      case X86::SAR64ri:
+        // Generate shr instruction
+        BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
         break;
       default:
         assert(false && "Unhandled reg to imm binary operator instruction");

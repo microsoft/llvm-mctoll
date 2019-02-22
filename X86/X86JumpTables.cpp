@@ -332,11 +332,20 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       BuildMI(JmpTblPredMBB, DebugLoc(), TII->get(X86::JMP64r))
           .addJumpTableIndex(JmpTblInfo.jtIdx);
       jtList.push_back(JmpTblInfo);
+      // Add jump table targets as successors of JmpTblPredMBB.
+      for (MachineBasicBlock *NewSucc : JmpTgtMBBvec) {
+        if (!JmpTblPredMBB->isSuccessor(NewSucc)) {
+          JmpTblPredMBB->addSuccessor(NewSucc);
+        }
+      }
     }
   }
 
   // Delete MBBs
   for (auto MBB : MBBsToBeErased) {
+    // Remove MBB from the successors of all the predecessors of MBB
+    for (auto Pred : MBB->predecessors())
+      Pred->removeSuccessor(MBB);
     MBB->eraseFromParent();
   }
   return true;

@@ -19,6 +19,7 @@
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
+#include "llvm/CodeGen/LoopTraversal.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -4507,12 +4508,20 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     updatePhysRegSSAValue(X86::RCX, Zero64BitValue);
   }
 
-  // Walk basic blocks of the MachineFunction. Raise all non control
-  // transfer MachineInstrs of each MachineBasicBlocks of MachineFunction,
-  // except branch instructions.
-  for (MachineFunction::iterator mfIter = MF.begin(), mfEnd = MF.end();
-       mfIter != mfEnd; mfIter++) {
-    MachineBasicBlock &MBB = *mfIter;
+  // Walk basic blocks of the MachineFunction in LoopTraversal - except that do
+  // not walk the block coming from back edge.By performing this traversal, the
+  // idea is to make sure predecessors are translated before a block.
+
+  // Raise all non control transfer MachineInstrs of each MachineBasicBlocks of
+  // MachineFunction, except branch instructions.
+  LoopTraversal Traversal;
+  LoopTraversal::TraversalOrder TraversedMBBOrder = Traversal.traverse(MF);
+  for (LoopTraversal::TraversedMBBInfo TraversedMBB : TraversedMBBOrder) {
+    // Only perform the primary pass as we do not want to translate one block
+    // more than once.
+    if (!TraversedMBB.PrimaryPass)
+      continue;
+    MachineBasicBlock &MBB = *(TraversedMBB.MBB);
     // Get the number of MachineBasicBlock being looked at.
     int MBBNo = MBB.getNumber();
     // Name of the corresponding BasicBlock to be created
@@ -4525,8 +4534,8 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     // MBB in a later walk of MachineBasicBlocks of MF.
     mbbToBBMap.insert(std::make_pair(MBBNo, CurIBB));
     // Walk MachineInsts of the MachineBasicBlock
-    for (MachineBasicBlock::iterator mbbIter = mfIter->instr_begin(),
-                                     mbbEnd = mfIter->instr_end();
+    for (MachineBasicBlock::iterator mbbIter = MBB.instr_begin(),
+                                     mbbEnd = MBB.instr_end();
          mbbIter != mbbEnd; mbbIter++) {
       MachineInstr &MI = *mbbIter;
       // Ignore noop instructions.

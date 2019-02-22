@@ -22,7 +22,7 @@
 
 using namespace llvm;
 
-// Structure holding all necesssary information to raise control
+// Structure holding all necessary information to raise control
 // transfer (i.e., branch) instructions during a post-processing
 // phase.
 

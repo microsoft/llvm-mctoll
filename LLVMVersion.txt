@@ -5,48 +5,64 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit 68782b8c5a362068fe6363066d038210ed0ff711
-Author: Andrea Di Biagio <Andrea_DiBiagio@sn.scee.net>
-Date:   Wed Feb 20 18:01:49 2019 +0000
+commit 0c844eb84f5f46d1e4f11ba0a88fd7ad8e9dee33
+Author: Shoaib Meenai <smeenai@fb.com>
+Date:   Mon Mar 4 21:19:53 2019 +0000
 
-    [MCA][Scheduler] Collect resource pressure and memory dependency bottlenecks.
-    
-    Every cycle, the Scheduler checks if instructions in the ReadySet can be issued
-    to the underlying pipelines. If an instruction cannot be issued because one or
-    more pipeline resources are unavailable, then field
-    Instruction::CriticalResourceMask is updated with the resource identifier of the
-    unavailable resources.
-    
-    If an instruction cannot be promoted from the PendingSet to the ReadySet because
-    of a memory dependency, then field Instruction::CriticalMemDep is updated with
-    the identifier of the dependending memory instruction.
-    
-    Bottleneck information is collected after every cycle for instructions that are
-    waiting to execute. The idea is to help identify causes of bottlenecks; this
-    information can be used in future to implement a bottleneck analysis.
-    
-    
-    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@354490 91177308-0d34-0410-b5e6-96231b3b80d8
+    [build] Rename clang-headers to clang-resource-headers
 
-tools/clang:
-
-commit 771c454fcb9a98b83da46bd29eb4cd090092b5da
-Author: Alexey Bataev <a.bataev@hotmail.com>
-Date:   Wed Feb 20 17:42:57 2019 +0000
-
-    [OPENMP] Delay emission of the asm target-specific error messages.
-    
     Summary:
-    Added the ability to emit target-specific builtin assembler error
-    messages only in case if the function is really is going to be emitted
-    for the device.
-    
-    Reviewers: rjmccall
-    
-    Subscribers: guansong, jdoerfert, cfe-commits
-    
-    Tags: #clang
-    
-    Differential Revision: https://reviews.llvm.org/D58243
-    
-    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@354486 91177308-0d34-0410-b5e6-96231b3b80d8
+    The current install-clang-headers target installs clang's resource
+    directory headers. This is different from the install-llvm-headers
+    target, which installs LLVM's API headers. We want to introduce the
+    corresponding target to clang, and the natural name for that new target
+    would be install-clang-headers. Rename the existing target to
+    install-clang-resource-headers to free up the install-clang-headers name
+    for the new target, following the discussion on cfe-dev [1].
+
+    I didn't find any bots on zorg referencing install-clang-headers. I'll
+    send out another PSA to cfe-dev to accompany this rename.
+
+    [1] http://lists.llvm.org/pipermail/cfe-dev/2019-February/061365.html
+
+    Reviewers: beanz, phosek, tstellar, rnk, dim, serge-sans-paille
+
+    Subscribers: mgorny, javed.absar, jdoerfert, #sanitizers, openmp-commits, lldb-commits, cfe-commits, llvm-commits
+
+    Tags: #clang, #sanitizers, #lldb, #openmp, #llvm
+
+    Differential Revision: https://reviews.llvm.org/D58791
+
+    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@355340 91177308-0d34-0410-b5e6-96231b3b80d8
+
+clang:
+
+commit 1b98a7945112e4ea5c10144fd3e81c27751d1c2f
+Author: Shoaib Meenai <smeenai@fb.com>
+Date:   Mon Mar 4 21:19:53 2019 +0000
+
+    [build] Rename clang-headers to clang-resource-headers
+
+    Summary:
+    The current install-clang-headers target installs clang's resource
+    directory headers. This is different from the install-llvm-headers
+    target, which installs LLVM's API headers. We want to introduce the
+    corresponding target to clang, and the natural name for that new target
+    would be install-clang-headers. Rename the existing target to
+    install-clang-resource-headers to free up the install-clang-headers name
+    for the new target, following the discussion on cfe-dev [1].
+
+    I didn't find any bots on zorg referencing install-clang-headers. I'll
+    send out another PSA to cfe-dev to accompany this rename.
+
+    [1] http://lists.llvm.org/pipermail/cfe-dev/2019-February/061365.html
+
+    Reviewers: beanz, phosek, tstellar, rnk, dim, serge-sans-paille
+
+    Subscribers: mgorny, javed.absar, jdoerfert, #sanitizers, openmp-commits, lldb-commits, cfe-commits, llvm-commits
+
+    Tags: #clang, #sanitizers, #lldb, #openmp, #llvm
+
+    Differential Revision: https://reviews.llvm.org/D58791
+
+    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@355340 91177308-0d34-0410-b5e6-96231b3b80d8

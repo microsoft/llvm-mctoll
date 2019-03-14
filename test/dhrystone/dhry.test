@@ -39,7 +39,7 @@
 // DSO: Microseconds for one run through Dhrystone:    {{[0-9]+}}.{{[0-9]+}}
 // DSO: Dhrystones per Second:                      {{[0-9]+}}.{{[0-9]+}}
 
-// RUN: clang -o %t %S/dhry_main.c %S/dhry_funcs_mod.c -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mno-sse -mno-implicit-float
+// RUN: clang -o %t %S/dhry_main.c %S/dhry_funcs_mod.c -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mno-sse
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t1 %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
 // RUN: %t1 2>&1| FileCheck %s -check-prefix=EXEC

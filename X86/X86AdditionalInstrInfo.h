@@ -4253,7 +4253,6 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::VCVTSI2SDZrm_Int, {0, Unknown}},
     {X86::VCVTSI2SDZrr, {0, Unknown}},
     {X86::VCVTSI2SDZrr_Int, {0, Unknown}},
-    {X86::VCVTSI2SDZrrb_Int, {0, Unknown}},
     {X86::VCVTSI2SDrm, {0, Unknown}},
     {X86::VCVTSI2SDrm_Int, {0, Unknown}},
     {X86::VCVTSI2SDrr, {0, Unknown}},

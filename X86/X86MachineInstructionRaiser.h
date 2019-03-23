@@ -17,7 +17,22 @@
 #include "MachineInstructionRaiser.h"
 #include "X86AdditionalInstrInfo.h"
 
+/*
+ * Type alias for Map of MBBNo -> BasicBlock * used to keep track of
+ * MachineBasicBlock and corresponding raised BasicBlock
+ */
 using MBBNumToBBMap = std::map<unsigned int, BasicBlock *>;
+
+// Tuple of <PhysReg, DefiningMBBNo, Alloca>
+// When promoting reaching definitions there may be situations where the
+// predecessor block that defines a reaching definition may not yet have
+// been raised. This tuple represents the Alloca slot to which
+// the value of PhysReg defined in DefiningMBB should be stored once it is
+// raised.
+using PhysRegMBBValTuple = std::tuple<unsigned int, unsigned int, Value *>;
+
+// Forward declaration of X86RaisedValueTracker
+class X86RaisedValueTracker;
 
 class X86MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
@@ -25,6 +40,13 @@ public:
   X86MachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
                               MCInstRaiser *mcir);
   bool raise();
+
+  unsigned int find64BitSuperReg(unsigned int);
+  bool insertAllocaInEntryBlock(Instruction *alloca);
+  BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
+  bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
+  StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
+                                       int MBBNo, AllocaInst *Alloca);
 
 private:
   // Bit positions used for individual status flags of EFLAGS register.
@@ -38,12 +60,13 @@ private:
     EFLAGS_OF = 11,
     EFLAGS_UNDEFINED = 32
   };
-  // Map of physical registers -> virtual registers
-  std::map<unsigned int, unsigned int> physToVirtMap;
 
-  // Map of physical registers -> Value * created
-  std::map<unsigned int, Value *> physToValueMap;
-  // std::stack<Value *> FPURegisterStack;
+  X86RaisedValueTracker *raisedValues;
+
+  // Set of reaching definitions that were not promoted during since defining
+  // block is not yet raised and need to be promoted upon raising all blocks.
+  std::set<PhysRegMBBValTuple> reachingDefsToPromote;
+
   static const uint8_t FPUSTACK_SZ = 8;
   struct {
     int8_t TOP;
@@ -107,8 +130,6 @@ private:
   // to raise control transfer instructions in a second pass.
   bool recordMachineInstrInfo(const MachineInstr &);
 
-  bool insertAllocaInEntryBlock(Instruction *alloca);
-
   // Raise Machine Jumptable
   bool raiseMachineJumpTable();
 
@@ -131,12 +152,8 @@ private:
 
   bool changePhysRegToVirtReg(MachineInstr &);
 
-  unsigned int find64BitSuperReg(unsigned int);
-  Value *findPhysRegSSAValue(unsigned int);
   Value *matchSSAValueToSrcRegSize(const MachineInstr &mi, unsigned SrcOpIndex);
 
-  std::pair<std::map<unsigned int, Value *>::iterator, bool>
-  updatePhysRegSSAValue(unsigned int PhysReg, Value *);
   Type *getFunctionReturnType();
   Type *getReturnTypeFromMBB(MachineBasicBlock &MBB);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
@@ -145,10 +162,17 @@ private:
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
 
-  Value *getRegValue(unsigned PReg);
+  Value *getRegOrArgValue(unsigned PReg, int MBBNo);
   Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex);
 
-  BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
+  bool handleUnpromotedReachingDefs();
+
+  bool hasPhysRegDefInBlock(int PhysReg, const MachineInstr *StartMI,
+                            const MachineBasicBlock *MBB,
+                            unsigned StopAtInstProp, bool &HasStopInst);
+
+  // Return the Type of the physical register.
+  Type *getPhysRegType(unsigned int PhysReg);
 
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;

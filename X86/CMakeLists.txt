@@ -12,6 +12,7 @@ add_llvm_library(X86Raiser
   X86ModuleRaiser.cpp
   X86MachineInstructionRaiser.cpp
   X86JumpTables.cpp
+  X86RaisedValueTracker.cpp
 
   DEPENDS
     ${LLVM_MCTOLL_DEPS}

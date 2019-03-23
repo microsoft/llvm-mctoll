@@ -25,7 +25,7 @@ public:
   bool raise();
   FunctionType *getRaisedFunctionPrototype();
   int getArgumentNumber(unsigned int);
-  Value *getRegValue(unsigned);
+  Value *getRegOrArgValue(unsigned PReg, int MBBNo);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
 

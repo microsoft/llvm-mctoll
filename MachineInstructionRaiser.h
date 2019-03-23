@@ -51,12 +51,14 @@ public:
   virtual bool raise() { return true; };
   virtual FunctionType *getRaisedFunctionPrototype() = 0;
   virtual int getArgumentNumber(unsigned PReg) = 0;
-  virtual Value *getRegValue(unsigned PReg) = 0;
+  virtual Value *getRegOrArgValue(unsigned PReg, int MBBNo) = 0;
   virtual bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                                       std::vector<Type *> &) = 0;
 
   Function *getRaisedFunction() { return raisedFunction; }
   MCInstRaiser *getMCInstRaiser() { return mcInstRaiser; }
+  MachineFunction &getMF() { return MF; };
+  const ModuleRaiser *getModuleRaiser() { return MR; }
 
   std::vector<ControlTransferInfo *> getControlTransferInfo() {
     return CTInfo;
@@ -65,7 +67,7 @@ public:
 protected:
   MachineFunction &MF;
   // This is the Function object that holds the raised abstraction of MF.
-  // Not the the fucntion associated with MF should not be referenced or
+  // Not the the function associated with MF should not be referenced or
   // updated. It was created just to enable the creation of MF.
   Function *raisedFunction;
   MCInstRaiser *mcInstRaiser;

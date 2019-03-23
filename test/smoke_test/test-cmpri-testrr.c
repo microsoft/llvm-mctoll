@@ -12,7 +12,7 @@
  */
 
 #include <stdio.h>
-void func(unsigned char i, int j) {
+void __attribute__ ((noinline)) func(unsigned char i, int j) {
   unsigned char a;
   if (j == 2)
     a = 4;

@@ -1351,7 +1351,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
         // allInstructionsDecoded &= Disassembled;
         // Add MCInst to the list if all instructions were decoded
-        // successfully till now. Else, do not bother adding since no attemt
+        // successfully till now. Else, do not bother adding since no attempt
         // will be made to raise this function.
         if (Disassembled) {
           mcInstRaiser->addMCInstOrData(Index, Inst);

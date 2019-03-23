@@ -55,7 +55,7 @@ bool ARMMachineInstructionRaiser::buildFuncArgTypeVector(
   return false;
 }
 
-Value *ARMMachineInstructionRaiser::getRegValue(unsigned PReg) {
+Value *ARMMachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
   assert(false && "Unimplemented ARMMachineInstructionRaiser::getRegValue()");
   return nullptr;
 }

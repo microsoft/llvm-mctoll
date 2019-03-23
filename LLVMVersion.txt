@@ -5,27 +5,22 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit c8c4a422420860f7d11d080f0bf5969d2bb4ebbb
-Author: Douglas Yung <douglas.yung@sony.com>
-Date:   Thu Mar 14 01:24:35 2019 +0000
+commit ac90f79174e0c2e9a9f9a3387f41e41980793319
+Author: Simon Pilgrim <llvm-dev@redking.me.uk>
+Date:   Fri Mar 22 20:53:49 2019 +0000
 
-    Fixup tests to check for any MCInst number instead of a specific one.
+    [TargetLowering] SimplifyDemandedBits trunc(srl(x, C1)) - early out for out of range C1. NFCI.
 
-    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@356115 91177308-0d34-0410-b5e6-96231b3b80d8
+    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@356810 91177308-0d34-0410-b5e6-96231b3b80d8
 
 clang:
 
-commit 1437396543aad71aa26679ff366cf0266d6a4e0d
-Author: Nemanja Ivanovic <nemanja.i.ibm@gmail.com>
-Date:   Wed Mar 13 23:54:52 2019 +0000
+commit 884b0b4b1912d272bdf140a63b7d779c785ce7c1
+Author: Evandro Menezes <e.menezes@samsung.com>
+Date:   Fri Mar 22 18:44:09 2019 +0000
 
-    Fix invocation of Gold plugin with LTO after r355331
+    [clang] Add support for Exynos M5 (NFC)
 
-    The above commit breaks the usage of PGO and LTO when -fprofile-use is
-    supplied without a path. This patch changes the usage of this argument
-    to be inline with its use in addPGOAndCoverageFlags().
+    Add Exynos M5 test cases.
 
-    Differential revision: https://reviews.llvm.org/D59304
-
-
-    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@356111 91177308-0d34-0410-b5e6-96231b3b80d8
+    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@356794 91177308-0d34-0410-b5e6-96231b3b80d8

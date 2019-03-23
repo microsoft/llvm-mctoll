@@ -3760,6 +3760,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
       switch (MI.getOpcode()) {
       case X86::ADD8i8:
+      case X86::ADD64i32:
       case X86::ADD16ri:
       case X86::ADD16ri8:
       case X86::ADD32ri:
@@ -3772,6 +3773,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::SUB32ri8:
       case X86::SUB64ri8:
       case X86::SUB64ri32:
+      case X86::SUB64i32:
         AdjSPRef.Disp = -Imm;
         break;
       default:
@@ -3851,7 +3853,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
         assert(SrcOp.isImm() && "Expect immediate operand in a BinOp "
                                 "instruction with RI/I operand format");
         // Create constant of type that matches that of the dest operand
-        Type *Ty = getImmOperandType(MI, SrcOp1Index);
+        Type *Ty = getPhysRegType(DstPReg);
         SrcOp2Value = ConstantInt::get(Ty, SrcOp.getImm());
       } else {
         MI.dump();
@@ -3876,6 +3878,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::ADD32ri8:
       case X86::ADD64ri8:
       case X86::ADD64ri32:
+      case X86::ADD64i32:
         // Generate add instruction
         BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
         break;
@@ -3883,6 +3886,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::SUB32ri8:
       case X86::SUB64ri8:
       case X86::SUB64ri32:
+      case X86::SUB64i32:
         // Generate sub instruction
         BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
         break;

@@ -171,10 +171,6 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo) {
 
   // Clean up any duplicate entries in ReachingDefs
   if (ReachingDefs.size() > 1) {
-    // Should have found a reaching definition on each of the predecessor edges
-    assert(ReachingDefs.size() == CurMBB->pred_size() &&
-           "Inconsistent number of reaching definitions found");
-
     std::sort(ReachingDefs.begin(), ReachingDefs.end());
     auto LastElem = std::unique(ReachingDefs.begin(), ReachingDefs.end());
     ReachingDefs.erase(LastElem, ReachingDefs.end());

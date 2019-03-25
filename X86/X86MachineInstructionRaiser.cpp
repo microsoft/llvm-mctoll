@@ -828,6 +828,7 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
              "Null reaching definition found during reaching definition fixup");
       StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,
                                                     DefiningMBBNo, Alloca);
+      assert(StInst != nullptr && "Failed to promote register to memory");
     }
   }
   return true;
@@ -1930,11 +1931,8 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
     if (ImplUsesCount > 0) {
       const MCPhysReg *ImplUses = MCID.getImplicitUses();
       for (unsigned i = 0; i < ImplUsesCount; i++) {
-        // Get the reaching definition in basic block
-        Value *Val = raisedValues
-                         ->getInBlockReachingDef(find64BitSuperReg(ImplUses[i]),
-                                                 MI.getParent()->getNumber())
-                         .second;
+        // Get the reaching definition of the implicit use register.
+        Value *Val = getRegOrArgValue(ImplUses[i], MI.getParent()->getNumber());
         assert((Val != nullptr) &&
                "Unexpected null value of implicit defined registers");
         CurCTInfo->RegValues.push_back(Val);
@@ -4157,6 +4155,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
         case X86::JL_4:
           IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SLT);
           break;
+        case X86::JLE_1:
         case X86::JLE_4:
           IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SLE);
           break;

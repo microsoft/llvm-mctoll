@@ -77,7 +77,9 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
 
         // Section with jump table base has no content.
         if (DataSize == 0)
-          return true;
+          // Continue looking for MIs which potentially load a jumptable base
+          // address.
+          continue;
 
         while (JmpTblEntryOffset < DataSize) {
           // Get the 32-bit value at JmpTblEntryOffset in section data
@@ -167,7 +169,9 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
 
             // Section with jump table base has no content.
             if (DataSize == 0)
-              return true;
+              // Continue looking for MIs which potentially load a jumptable
+              // base address.
+              continue;
 
             BinaryByteStream SectionContent(Contents,
                                             llvm::support::endianness::little);
@@ -176,9 +180,17 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
             while (CurReadByteOffset < DataSize) {
               ArrayRef<uint8_t> v(memReadTargetByteSz);
 
+              if (CurReadByteOffset + memReadTargetByteSz > DataSize)
+                return true;
+
               Error EC = SectionContent.readBytes(CurReadByteOffset,
                                                   memReadTargetByteSz, v);
-              assert(!EC && "Failed to read jumptable data");
+              // Eat the error; the section does not have jumptable data
+              if (EC) {
+                handleAllErrors(std::move(EC), [&](const ErrorInfoBase &EI) {});
+                break;
+              }
+
               uint64_t JmpTgtMemAddr =
                   llvm::support::endian::read64le(v.data());
               // get MBB corresponding to file offset into text section of

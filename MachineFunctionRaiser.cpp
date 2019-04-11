@@ -210,6 +210,16 @@ void ModuleRaiser::addRODataValueAt(Value *v, uint64_t offset) const {
   return;
 }
 
+MachineFunctionRaiser *
+ModuleRaiser::getMachineFunctionRaiser(MachineFunction &MF) {
+  for (auto MFR : mfRaiserVector) {
+    MachineFunction &mf = MFR->getMachineFunction();
+    if (mf.getFunctionNumber() == MF.getFunctionNumber())
+      return MFR;
+  }
+  return nullptr;
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif

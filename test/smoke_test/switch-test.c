@@ -1,4 +1,4 @@
-// RUN: clang -o %t.so %S/Inputs/switch_func.c -shared -fPIC
+// RUN: clang -o %t.so %S/Inputs/switch-func.c -shared -fPIC
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s -check-prefix=DSO
@@ -21,7 +21,7 @@
 // DSO-NEXT: Switch 9
 // DSO-NEXT: Return 22
 
-// RUN: clang -o %t %s %S/Inputs/switch_func.c
+// RUN: clang -o %t %s %S/Inputs/switch-func.c
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t1 %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s -check-prefix=EXEC

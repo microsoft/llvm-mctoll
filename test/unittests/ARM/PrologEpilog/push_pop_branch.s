@@ -20,6 +20,10 @@ test2:
         bl max
         sub sp, r11, #4
         pop {r11, pc}
+        .size    test2, .-test2
+
+        .global max
+        .type max, %function
 max:
         push {r11}
         add r11, sp, #0
@@ -29,4 +33,4 @@ max:
         add sp, r11, #0
         pop {r11}
         bx lr
-        .size    test2, .-test2
+        .size    max, .-max

@@ -19,7 +19,7 @@ using namespace llvm;
 
 char ARMEliminatePrologEpilog::ID = 0;
 
-ARMEliminatePrologEpilog::ARMEliminatePrologEpilog(ModuleRaiser &mr)
+ARMEliminatePrologEpilog::ARMEliminatePrologEpilog(ARMModuleRaiser &mr)
     : ARMRaiserBase(ID, mr) {}
 
 ARMEliminatePrologEpilog::~ARMEliminatePrologEpilog() {}
@@ -88,8 +88,10 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
 
     // Push the MOVr instruction
     if (curMachInstr.getOpcode() == ARM::MOVr) {
-      if ((curMachInstr.getOperand(1).isReg() &&
-           curMachInstr.getOperand(1).getReg() == FramePtr))
+      if (curMachInstr.getOperand(0).isReg() &&
+          curMachInstr.getOperand(0).getReg() == ARM::R11 &&
+          curMachInstr.getOperand(1).isReg() &&
+          curMachInstr.getOperand(1).getReg() == FramePtr)
         prologInstrs.push_back(&curMachInstr);
     }
 
@@ -102,7 +104,9 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
     }
 
     // Push the ADDri instruction
+    // add Rx, sp, #imm ; This kind of patten ought to be eliminated.
     if (curMachInstr.getOpcode() == ARM::ADDri &&
+        curMachInstr.getOperand(0).getReg() == ARM::R11 &&
         curMachInstr.getOperand(1).getReg() == FramePtr) {
       prologInstrs.push_back(&curMachInstr);
     }
@@ -224,7 +228,7 @@ bool ARMEliminatePrologEpilog::eliminateEpilog(MachineFunction &MF) const {
                 BuildMI(MBB, &curMachInstr, DebugLoc(), TII->get(ARM::BX_RET));
             int cpsridx = curMachInstr.findRegisterUseOperandIdx(ARM::CPSR);
             if (cpsridx == -1) {
-              mib.addImm(14);
+              mib.addImm(ARMCC::AL);
             } else {
               mib.add(curMachInstr.getOperand(cpsridx - 1))
                   .add(curMachInstr.getOperand(cpsridx));
@@ -300,6 +304,7 @@ void ARMEliminatePrologEpilog::analyzeStackSize(MachineFunction &mf) {
     }
   }
 }
+
 /// Analyze frame adjustment base on the offset between fp and base sp.
 /// Patterns like:
 /// add	fp, sp, #8
@@ -336,10 +341,9 @@ bool ARMEliminatePrologEpilog::eliminate() {
   if (PrintPass) {
     MF->dump();
     getCRF()->dump();
+    dbgs() << "ARMEliminatePrologEpilog end.\n";
   }
 
-  if (PrintPass)
-    dbgs() << "ARMEliminatePrologEpilog end.\n";
   return !success;
 }
 
@@ -353,9 +357,11 @@ bool ARMEliminatePrologEpilog::runOnMachineFunction(MachineFunction &mf) {
 #ifdef __cplusplus
 extern "C" {
 #endif
-FunctionPass *InitializeARMEliminatePrologEpilog(ModuleRaiser &mr) {
+
+FunctionPass *InitializeARMEliminatePrologEpilog(ARMModuleRaiser &mr) {
   return new ARMEliminatePrologEpilog(mr);
 }
+
 #ifdef __cplusplus
 }
 #endif

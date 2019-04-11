@@ -113,6 +113,8 @@ public:
     return ArbPrecInt.getSExtValue();
   }
 
+  std::map<uint64_t, MCInstOrData> &getMCInstMap() { return mcInstMap; }
+
 private:
   // NOTE: The following data structures are implemented to record instruction
   //       targets. Separate data structures are used instead of aggregating the

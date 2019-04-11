@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declaration of ARMMachineInstructionRaiser
-// class for use by llvm-mctoll.
+// This file contains the declaration of ARMMachineInstructionRaiser class for
+// use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,10 +24,12 @@ public:
                               MCInstRaiser *mcir);
   bool raise();
   FunctionType *getRaisedFunctionPrototype();
-  int getArgumentNumber(unsigned int);
+  int getArgumentNumber(unsigned PReg);
   Value *getRegOrArgValue(unsigned PReg, int MBBNo);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
+
+  std::vector<JumpTableInfo> jtList;
 
 private:
   bool raiseMachineFunction();

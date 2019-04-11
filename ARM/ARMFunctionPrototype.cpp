@@ -1,4 +1,4 @@
-//===- ARMFunctionPrototype.h -----------------------------------*- C++ -*-===//
+//===- ARMFunctionPrototype.cpp - Binary raiser utility llvm-mctoll -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -27,7 +27,7 @@ ARMFunctionPrototype::ARMFunctionPrototype() : MachineFunctionPass(ID) {
 
 ARMFunctionPrototype::~ARMFunctionPrototype() {}
 
-/// Check the first reference of the reg is USE.
+/// isUsedRegiser - Check the first reference of the reg is USE.
 bool ARMFunctionPrototype::isUsedRegiser(unsigned reg,
                                          const MachineBasicBlock &mbb) {
   for (MachineBasicBlock::const_iterator ii = mbb.begin(), ie = mbb.end();
@@ -45,13 +45,11 @@ bool ARMFunctionPrototype::isUsedRegiser(unsigned reg,
   return false;
 }
 
-/// Check the first reference of the reg is DEF.
-void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes,
-                                             const MachineFunction &mf,
-                                             LLVMContext &ctx) {
-  assert(!mf.empty() && "The function body is empty!!!");
+/// genParameterTypes - Check the first reference of the reg is DEF.
+void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes) {
+  assert(!MF->empty() && "The function body is empty!!!");
 
-  const MachineBasicBlock &fmbb = mf.front();
+  const MachineBasicBlock &fmbb = MF->front();
   // TODO: Need to track register liveness on CFG.
 
   DenseMap<int, Type *> tarr;
@@ -60,29 +58,29 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes,
   // The first function argument is from R0.
   if (isUsedRegiser(ARM::R0, fmbb)) {
     maxidx = 0;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
+    tarr[maxidx] = getDefaultType();
   }
 
   // The second function argument is from R1.
   if (isUsedRegiser(ARM::R1, fmbb)) {
     maxidx = 1;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
+    tarr[maxidx] = getDefaultType();
   }
 
   // The third function argument is from R2.
   if (isUsedRegiser(ARM::R2, fmbb)) {
     maxidx = 2;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
+    tarr[maxidx] = getDefaultType();
   }
 
   // The fourth function argument is from R3.
   if (isUsedRegiser(ARM::R3, fmbb)) {
     maxidx = 3;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
+    tarr[maxidx] = getDefaultType();
   }
 
   // The rest of function arguments are from stack.
-  for (MachineFunction::const_iterator mbbi = mf.begin(), mbbe = mf.end();
+  for (MachineFunction::const_iterator mbbi = MF->begin(), mbbe = MF->end();
        mbbi != mbbe; ++mbbi) {
     const MachineBasicBlock &mbb = *mbbi;
 
@@ -118,7 +116,7 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes,
                                             // of register arguments' indices.
             if (maxidx < idx)
               maxidx = idx;
-            tarr[idx] = Type::getInt32Ty(ctx);
+            tarr[idx] = getDefaultType();
           }
         }
       }
@@ -127,13 +125,13 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes,
 
   for (int i = 0; i <= maxidx; ++i) {
     if (tarr[i] == nullptr)
-      paramTypes.push_back(Type::getInt32Ty(ctx));
+      paramTypes.push_back(getDefaultType());
     else
       paramTypes.push_back(tarr[i]);
   }
 }
 
-/// Get all arguments types of current MachineFunction.
+/// isDefinedRegiser - Get all arguments types of current MachineFunction.
 bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
                                             const MachineBasicBlock &mbb) {
 
@@ -159,18 +157,17 @@ bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
   return false;
 }
 
-/// Get return type of current MachineFunction.
-Type *ARMFunctionPrototype::genReturnType(const MachineFunction &mf,
-                                          LLVMContext &ctx) {
+/// genReturnType - Get return type of current MachineFunction.
+Type *ARMFunctionPrototype::genReturnType() {
   // TODO: Need to track register liveness on CFG.
   Type *retTy;
 
-  retTy = Type::getVoidTy(ctx);
-  for (const MachineBasicBlock &mbb : mf) {
+  retTy = Type::getVoidTy(*CTX);
+  for (const MachineBasicBlock &mbb : *MF) {
     if (mbb.succ_empty()) {
       if (isDefinedRegiser(ARM::R0, mbb)) {
         // TODO: Need to identify data type, int, long, float or double.
-        retTy = Type::getInt32Ty(ctx);
+        retTy = getDefaultType();
         break;
       }
     }
@@ -183,12 +180,13 @@ Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
   if (PrintPass)
     dbgs() << "ARMFunctionPrototype start.\n";
 
+  MF = &mf;
   Function &fn = const_cast<Function &>(mf.getFunction());
-  LLVMContext &ctx = fn.getContext();
+  CTX = &fn.getContext();
 
   std::vector<Type *> paramTys;
-  genParameterTypes(paramTys, mf, ctx);
-  Type *retTy = genReturnType(mf, ctx);
+  genParameterTypes(paramTys);
+  Type *retTy = genReturnType();
   FunctionType *fnTy = FunctionType::get(retTy, paramTys, false);
 
   MachineModuleInfo &mmi = mf.getMMI();
@@ -196,14 +194,15 @@ Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
   mdl->getFunctionList().remove(&fn);
   Function *pnfn =
       Function::Create(fnTy, GlobalValue::ExternalLinkage, fn.getName(), mdl);
+  // When run as FunctionPass, the Function must not be empty, so add
+  // EntryBlock at here.
+  BasicBlock::Create(pnfn->getContext(), "EntryBlock", pnfn);
 
   if (PrintPass) {
     mf.dump();
     pnfn->dump();
-  }
-
-  if (PrintPass)
     dbgs() << "ARMFunctionPrototype end.\n";
+  }
 
   return pnfn;
 }
@@ -216,9 +215,11 @@ bool ARMFunctionPrototype::runOnMachineFunction(MachineFunction &mf) {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 MachineFunctionPass *InitializeARMFunctionPrototype() {
   return new ARMFunctionPrototype();
 }
+
 #ifdef __cplusplus
 }
 #endif

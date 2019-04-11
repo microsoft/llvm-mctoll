@@ -174,19 +174,6 @@ private:
   // Return the Type of the physical register.
   Type *getPhysRegType(unsigned int PhysReg);
 
-  // JumpTableBlock - the Jumptable case.
-  using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
-
-  struct JumpTableInfo {
-    // Jump table index
-    unsigned jtIdx;
-
-    // Conditon Machine BasicBlock.
-    MachineBasicBlock *conditionMBB;
-
-    // Default Machine BasicBlock.
-    MachineBasicBlock *df_MBB;
-  };
 
   std::vector<JumpTableInfo> jtList;
 };

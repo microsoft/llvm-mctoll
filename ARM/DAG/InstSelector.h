@@ -1,9 +1,8 @@
 //===- InstSelector.h -------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -20,8 +19,8 @@
 
 using namespace llvm;
 
-/// InstSelector - Does some selections on the DAG. So far, it just does the
-/// instruction selection.
+/// Does some selections on the DAG. So far, it just does the instruction
+/// selection.
 class InstSelector {
 public:
   InstSelector(DAGRaisingInfo &dagInfo, FunctionRaisingInfo &funcInfo)
@@ -41,19 +40,18 @@ private:
     return npi->IsTwoAddress;
   }
   bool getAddressModule(SDNode *node);
-  /// getMDOperand - Gets the Metadata of given SDNode.
+  /// Gets the Metadata of given SDNode.
   SDValue getMDOperand(SDNode *N);
-  /// recordDefinition - Record the new defined Node, it uses to map the
-  /// register number to Node. In DAG emitter, emitter get a value of use base
-  /// on this defined Node.
+  /// Record the new defined Node, it uses to map the register number to Node.
+  /// In DAG emitter, emitter get a value of use base on this defined Node.
   void recordDefinition(SDNode *oldNode, SDNode *newNode);
-  /// replaceNode - Replace all uses of F with T, then remove F from the DAG.
+  /// Replace all uses of F with T, then remove F from the DAG.
   void replaceNode(SDNode *F, SDNode *T);
-  /// isArgumentNode - Checks the SDNode is a function argument or not.
+  /// Checks the SDNode is a function argument or not.
   bool isArgumentNode(SDNode *node);
-  /// isReturnNode - Checks the SDNode is a function return or not.
+  /// Checks the SDNode is a function return or not.
   bool isReturnNode(SDNode *node);
-  /// selectCode - Instruction opcode selection.
+  /// Instruction opcode selection.
   void selectCode(SDNode *N);
   EVT getDefaultEVT() { return EVT::getEVT(FuncInfo->getDefaultType()); }
 

@@ -1,9 +1,8 @@
 //===- ARMFunctionPrototype.cpp - Binary raiser utility llvm-mctoll -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -27,7 +26,7 @@ ARMFunctionPrototype::ARMFunctionPrototype() : MachineFunctionPass(ID) {
 
 ARMFunctionPrototype::~ARMFunctionPrototype() {}
 
-/// isUsedRegiser - Check the first reference of the reg is USE.
+/// Check the first reference of the reg is USE.
 bool ARMFunctionPrototype::isUsedRegiser(unsigned reg,
                                          const MachineBasicBlock &mbb) {
   for (MachineBasicBlock::const_iterator ii = mbb.begin(), ie = mbb.end();
@@ -45,7 +44,7 @@ bool ARMFunctionPrototype::isUsedRegiser(unsigned reg,
   return false;
 }
 
-/// genParameterTypes - Check the first reference of the reg is DEF.
+/// Check the first reference of the reg is DEF.
 void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes) {
   assert(!MF->empty() && "The function body is empty!!!");
 
@@ -131,7 +130,7 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes) {
   }
 }
 
-/// isDefinedRegiser - Get all arguments types of current MachineFunction.
+/// Get all arguments types of current MachineFunction.
 bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
                                             const MachineBasicBlock &mbb) {
 
@@ -157,7 +156,7 @@ bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
   return false;
 }
 
-/// genReturnType - Get return type of current MachineFunction.
+/// Get return type of current MachineFunction.
 Type *ARMFunctionPrototype::genReturnType() {
   // TODO: Need to track register liveness on CFG.
   Type *retTy;

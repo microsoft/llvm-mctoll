@@ -1,9 +1,8 @@
 //===- DAGBuilder.cpp - Binary raiser utility llvm-mctoll -----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -20,7 +19,7 @@
 
 using namespace llvm;
 
-/// visit - Collects the information of each MI to create SDNodes.
+/// Collects the information of each MI to create SDNodes.
 void DAGBuilder::visit(const MachineInstr &mi) {
   std::vector<SDValue> vctv;
   std::vector<EVT> vctt;
@@ -118,7 +117,7 @@ void DAGBuilder::visit(const MachineInstr &mi) {
   visitCC(mi, mnode);
 }
 
-/// visitCC - Analyzes CPSR register information of MI to collect conditional
+/// Analyzes CPSR register information of MI to collect conditional
 /// code properties.
 void DAGBuilder::visitCC(const MachineInstr &mi, MachineSDNode *mnode) {
   NodePropertyInfo &NodeInfo = *DAGInfo.NPMap[mnode];

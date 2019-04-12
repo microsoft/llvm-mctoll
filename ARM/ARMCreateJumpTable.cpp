@@ -1,9 +1,8 @@
-//===----- ARMCreateJumpTable.cpp - Binary raiser utility llvm-mctoll -----===//
+//===- ARMCreateJumpTable.cpp - Binary raiser utility llvm-mctoll ---------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -43,7 +42,7 @@ void ARMCreateJumpTable::init(MachineFunction *mf, Function *rf) {
   ARMRaiserBase::init(mf, rf);
 }
 
-// Get the MachineBasicBlock to add the jumptable instruction
+/// Get the MachineBasicBlock to add the jumptable instruction.
 MachineBasicBlock *ARMCreateJumpTable::checkJumptableBB(MachineFunction &MF) {
   MachineBasicBlock *jumptableBB = nullptr;
   for (MachineBasicBlock &MBB : MF) {
@@ -111,7 +110,7 @@ bool ARMCreateJumpTable::UpdatetheBranchInst(MachineBasicBlock &MBB) {
   return true;
 }
 
-// Raise the machine jumptable accordint to the CFG.
+/// Raise the machine jumptable accordint to the CFG.
 bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
   // A vector to record MBBS that need be erased upon jump table creation.
   std::vector<MachineBasicBlock *> MBBsToBeErased;

@@ -1,9 +1,8 @@
 //===- ARMInstructionSplitting.h --------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -22,9 +21,9 @@
 
 using namespace llvm;
 
-/// ARMInstructionSplitting - Some instructions which their patterns include
-/// more than one operations, like 'add r0, r1, r0, asr r1' or
-/// 'ldr r0, [r1, #4]', are splitted into multiple MIs at here.
+/// Some instructions which their patterns include more than one operations,
+/// like 'add r0, r1, r0, asr r1' or 'ldr r0, [r1, #4]', are splitted into
+/// multiple MIs at here.
 class ARMInstructionSplitting : public ARMRaiserBase {
 public:
   static char ID;
@@ -35,9 +34,9 @@ public:
   bool runOnMachineFunction(MachineFunction &mf) override;
 
 private:
-  /// checkisShifter - Check if the MI has shift pattern.
+  /// Check if the MI has shift pattern.
   unsigned checkisShifter(unsigned Opcode);
-  /// getShiftOpcode - Get the shift opcode in MI.
+  /// Get the shift opcode in MI.
   unsigned getShiftOpcode(ARM_AM::ShiftOpc SOpc, unsigned OffSet);
   MachineInstr *splitLDRSTR(MachineBasicBlock &MBB, MachineInstr &MI);
   MachineInstr *splitLDRSTRPre(MachineBasicBlock &MBB, MachineInstr &MI);
@@ -51,13 +50,11 @@ private:
                        unsigned newOpc, int idx);
   MachineInstr *splitCS(MachineBasicBlock &MBB, MachineInstr &MI,
                         unsigned newOpc, int idx);
-  /// isShift_C - True if the ARM instruction performs Shift_C().
+  /// True if the ARM instruction performs Shift_C().
   bool isShift_C(unsigned Opcode);
-  /// getLoadStoreOpcode - No matter what pattern of Load/Store is, change
-  /// the Opcode to xxxi12.
+  /// No matter what pattern of Load/Store is, change the Opcode to xxxi12.
   unsigned getLoadStoreOpcode(unsigned Opcode);
-  /// isLDRSTRPre - If the MI is load/store which needs wback,
-  /// it will return true;
+  /// If the MI is load/store which needs wback, it will return true.
   bool isLDRSTRPre(unsigned Opcode);
   MachineInstrBuilder &addOperand(MachineInstrBuilder &mib, MachineOperand &mo,
                                   bool isDef = false);

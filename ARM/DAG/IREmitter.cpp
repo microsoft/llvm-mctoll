@@ -1,9 +1,8 @@
 //===- IREmitter.cpp - Binary raiser utility llvm-mctoll ------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -26,8 +25,8 @@ IREmitter::IREmitter(BasicBlock *bb, DAGRaisingInfo *dagInfo,
       DAG(&dagInfo->getCurDAG()), CTX(DAG->getContext()), FuncInfo(funcInfo),
       DLT(funcInfo->DLT), MR(funcInfo->MR), IRB(bb) {}
 
-// raiseISDOpcodeToInstruction - Map ISD opcode to Instruction opcode. But some
-// Instruction opcode without corresponding ISD opcode mapping.
+// Map ISD opcode to Instruction opcode. But some instruction opcode without
+// corresponding ISD opcode mapping.
 static int raiseISDOpcodeToInstruction(unsigned Opcode) {
   enum InstructionOpcodes {
 #define HANDLE_INST(NUM, OPCODE, CLASS) OPCODE = NUM,
@@ -227,7 +226,7 @@ void IREmitter::emitCondCode(unsigned CondValue, BasicBlock *BB,
   }
 }
 
-/// createAndEmitPHINode - Create PHINode for value use selection when running.
+/// Create PHINode for value use selection when running.
 PHINode *IREmitter::createAndEmitPHINode(SDNode *Node, BasicBlock *BB,
                                          BasicBlock *IfBB, BasicBlock *ElseBB,
                                          Instruction *IfInst) {
@@ -246,7 +245,7 @@ PHINode *IREmitter::createAndEmitPHINode(SDNode *Node, BasicBlock *BB,
   return phi;
 }
 
-/// emitCPSR - Update the N Z C V flags of global variable.
+/// Update the N Z C V flags of global variable.
 /// Implement AddWithCarry of encoding of instruction.
 /// AddWithCarry(Operand0, Operand1, Flag);
 void IREmitter::emitCPSR(Value *Operand0, Value *Operand1, BasicBlock *BB,
@@ -489,7 +488,7 @@ static uint64_t getMCInstIndex(const MachineInstr &MI) {
   return ArbPrecInt.getSExtValue();
 }
 
-/// emitSDNode - Generate SDNode code for a target-independent node.
+/// Generate SDNode code for a target-independent node.
 /// Emit SDNode to Instruction and add to BasicBlock.
 /// 1. Map ISD opcode to Instruction opcode.
 /// 2. Abstract node to instruction.

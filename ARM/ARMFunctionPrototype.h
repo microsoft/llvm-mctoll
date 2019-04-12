@@ -1,9 +1,8 @@
 //===- ARMFunctionPrototype.h -----------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,8 +20,7 @@
 
 using namespace llvm;
 
-/// ARMFunctionPrototype - This is used to discover function prototypes by
-/// analyzing code of functions.
+/// This is used to discover function prototypes by analyzing code of functions.
 class ARMFunctionPrototype : public MachineFunctionPass {
 public:
   ARMFunctionPrototype();
@@ -37,13 +35,13 @@ private:
   Type *getDefaultType() {
     return Type::getIntNTy(*CTX, MF->getDataLayout().getPointerSizeInBits());
   };
-  /// isUsedRegiser - Check the first reference of the reg is USE.
+  /// Check the first reference of the reg is USE.
   bool isUsedRegiser(unsigned reg, const MachineBasicBlock &mbb);
-  /// isDefinedRegiser - Check the first reference of the reg is DEF.
+  /// Check the first reference of the reg is DEF.
   bool isDefinedRegiser(unsigned reg, const MachineBasicBlock &mbb);
-  /// genParameterTypes - Get all arguments types of current MachineFunction.
+  /// Get all arguments types of current MachineFunction.
   void genParameterTypes(std::vector<Type *> &paramTypes);
-  /// genReturnType - Get return type of current MachineFunction.
+  /// Get return type of current MachineFunction.
   Type *genReturnType();
 
   bool PrintPass;

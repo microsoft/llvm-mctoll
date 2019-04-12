@@ -1,9 +1,8 @@
 //===- ARMSelectionDAGISel.h ------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -24,9 +23,8 @@
 #include "ModuleRaiser.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 
-/// ARMSelectionDAGISel - This is responsible for constructing DAG, and does
-/// instruction selection on the DAG, eventually emits SDNodes of the DAG to
-/// LLVM IRs.
+/// This is responsible for constructing DAG, and does instruction selection on
+/// the DAG, eventually emits SDNodes of the DAG to LLVM IRs.
 class ARMSelectionDAGISel : public ARMRaiserBase {
 public:
   ARMSelectionDAGISel(ARMModuleRaiser &mr);

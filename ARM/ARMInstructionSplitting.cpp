@@ -1,9 +1,8 @@
 //===- ARMInstructionSplitting.cpp - Binary raiser utility llvm-mctoll ----===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -34,7 +33,7 @@ void ARMInstructionSplitting::init(MachineFunction *mf, Function *rf) {
   CTX = &M->getContext();
 }
 
-/// checkisShifter - Check if the MI has shift pattern.
+/// Check if the MI has shift pattern.
 unsigned ARMInstructionSplitting::checkisShifter(unsigned Opcode) {
   switch (Opcode) {
   case ARM::MOVsr:
@@ -84,8 +83,7 @@ unsigned ARMInstructionSplitting::checkisShifter(unsigned Opcode) {
   }
 }
 
-/// isLDRSTRPre - If the MI is load/store which needs wback,
-/// it will return true;
+/// If the MI is load/store which needs wback, it will return true.
 bool ARMInstructionSplitting::isLDRSTRPre(unsigned Opcode) {
   switch (Opcode) {
   case ARM::LDR_PRE_REG:
@@ -102,8 +100,7 @@ bool ARMInstructionSplitting::isLDRSTRPre(unsigned Opcode) {
   }
 }
 
-/// getLoadStoreOpcode - No matter what pattern of Load/Store is, change
-/// the Opcode to xxxi12.
+/// No matter what pattern of Load/Store is, change the Opcode to xxxi12.
 unsigned ARMInstructionSplitting::getLoadStoreOpcode(unsigned Opcode) {
   switch (Opcode) {
   case ARM::LDRrs:
@@ -131,7 +128,7 @@ unsigned ARMInstructionSplitting::getLoadStoreOpcode(unsigned Opcode) {
   }
 }
 
-/// isShift_C - True if the ARM instruction performs Shift_C().
+/// True if the ARM instruction performs Shift_C().
 bool ARMInstructionSplitting::isShift_C(unsigned Opcode) {
   switch (Opcode) {
   case ARM::ANDrsr:
@@ -154,7 +151,7 @@ bool ARMInstructionSplitting::isShift_C(unsigned Opcode) {
   }
 }
 
-/// getShiftOpcode - Get the shift opcode in MI.
+/// Get the shift opcode in MI.
 unsigned ARMInstructionSplitting::getShiftOpcode(ARM_AM::ShiftOpc SOpc,
                                                  unsigned OffSet) {
   switch (SOpc) {
@@ -211,9 +208,9 @@ ARMInstructionSplitting::addOperand(MachineInstrBuilder &mib,
   return mib;
 }
 
-// Split LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, #+/-<imm>]! to:
-// ADD Rn, Rn, #imm
-// LDRxxx/STRxxx Rt, [Rn]
+/// Split LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, #+/-<imm>]! to:
+/// ADD Rn, Rn, #imm
+/// LDRxxx/STRxxx Rt, [Rn]
 MachineInstr *ARMInstructionSplitting::splitLDRSTRPreImm(MachineBasicBlock &MBB,
                                                          MachineInstr &MI) {
   MachineOperand &Rd = MI.getOperand(0);
@@ -263,10 +260,10 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRPreImm(MachineBasicBlock &MBB,
   return &MI;
 }
 
-// Split LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, +/-<Rm>{, <shift>}]! to:
-// Rm shift #imm, but write result to VReg.
-// Add Rn, Rm
-// LDRxxx/STRxxx Rt, [Rn]
+/// Split LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, +/-<Rm>{, <shift>}]! to:
+/// Rm shift #imm, but write result to VReg.
+/// Add Rn, Rm
+/// LDRxxx/STRxxx Rt, [Rn]
 MachineInstr *ARMInstructionSplitting::splitLDRSTRPre(MachineBasicBlock &MBB,
                                                       MachineInstr &MI) {
   unsigned Simm = MI.getOperand(4).getImm();
@@ -394,9 +391,9 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRPre(MachineBasicBlock &MBB,
   return &MI;
 }
 
-// Split LDRxxx/STRxxx<c><q> <Rd>, [<Rn>, +/-<#imm>] to:
-// Add VReg, Rn, #imm
-// LDRxxx/STRxxx Rd, [VReg]
+/// Split LDRxxx/STRxxx<c><q> <Rd>, [<Rn>, +/-<#imm>] to:
+/// Add VReg, Rn, #imm
+/// LDRxxx/STRxxx Rd, [VReg]
 MachineInstr *ARMInstructionSplitting::splitLDRSTRImm(MachineBasicBlock &MBB,
                                                       MachineInstr &MI) {
   unsigned VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
@@ -444,10 +441,10 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRImm(MachineBasicBlock &MBB,
   return &MI;
 }
 
-// Split LDRxxx/STRxxx<c><q> <Rd>, [<Rn>, +/-<Rm>{, <shift>}] to:
-// Rm shift #imm, but write result to VReg.
-// Add VReg, Rn, Rm
-// LDRxxx/STRxxx Rd, [VReg]
+/// Split LDRxxx/STRxxx<c><q> <Rd>, [<Rn>, +/-<Rm>{, <shift>}] to:
+/// Rm shift #imm, but write result to VReg.
+/// Add VReg, Rn, Rm
+/// LDRxxx/STRxxx Rd, [VReg]
 MachineInstr *ARMInstructionSplitting::splitLDRSTR(MachineBasicBlock &MBB,
                                                    MachineInstr &MI) {
   unsigned Simm = MI.getOperand(3).getImm();
@@ -564,7 +561,7 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTR(MachineBasicBlock &MBB,
   return &MI;
 }
 
-// Split 'Opcode Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
+/// Split 'Opcode Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitCommon(MachineBasicBlock &MBB,
                                                    MachineInstr &MI,
                                                    unsigned newOpc) {
@@ -657,7 +654,7 @@ MachineInstr *ARMInstructionSplitting::splitCommon(MachineBasicBlock &MBB,
   return mi;
 }
 
-// Split 'opcode<s> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
+/// Split 'opcode<s> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitS(MachineBasicBlock &MBB,
                                               MachineInstr &MI, unsigned newOpc,
                                               int idx) {
@@ -832,7 +829,7 @@ MachineInstr *ARMInstructionSplitting::splitS(MachineBasicBlock &MBB,
   return mi;
 }
 
-// Split 'opcode<c> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
+/// Split 'opcode<c> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitC(MachineBasicBlock &MBB,
                                               MachineInstr &MI, unsigned newOpc,
                                               int idx) {
@@ -935,7 +932,7 @@ MachineInstr *ARMInstructionSplitting::splitC(MachineBasicBlock &MBB,
   return mi;
 }
 
-// Split 'opcode<s><c> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
+/// Split 'opcode<s><c> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitCS(MachineBasicBlock &MBB,
                                                MachineInstr &MI,
                                                unsigned newOpc, int idx) {

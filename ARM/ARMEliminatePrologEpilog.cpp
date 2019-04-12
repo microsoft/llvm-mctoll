@@ -1,16 +1,15 @@
-//===- ARMEliminatePrologEpilog.cpp - Binary raiser utility llvm-mctoll -===//
+//===- ARMEliminatePrologEpilog.cpp - Binary raiser utility llvm-mctoll ---===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
 // This file contains the implementation of ARMEliminatePrologEpilog class
 // for use by llvm-mctoll.
 //
-//===----------------------------------------------------------------------===/
+//===----------------------------------------------------------------------===//
 
 #include "ARMEliminatePrologEpilog.h"
 #include "ARMSubtarget.h"
@@ -28,8 +27,8 @@ void ARMEliminatePrologEpilog::init(MachineFunction *mf, Function *rf) {
   ARMRaiserBase::init(mf, rf);
 }
 
-// Return true if an operand in the instrs vector matches the passed register
-// number, otherwise false.
+/// Return true if an operand in the instrs vector matches the passed register
+/// number, otherwise false.
 bool ARMEliminatePrologEpilog::checkRegister(
     unsigned Reg, std::vector<MachineInstr *> &instrs) const {
   std::vector<MachineInstr *>::iterator it = instrs.begin();
@@ -48,32 +47,32 @@ bool ARMEliminatePrologEpilog::checkRegister(
   return false;
 }
 
-// Raise the function prolog.
-//
-// Look for the following instructions and eliminate them:
-//       str fp, [sp, #-4]!
-//       add fp, sp, #0
-//
-//       sub sp, fp, #0
-//       ldr fp, [sp], #4
-// AND
-//       push {r11,lr}
-//       add r11, sp, #4
-//
-//       sub sp, r11, #4
-//       pop	{r11, pc}
-// AND
-//       stmdb r13!, {r0-r3}
-//       stmdb r13!, {r4-r12,r13,r14}
-//
-//       ldmia r13, {r4-r11, r13, r15}
-// AND
-//       mov r12, r13
-//       stmdb r13!, {r0-r3}
-//       stmdb r13!, {r4-r12, r14}
-//       sub r11, r12, #16
-//
-//       ldmdb r13, {r4-r11, r13, r15}
+/// Raise the function prolog.
+///
+/// Look for the following instructions and eliminate them:
+///       str fp, [sp, #-4]!
+///       add fp, sp, #0
+///
+///       sub sp, fp, #0
+///       ldr fp, [sp], #4
+/// AND
+///       push {r11,lr}
+///       add r11, sp, #4
+///
+///       sub sp, r11, #4
+///       pop	{r11, pc}
+/// AND
+///       stmdb r13!, {r0-r3}
+///       stmdb r13!, {r4-r12,r13,r14}
+///
+///       ldmia r13, {r4-r11, r13, r15}
+/// AND
+///       mov r12, r13
+///       stmdb r13!, {r0-r3}
+///       stmdb r13!, {r4-r12, r14}
+///       sub r11, r12, #16
+///
+///       ldmdb r13, {r4-r11, r13, r15}
 bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
   std::vector<MachineInstr *> prologInstrs;
   MachineBasicBlock &frontMBB = MF.front();

@@ -1,9 +1,8 @@
 //===- ARMFrameBuilder.h ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -22,9 +21,9 @@
 
 using namespace llvm;
 
-/// ARMFrameBuilder - This class is use to build ARM abstract stack frame by
-/// analyzing ARM SP register operations. Simultaneously, converts MI SP
-/// operands to MO_FrameIndex type.
+/// This class is use to build ARM abstract stack frame by analyzing ARM SP
+/// register operations. Simultaneously, converts MI SP operands to
+/// MO_FrameIndex type.
 class ARMFrameBuilder : public ARMRaiserBase {
 private:
   struct StackElement {
@@ -50,15 +49,14 @@ public:
 private:
   unsigned getBitCount(unsigned opcode);
   Type *getStackType(unsigned size);
-  /// replaceNonSPBySP - Replace common regs assigned by SP to SP.
+  /// Replace common regs assigned by SP to SP.
   bool replaceNonSPBySP(MachineInstr &mi);
-  /// identifyStackOp - Analyze frame index of stack operands.
+  /// Analyze frame index of stack operands.
   int64_t identifyStackOp(const MachineInstr &mi);
-  /// searchStackObjects - Find out all of frame relative operands, and update
-  /// them.
+  /// Find out all of frame relative operands, and update them.
   void searchStackObjects(MachineFunction &mf);
 
-  /// RegAssignedBySP - Records of assigned common registers by sp.
+  /// Records of assigned common registers by sp.
   SmallVector<unsigned, 16> RegAssignedBySP;
 };
 

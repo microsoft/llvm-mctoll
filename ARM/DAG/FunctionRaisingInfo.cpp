@@ -1,9 +1,8 @@
 //===- FunctionRaisingInfo.cpp - Binary raiser utility llvm-mctoll --------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,8 +16,8 @@
 
 using namespace llvm;
 
-/// set - Initialize this FunctionRaisingInfo with the given Function
-/// and its associated MachineFunction.
+/// Initialize this FunctionRaisingInfo with the given Function and its
+/// associated MachineFunction.
 void FunctionRaisingInfo::set(ARMModuleRaiser &mr, Function &fn,
                               MachineFunction &mf, SelectionDAG *dag) {
   MR = &mr;
@@ -46,7 +45,7 @@ SDValue FunctionRaisingInfo::getValFromRegMap(SDValue val) {
   return (RegValMap.count(reg) == 0) ? val : SDValue(RegValMap[reg], 0);
 }
 
-/// clear - Clear out all the function-specific state. This returns this
+/// Clear out all the function-specific state. This returns this
 /// FunctionRaisingInfo to an empty state, ready to be used for a
 /// different function.
 void FunctionRaisingInfo::clear() {
@@ -59,8 +58,7 @@ void FunctionRaisingInfo::clear() {
   AllocaMap.clear();
 }
 
-/// getBasicBlock - Get the corresponding BasicBlock of given
-/// MachineBasicBlock.
+/// Get the corresponding BasicBlock of given MachineBasicBlock.
 BasicBlock *FunctionRaisingInfo::getBasicBlock(MachineBasicBlock &mbb) {
   for (auto bb : MBBMap) {
     if (bb.second == &mbb)
@@ -70,9 +68,9 @@ BasicBlock *FunctionRaisingInfo::getBasicBlock(MachineBasicBlock &mbb) {
   return nullptr;
 }
 
-/// getOrCreateBasicBlock - Get the corresponding BasicBlock of given
-/// MachineBasicBlock. If does not give a MachineBasicBlock, it will create
-/// a new BasicBlock on current Function, and returns it.
+/// Get the corresponding BasicBlock of given MachineBasicBlock.
+/// If does not give a MachineBasicBlock, it will create a new BasicBlock
+/// on current Function, and returns it.
 BasicBlock *FunctionRaisingInfo::getOrCreateBasicBlock(MachineBasicBlock *mbb) {
   Function *fn = getCRF();
   if (mbb == nullptr)

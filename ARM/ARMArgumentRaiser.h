@@ -1,9 +1,8 @@
 //===- ARMArgumentRaiser.h --------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,10 +18,10 @@
 
 using namespace llvm;
 
-/// ARMArgumentRaiser - Each function argument is remarked as stack slot at
-/// here, it is used to identify the function arguments in emitting DAG. Using
-/// stack 0 represent the return value, and using stack index from 1 to argument
-/// count to represent function arguments of MachineInstr.
+/// Each function argument is remarked as stack slot at here, it is used to
+/// identify the function arguments in emitting DAG. Using stack 0 represent
+/// the return value, and using stack index from 1 to argument count to
+/// represent function arguments of MachineInstr.
 class ARMArgumentRaiser : public ARMRaiserBase {
 
 public:
@@ -36,17 +35,15 @@ public:
 
 private:
   int genStackObject(int idx);
-  /// updateReturnRegister - Change all return relative register operands to
-  /// stack 0.
+  /// Change all return relative register operands to stack 0.
   void updateReturnRegister(MachineFunction &mf);
-  /// updateParameterRegister - Change all function arguments of registers into
-  /// stack elements with same indexes of arguments.
+  /// Change all function arguments of registers into stack elements with
+  /// same indexes of arguments.
   void updateParameterRegister(unsigned reg, MachineBasicBlock &mbb);
-  /// updateParameterFrame - Change rest of function arguments on stack frame
-  /// into stack elements.
+  /// Change rest of function arguments on stack frame into stack elements.
   void updateParameterFrame(MachineFunction &mf);
-  /// updateParameterInstr - Using newly created stack elements replace relative
-  /// operands in MachineInstr.
+  /// Using newly created stack elements replace relative operands in
+  /// MachineInstr.
   void updateParameterInstr(MachineFunction &mf);
 
   MachineFrameInfo *MFI;

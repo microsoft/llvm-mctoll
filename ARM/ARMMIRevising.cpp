@@ -1,9 +1,8 @@
 //===- ARMMIRevising.cpp - Binary raiser utility llvm-mctoll --------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -71,7 +70,7 @@ uint64_t getLoadAlignProgramHeader(const ELFFile<ELFT> *Obj) {
   return 0;
 }
 
-/// getCalledFunctionAtPLTOffset - Create function for external function.
+/// Create function for external function.
 uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
                                                      uint64_t CallAddr) {
   const ELF32LEObjectFile *Elf32LEObjFile =
@@ -172,7 +171,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
   return 0;
 }
 
-/// relocateBL - Relocate call branch instructions in object files.
+/// Relocate call branch instructions in object files.
 void ARMMIRevising::relocateBL(MachineInstr &MInst) {
   int64_t relCallTargetOffset = MInst.getOperand(0).getImm();
 
@@ -225,8 +224,7 @@ void ARMMIRevising::relocateBL(MachineInstr &MInst) {
   }
 }
 
-/// addressPCRelativeData - Address PC relative data in function, and create
-/// corresponding global value.
+/// Address PC relative data in function, and create corresponding global value.
 void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
   int64_t Imm = 0;
   const Value *GlobVal = nullptr;
@@ -453,8 +451,8 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
   }
 }
 
-/// decodeModImmOperand - Decode modified immediate constants in some
-/// instructions with immediate operand.
+/// Decode modified immediate constants in some instructions with immediate
+/// operand.
 void ARMMIRevising::decodeModImmOperand(MachineInstr &MInst) {
   switch (MInst.getOpcode()) {
   default:
@@ -469,8 +467,8 @@ void ARMMIRevising::decodeModImmOperand(MachineInstr &MInst) {
   }
 }
 
-/// removeNeedlessInst - Remove some useless operations of instructions.
-/// Some instructions like NOP (mov r0, r0).
+/// Remove some useless operations of instructions. Some instructions like
+/// NOP (mov r0, r0).
 bool ARMMIRevising::removeNeedlessInst(MachineInstr *MInst) {
   if (MInst->getOpcode() == ARM::MOVr && MInst->getNumOperands() >= 2 &&
       MInst->getOperand(0).isReg() && MInst->getOperand(1).isReg() &&

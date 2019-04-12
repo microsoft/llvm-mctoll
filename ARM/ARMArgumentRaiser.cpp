@@ -1,9 +1,8 @@
 //===- ARMArgumentRaiser.cpp - Binary raiser utility llvm-mctoll ----------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -30,8 +29,7 @@ void ARMArgumentRaiser::init(MachineFunction *mf, Function *rf) {
   MFI = &MF->getFrameInfo();
 }
 
-/// updateReturnRegister - Change all return relative register operands to
-/// stack 0.
+/// Change all return relative register operands to stack 0.
 void ARMArgumentRaiser::updateReturnRegister(MachineFunction &mf) {
   for (MachineBasicBlock &mbb : mf) {
     if (mbb.succ_empty()) {
@@ -57,8 +55,8 @@ void ARMArgumentRaiser::updateReturnRegister(MachineFunction &mf) {
   }
 }
 
-/// updateParameterRegister - Change all function arguments of registers into
-/// stack elements with same indexes of arguments.
+/// Change all function arguments of registers into stack elements with same
+/// indexes of arguments.
 void ARMArgumentRaiser::updateParameterRegister(unsigned reg,
                                                 MachineBasicBlock &mbb) {
   for (MachineBasicBlock::iterator ii = mbb.begin(), ie = mbb.end(); ii != ie;
@@ -81,8 +79,7 @@ void ARMArgumentRaiser::updateParameterRegister(unsigned reg,
   }
 }
 
-/// updateParameterFrame - Change rest of function arguments on stack frame
-/// into stack elements.
+/// Change rest of function arguments on stack frame into stack elements.
 void ARMArgumentRaiser::updateParameterFrame(MachineFunction &mf) {
 
   for (MachineFunction::iterator mbbi = mf.begin(), mbbe = mf.end();
@@ -113,8 +110,8 @@ void ARMArgumentRaiser::updateParameterFrame(MachineFunction &mf) {
   }
 }
 
-/// updateParameterInstr - Using newly created stack elements replace relative
-/// operands in MachineInstr.
+/// Using newly created stack elements replace relative operands in
+/// MachineInstr.
 void ARMArgumentRaiser::updateParameterInstr(MachineFunction &mf) {
 
   Function *fn = getCRF();

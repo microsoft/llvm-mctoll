@@ -1,9 +1,8 @@
 //===- SelectionCommon.h ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,10 +18,10 @@
 #include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 
-/// EXTARMISD_OP_BEGIN - This is the start index of EXT_ARMISD. Because node
-/// types which start from ARMISD::VLD1DUP (Next to ARMISD::MEMCPY) are
-/// identified as TARGET_MEMORY_OPCODE, we set EXTARMISD_OP_BEGIN index after
-/// ARMISD::MEMCPY, plugs 40 to keep long time with no confliction.
+/// This is the start index of EXT_ARMISD. Because node types which start
+/// from ARMISD::VLD1DUP (Next to ARMISD::MEMCPY) are identified as
+/// TARGET_MEMORY_OPCODE, we set EXTARMISD_OP_BEGIN index after ARMISD::MEMCPY,
+/// plugs 40 to keep long time with no confliction.
 #define EXTARMISD_OP_BEGIN (ARMISD::MEMCPY + 40)
 
 namespace llvm {
@@ -52,9 +51,8 @@ enum NodeType {
 
 using namespace llvm;
 
-/// NodeProperty - This structure is to extend SDNode properties, some
-/// additional SDNode properties which are used by llvm-mctoll will be kept
-/// at here.
+/// This structure is to extend SDNode properties, some additional SDNode
+/// properties which are used by llvm-mctoll will be kept at here.
 typedef struct NodeProperty {
   bool HasCPSR;
   bool Special;

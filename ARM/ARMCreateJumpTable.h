@@ -1,9 +1,8 @@
-//===-- ARMCreateJumpTable.h - Binary raiser utility llvm-mctoll -===//
+//===- ARMCreateJumpTable.h - Binary raiser utility llvm-mctoll -----------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -33,6 +32,7 @@ public:
 private:
   unsigned int getARMCPSR(unsigned int PhysReg);
   bool raiseMaichineJumpTable(MachineFunction &MF);
+  /// Get the MachineBasicBlock to add the jumptable instruction.
   MachineBasicBlock *checkJumptableBB(MachineFunction &MF);
   bool UpdatetheBranchInst(MachineBasicBlock &MBB);
   std::vector<JumpTableInfo> jtList;

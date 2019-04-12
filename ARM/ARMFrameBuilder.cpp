@@ -1,9 +1,8 @@
 //===- ARMFrameBuilder.cpp - Binary raiser utility llvm-mctoll ------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -131,7 +130,7 @@ Type *ARMFrameBuilder::getStackType(unsigned size) {
   return t;
 }
 
-/// replaceNonSPBySP - Replace common regs assigned by SP to SP.
+/// Replace common regs assigned by SP to SP.
 /// Patterns like:
 /// mov r5, sp
 /// ldr r3, [r5, #4]
@@ -169,7 +168,7 @@ bool ARMFrameBuilder::replaceNonSPBySP(MachineInstr &mi) {
   return false;
 }
 
-/// identifyStackOp - Analyze frame index of stack operands.
+/// Analyze frame index of stack operands.
 /// Some patterns like:
 /// ldr r3, [sp, #12]
 /// str r4, [fp, #-8]
@@ -209,10 +208,8 @@ int64_t ARMFrameBuilder::identifyStackOp(const MachineInstr &mi) {
   return -1;
 }
 
-/// searchStackObjects - Find out all of frame relative operands, and update
-/// them.
+/// Find out all of frame relative operands, and update them.
 void ARMFrameBuilder::searchStackObjects(MachineFunction &mf) {
-
   // <SPOffset, frame_element_ptr>
   std::map<int64_t, StackElement *, std::greater<int64_t>> SPOffElementMap;
   DenseMap<MachineInstr *, StackElement *> InstrToElementMap;

@@ -1,9 +1,8 @@
 //===- InstSelector.cpp - Binary raiser utility llvm-mctoll ---------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,7 +18,7 @@
 
 using namespace llvm;
 
-/// replaceNode - Replace all uses of F with T, then remove F from the DAG.
+/// Replace all uses of F with T, then remove F from the DAG.
 void InstSelector::replaceNode(SDNode *F, SDNode *T) {
   if (MachineSDNode::classof(F)) {
     NodePropertyInfo *np = DAGInfo->NPMap[F];
@@ -31,7 +30,7 @@ void InstSelector::replaceNode(SDNode *F, SDNode *T) {
   CurDAG->RemoveDeadNode(F);
 }
 
-/// isArgumentNode - Checks the SDNode is a function argument or not.
+/// Checks the SDNode is a function argument or not.
 bool InstSelector::isArgumentNode(SDNode *node) {
   if (!FrameIndexSDNode::classof(node))
     return false;
@@ -40,7 +39,7 @@ bool InstSelector::isArgumentNode(SDNode *node) {
       dyn_cast<FrameIndexSDNode>(node)->getIndex());
 }
 
-/// isReturnNode - Checks the SDNode is a function return or not.
+/// Checks the SDNode is a function return or not.
 bool InstSelector::isReturnNode(SDNode *node) {
   if (!FrameIndexSDNode::classof(node))
     return false;
@@ -48,9 +47,8 @@ bool InstSelector::isReturnNode(SDNode *node) {
   return FuncInfo->isReturnIndex(dyn_cast<FrameIndexSDNode>(node)->getIndex());
 }
 
-/// recordDefinition - Record the new defined Node, it uses to map the
-/// register number to Node. In DAG emitter, emitter get a value of use base
-/// on this defined Node.
+/// Record the new defined Node, it uses to map the register number to Node.
+/// In DAG emitter, emitter get a value of use base on this defined Node.
 void InstSelector::recordDefinition(SDNode *oldNode, SDNode *newNode) {
   assert(newNode != nullptr &&
          "The new SDNode ptr is null when record define!");
@@ -73,7 +71,7 @@ void InstSelector::recordDefinition(SDNode *oldNode, SDNode *newNode) {
   }
 }
 
-/// getMDOperand - Gets the Metadata of given SDNode.
+/// Gets the Metadata of given SDNode.
 SDValue InstSelector::getMDOperand(SDNode *N) {
   for (auto &sdv : N->ops()) {
     if (MDNodeSDNode::classof(sdv.getNode())) {
@@ -84,7 +82,7 @@ SDValue InstSelector::getMDOperand(SDNode *N) {
   return SDValue();
 }
 
-/// selectCode - Instruction opcode selection.
+/// Instruction opcode selection.
 void InstSelector::selectCode(SDNode *N) {
   SDLoc dl(N);
 

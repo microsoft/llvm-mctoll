@@ -1,9 +1,8 @@
-//==-- X86MachineInstructionRaiser.h - Binary raiser utility llvm-mctoll =====//
+//===-- X86RaisedValueTracker.h ---------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,6 +10,7 @@
 // class for use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
+
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86RAISEDVALUETRACKER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_X86_X86RAISEDVALUETRACKER_H
 
@@ -19,10 +19,8 @@
 // This class encapsulates all the necessary bookkeeping and look up of SSA
 // values constructed while a MachineFUnction is raised.
 
-/*
- * Begin - Type aliases of data structures used to facilitate promotion of
- * registers to stack slots.
- */
+ // Begin - Type aliases of data structures used to facilitate promotion of
+ // registers to stack slots.
 
 // DefRegSizeInBits, Value pair
 using DefRegSzValuePair = std::pair<uint8_t, Value *>;
@@ -71,4 +69,5 @@ private:
   // register definitions.
   PhysRegMBBValueDefMap physRegDefsInMBB;
 };
+
 #endif // LVM_TOOLS_LLVM_MCTOLL_X86_X86RAISEDVALUETRACKER_H

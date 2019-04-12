@@ -1,18 +1,16 @@
-//==-- X86AdditionalInstrInfo.h - Binary raiser utility llvm-mctoll =====//
+//===-- X86AdditionalInstrInfo.h --------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-//
-//===----------------------------------------------------------------------===//
-//
-// This file contains the declaration of X86AdditionalInstrInfo.h
-// class for use by llvm-mctoll.
-// It contains all information about X86 instructions that are not available
-// from tblgen generated tables.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+//
+// The X86AdditionalInstrInfo class contains information about X86 instructions 
+// that are not available from tblgen generated tables.
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H
 #define LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H
 

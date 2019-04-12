@@ -31,8 +31,10 @@ typedef struct {
   const MachineInstr *CandidateMachineInstr;
   // A vector of values that could be of use while raising
   // CandidateMachineInstr. If it is a call instruction,
-  // This vector has the Values corresponding to argument
+  // this vector has the Values corresponding to argument
   // registers (TODO : need to handles arguments passed on stack)
+  // If this is a conditional branch instruction, it contains the
+  // EFLAG bit values.
   std::vector<Value *> RegValues;
   // Flag to indicate that CandidateMachineInstr has been raised
   bool Raised;

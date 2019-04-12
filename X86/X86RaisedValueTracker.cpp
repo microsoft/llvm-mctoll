@@ -12,14 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86RaisedValueTracker.h"
-#include "X86RaiserUtils.h"
+#include "X86RegisterUtils.h"
 
 X86RaisedValueTracker::X86RaisedValueTracker(
     X86MachineInstructionRaiser *MIRaiser) {
   x86MIRaiser = MIRaiser;
   // Initialize entries for function register arguments in physToValueMap
   // Only first 6 arguments are passed as registers
-  unsigned RegArgCount = GPR64ArgRegs64Bit.size();
+  unsigned RegArgCount = X86RegisterUtils::GPR64ArgRegs64Bit.size();
   MachineFunction &MF = x86MIRaiser->getMF();
   Function *CurFunction = x86MIRaiser->getRaisedFunction();
 
@@ -32,7 +32,7 @@ X86RaisedValueTracker::X86RaisedValueTracker(
     assert(ArgTy->isIntegerTy() &&
            "Unhandled argument type in raised function type");
     unsigned ArgTySzInBits = ArgTy->getPrimitiveSizeInBits();
-    physRegDefsInMBB[GPR64ArgRegs64Bit[ArgNum]][0] =
+    physRegDefsInMBB[X86RegisterUtils::GPR64ArgRegs64Bit[ArgNum]][0] =
         std::make_pair(ArgTySzInBits, nullptr);
   }
   // Walk all blocks to initialize physRegDefsInMBB based on register defs.
@@ -52,20 +52,23 @@ X86RaisedValueTracker::X86RaisedValueTracker(
           continue;
 
         unsigned int PhysReg = MO.getReg();
-        if ((PhysReg == X86::FPSW) || (PhysReg == X86::FPCW))
+        // EFLAGS bits are modeled as 1-bit registers. So, nothing to do if
+        // Physreg is EFLAGS
+        if ((PhysReg == X86::EFLAGS) || (PhysReg == X86::FPSW) ||
+            (PhysReg == X86::FPCW))
           continue;
 
         unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
         // No value assigned yet for the definition of SuperReg in CurMBBNo.
         // The value will be updated as the block is raised.
         uint8_t PhysRegSzInBits = 0;
-        if (is64BitPhysReg(PhysReg))
+        if (X86RegisterUtils::is64BitPhysReg(PhysReg))
           PhysRegSzInBits = 64;
-        else if (is32BitPhysReg(PhysReg) || (PhysReg == X86::EFLAGS))
+        else if (X86RegisterUtils::is32BitPhysReg(PhysReg))
           PhysRegSzInBits = 32;
-        else if (is16BitPhysReg(PhysReg))
+        else if (X86RegisterUtils::is16BitPhysReg(PhysReg))
           PhysRegSzInBits = 16;
-        else if (is8BitPhysReg(PhysReg))
+        else if (X86RegisterUtils::is8BitPhysReg(PhysReg))
           PhysRegSzInBits = 8;
         else
           assert(false && "Unexpected Physical register encountered");
@@ -81,8 +84,8 @@ X86RaisedValueTracker::X86RaisedValueTracker(
 // corresponding to MachinebasicBlock with number MBBNo. This is nothing but
 // local value numbering (i.e., value numbering within the block
 // corresponding to MBBNo.
-bool X86RaisedValueTracker::updatePhysRegSSAValue(unsigned int PhysReg,
-                                                  int MBBNo, Value *Val) {
+bool X86RaisedValueTracker::setPhysRegSSAValue(unsigned int PhysReg, int MBBNo,
+                                               Value *Val) {
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
   physRegDefsInMBB[SuperReg][MBBNo].second = Val;
@@ -342,10 +345,99 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       RetValue = LdReachingVal;
       // Record that PhysReg is now defined as load from stack location in
       // current MBB with MBBNo.
-      updatePhysRegSSAValue(PhysReg, MBBNo, RetValue);
+      setPhysRegSSAValue(PhysReg, MBBNo, RetValue);
     } else if (ReachingDefs.size() == 1)
       // Just return the value of the single reaching definition
       RetValue = ReachingDefs[0].second;
   }
   return RetValue;
+}
+
+// Set the value of FlagBit to BitVal based on the value of Result.
+// If the test corresponding to FlagBit is true it is set, else it is cleared.
+// MBBNo is the MachineBasicBlock number in which the translation is being done
+// that affects this flag change.
+bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
+                                                    int MBBNo, Value *TestVal) {
+  assert((FlagBit >= X86RegisterUtils::EFLAGS::CF) &&
+         (FlagBit < X86RegisterUtils::EFLAGS::UNDEFINED) &&
+         "Unknown EFLAGS bit specified");
+
+  MachineFunction &MF = x86MIRaiser->getMF();
+  LLVMContext &Ctx = MF.getFunction().getContext();
+
+  BasicBlock *RaisedBB =
+      x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
+
+  unsigned int ResTyNumBits = TestVal->getType()->getPrimitiveSizeInBits();
+  Value *ZeroVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 0));
+  switch (FlagBit) {
+  case X86RegisterUtils::EFLAGS::ZF: {
+    // Set ZF - test if SubInst is zero
+    Instruction *ZFTest =
+        new ICmpInst(CmpInst::Predicate::ICMP_EQ, TestVal, ZeroVal,
+                     X86RegisterUtils::getEflagName(FlagBit));
+
+    RaisedBB->getInstList().push_back(ZFTest);
+    physRegDefsInMBB[FlagBit][MBBNo].second = ZFTest;
+  } break;
+  case X86RegisterUtils::EFLAGS::SF: {
+    // Set SF - test if SubInst is signed
+    Value *ShiftVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 1));
+    // Compute (1 << ResTyNumBits - 1)
+    Value *HighBitSetVal =
+        ConstantInt::get(Ctx, APInt(ResTyNumBits, ResTyNumBits - 1));
+    Instruction *ShiftLeft = BinaryOperator::CreateShl(ShiftVal, HighBitSetVal);
+    RaisedBB->getInstList().push_back(ShiftLeft);
+
+    // Create the instruction
+    //      and SubInst, ShiftLeft
+    Instruction *AndInst = BinaryOperator::CreateAnd(ShiftLeft, TestVal);
+    RaisedBB->getInstList().push_back(AndInst);
+    // Compare result of logical and operation to find if bit 31 is set SF
+    // accordingly
+    Instruction *SFTest =
+        new ICmpInst(CmpInst::Predicate::ICMP_EQ, AndInst, ShiftLeft,
+                     X86RegisterUtils::getEflagName(FlagBit));
+    RaisedBB->getInstList().push_back(SFTest);
+    physRegDefsInMBB[FlagBit][MBBNo].second = SFTest;
+  } break;
+  case X86RegisterUtils::EFLAGS::CF: {
+    // Set CF to 0 - test if SubInst is zero
+    // NOTE: This is only a partial test to set CF. This only implements setting
+    // of CF if source of NEG is 0. Other cases need to be added.
+    Instruction *CFTest =
+        new ICmpInst(CmpInst::Predicate::ICMP_NE, TestVal, ZeroVal,
+                     X86RegisterUtils::getEflagName(FlagBit));
+
+    RaisedBB->getInstList().push_back(CFTest);
+    physRegDefsInMBB[FlagBit][MBBNo].second = CFTest;
+  } break;
+  // TODO: Add code to test for other flags
+  default:
+    assert(false && "Unhandled EFLAGS bit specified");
+  }
+  return true;
+}
+
+// Set FlagBit to 1 if Set is true else to 0.
+bool X86RaisedValueTracker::setEflagValue(unsigned int FlagBit, int MBBNo,
+                                          bool Set) {
+  assert((FlagBit >= X86RegisterUtils::EFLAGS::CF) &&
+         (FlagBit < X86RegisterUtils::EFLAGS::UNDEFINED) &&
+         "Unknown EFLAGS bit specified");
+  LLVMContext &Ctx = x86MIRaiser->getMF().getFunction().getContext();
+  Value *Val = Set ? ConstantInt::getTrue(Ctx) : ConstantInt::getFalse(Ctx);
+  Val->setName(X86RegisterUtils::getEflagName(FlagBit));
+  physRegDefsInMBB[FlagBit][MBBNo].second = Val;
+  return true;
+}
+
+// Call getReachingDef.
+Value *X86RaisedValueTracker::getEflagReachingDef(unsigned int FlagBit,
+                                                  int MBBNo) {
+  assert((FlagBit >= X86RegisterUtils::EFLAGS::CF) &&
+         (FlagBit < X86RegisterUtils::EFLAGS::UNDEFINED) &&
+         "Unknown EFLAGS bit specified");
+  return getReachingDef(FlagBit, MBBNo);
 }

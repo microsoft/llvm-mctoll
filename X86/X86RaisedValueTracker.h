@@ -47,7 +47,12 @@ class X86RaisedValueTracker {
 public:
   X86RaisedValueTracker() = delete;
   X86RaisedValueTracker(X86MachineInstructionRaiser *);
-  bool updatePhysRegSSAValue(unsigned int PhysReg, int MBBNo, Value *Val);
+  bool setPhysRegSSAValue(unsigned int PhysReg, int MBBNo, Value *Val);
+  bool testAndSetEflagSSAValue(unsigned Flag, int MBBNo, Value *);
+  bool setEflagValue(unsigned FlagBit, int MBBNo, bool Set);
+
+  Value *getReachingDef(unsigned int PhysReg, int MBBNo);
+  Value *getEflagReachingDef(unsigned Flag, int MBBNo);
 
   // Return <MBBNo, Value*> pair denoting the defining MBBNo and Value defined
   // for PhysReg.
@@ -57,8 +62,6 @@ public:
   // and Values defined for PhysReg in the predecessors of MBBNo.
   std::vector<std::pair<int, Value *>>
   getGlobalReachingDefs(unsigned int PhysReg, int MBBNo);
-
-  Value *getReachingDef(unsigned int PhysReg, int MBBNo);
 
   Value *getInBlockPhysRegDefVal(unsigned int PhysReg, int MBBNo);
   unsigned getInBlockPhysRegSize(unsigned int PhysReg, int MBBNo);

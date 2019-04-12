@@ -301,8 +301,10 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
             if (MO.isReg()) {
               unsigned int UseReg = MO.getReg();
               if (TargetRegisterInfo::isPhysicalRegister(UseReg)) {
-                if (EflagsDefRegs.find(find64BitSuperReg(UseReg)) !=
-                    EflagsDefRegs.end()) {
+                unsigned SReg = (UseReg == X86::EFLAGS)
+                                    ? UseReg
+                                    : find64BitSuperReg(UseReg);
+                if (EflagsDefRegs.find(SReg) != EflagsDefRegs.end()) {
                   MBBInstrsToErase.push_back(&CurInstr);
                   // No need to look for other register uses.
                   break;

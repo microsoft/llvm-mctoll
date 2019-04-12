@@ -174,6 +174,8 @@ private:
   // Return the Type of the physical register.
   Type *getPhysRegType(unsigned int PhysReg);
 
+  bool appendInstToBB(BasicBlock *, Instruction *);
+
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
 

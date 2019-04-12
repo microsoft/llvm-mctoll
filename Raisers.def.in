@@ -1,22 +1,18 @@
-/*===- Raisers.def.in - Supported Raiser Architectures------*- C++ -*-===*|
+/*===- Raisers.def.in - Supported Raiser Architectures ----------*- C++ -*-===*|
 |*                                                                            *|
-|*                     The LLVM Compiler Infrastructure                       *|
-|*                                                                            *|
-|* This file is distributed under the University of Illinois Open Source      *|
-|* License. See LICENSE.TXT for details.                                      *|
+|* Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions. *|
+|* See https://llvm.org/LICENSE.txt for license information.                  *|
+|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception                    *|
 |*                                                                            *|
 |*===----------------------------------------------------------------------===*|
 |*                                                                            *|
-|* This file enumerates all of the architectures supported by          *|
-|* this build of the binary raiser llvm-mctoll. Clients of this file          *|
-|* should define the  MODULE_RAISER  macro to be a function-like     *|
-|* macro with a single parameter (the name of the target); including            *|
-|* this file will then                                                        *|
-|* enumerate all of the raise source architectures.                           *|
+|* This file enumerates all the architectures supported by the llvm-mctoll    *|
+|* build. Clients of this file should define the MODULE_RAISER macro to be a  *|
+|* function-like macro with a single parameter for the name of the target.    *|
 |*                                                                            *|
-|* The set of architectures supported by the raiser is generated at  *|
-|* configuration time, at which point this header is generated. Do not        *|
-|*  modify this header directly.                                              *|
+|* The set of architectures supported by the raiser is generated at           *|
+|* configuration time, which is the same point this header is generated.      *|
+|* Do not modify this header directly!!!                                      *|
 |*                                                                            *|
 \*===----------------------------------------------------------------------===*/
 

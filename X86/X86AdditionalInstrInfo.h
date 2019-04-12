@@ -2306,8 +2306,6 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::RDTSC, {0, Unknown}},
     {X86::RDTSCP, {0, Unknown}},
     {X86::REG_SEQUENCE, {0, Unknown}},
-    {X86::RELEASE_FADD32mr, {4, Unknown}},
-    {X86::RELEASE_FADD64mr, {8, Unknown}},
     {X86::REPNE_PREFIX, {0, Unknown}},
     {X86::REP_MOVSB_32, {0, Unknown}},
     {X86::REP_MOVSB_64, {0, Unknown}},

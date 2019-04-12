@@ -5,30 +5,32 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit 27970a3895934391826826d3360f7cd6abdb867b
-Author: Craig Topper <craig.topper@intel.com>
-Date:   Thu Apr 11 18:40:21 2019 +0000
+commit 324cbd6cc8ba611191f0b40009e539d39360125c
+Author: Zachary Turner <zturner@google.com>
+Date:   Fri Apr 12 15:51:40 2019 +0000
 
-    [X86] Use FILD/FIST to implement i64 atomic load on 32-bit targets with X87, but no SSE2
+    [PDB Docs] Add some prose describing public and global symbols.
 
-    If we have X87, but not SSE2 we can atomicaly load an i64 value into the significand of an 80-bit extended precision x87 register using fild. We can then use a fist instruction to convert it back to an i64 integer and store it to a stack temporary. From there we can do two 32-bit loads to get the value into integer registers without worrying about atomicness.
-
-    This matches what gcc and icc do for this case and removes an existing FIXME.
-
-    Differential Revision: https://reviews.llvm.org/D60156
-
-    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@358211 91177308-0d34-0410-b5e6-96231b3b80d8
+    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@358289 91177308-0d34-0410-b5e6-96231b3b80d8
 
 clang:
 
-commit 765bbb23ecd4d62a84e932c8f23f867fcd3c1850
-Author: Erik Pilkington <erik.pilkington@gmail.com>
-Date:   Thu Apr 11 17:55:34 2019 +0000
+commit 78607564933f0543d0e9cc402b7652be7ec59b71
+Author: Bruno Ricci <riccibrun@gmail.com>
+Date:   Fri Apr 12 15:36:02 2019 +0000
 
-    Support objc_nonlazy_class attribute on Objective-C implementations
+    [AST][NFC] Add const children() accessors to all AST nodes
 
-    Fixes rdar://49523079
+    Systematically add the const-qualified version of children()
+    to all statement/expression nodes. Previously the const-qualified
+    variant was only defined for some nodes. NFC.
 
-    Differential revision: https://reviews.llvm.org/D60544
+    Patch by: Nicolas Manichon
 
-    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@358201 91177308-0d34-0410-b5e6-96231b3b80d8
+    Differential Revision: https://reviews.llvm.org/D60029
+
+    Reviewed By: riccibruno
+
+
+
+    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@358288 91177308-0d34-0410-b5e6-96231b3b80d8

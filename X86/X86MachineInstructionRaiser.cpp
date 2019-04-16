@@ -1463,7 +1463,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       GlobalVariableValue = GetElem;
     }
   }
-  assert((GlobalVariableValue != nullptr) && "Failed to global variable value");
+
   return GlobalVariableValue;
 }
 
@@ -1548,7 +1548,16 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
 
   if (BaseReg != X86::NoRegister) {
     Value *BaseRegVal = getRegOrArgValue(BaseReg, MI.getParent()->getNumber());
-    if (MemrefValue != nullptr) {
+    if (MemrefValue != nullptr && BaseRegVal != MemrefValue) {
+      // Ensure the type of BaseregVal matched that of MemrefValue.
+      Value *CastMemrefValue = nullptr;
+      if (BaseRegVal->getType() != MemrefValue->getType()) {
+        CastMemrefValue = CastInst::Create(
+            CastInst::getCastOpcode(BaseRegVal, false, MemrefValue->getType(),
+                                    false),
+            BaseRegVal, MemrefValue->getType());
+        BaseRegVal = CastMemrefValue;
+      }
       Instruction *AddInst = BinaryOperator::CreateAdd(BaseRegVal, MemrefValue);
       RaisedBB->getInstList().push_back(AddInst);
       MemrefValue = AddInst;
@@ -1561,12 +1570,32 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   //
   if (Disp != 0) {
     if (MemrefValue != nullptr) {
-      // Generate add memrefVal, Disp
       Type *DispTy = MemrefValue->getType();
       Value *DispValue = ConstantInt::get(DispTy, Disp);
-      Instruction *AddInst = BinaryOperator::CreateAdd(MemrefValue, DispValue);
-      RaisedBB->getInstList().push_back(AddInst);
-      MemrefValue = AddInst;
+
+      // Get a global symbol that represents the displacement, Disp.
+      Value *GV = getGlobalVariableValueAt(MI, Disp);
+      // If Disp represents a global symbol
+      if (GV != nullptr) {
+        // If it is a global array construct GEP
+        if (isa<GetElementPtrInst>(GV)) {
+          bool Inbounds = false;
+          if (auto *SrcGEP = dyn_cast<GetElementPtrInst>(GV)) {
+            Inbounds = SrcGEP->isInBounds();
+            if (Inbounds) {
+              SrcGEP->setOperand(SrcGEP->getNumOperands() - 1, MemrefValue);
+            }
+          }
+        }
+        MemrefValue = GV;
+      } else {
+        // If Disp does not represent a global symbol, consider Disp as a plain
+        // integer value. Generate add memrefVal, Disp.
+        Instruction *AddInst =
+            BinaryOperator::CreateAdd(MemrefValue, DispValue);
+        RaisedBB->getInstList().push_back(AddInst);
+        MemrefValue = AddInst;
+      }
     } else {
       // Check that this is an instruction of the kind
       // mov %rax, 0x605798 which in reality is
@@ -3142,7 +3171,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
           isa<GetElementPtrInst>(MemRefValue)) &&
          "Unexpected type of memory reference in binary mem op instruction");
 
-  if (IsPCRelMemRef) {
+  if (IsPCRelMemRef && !isa<GetElementPtrInst>(MemRefValue)) {
     // memRefValue already represents the global value loaded from
     // PC-relative memory location. It is incorrect to generate an
     // additional load of this value. It should be directly used.

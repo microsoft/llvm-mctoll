@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// The X86AdditionalInstrInfo class contains information about X86 instructions 
+// The X86AdditionalInstrInfo class contains information about X86 instructions
 // that are not available from tblgen generated tables.
 //
 //===----------------------------------------------------------------------===//

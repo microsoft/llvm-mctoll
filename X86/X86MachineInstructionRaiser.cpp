@@ -1815,12 +1815,54 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     std::set<MCPhysReg> LiveInRegs;
     MachineBasicBlock *Entry = &(MF.front());
     df_iterator_default_set<MachineBasicBlock *, 16> Visited;
-    const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
+    // List of registers used in a block
+    LivePhysRegs MBBUseRegs;
+    // List of registers that are cleared by an xor instruction prior to its
+    // first use.
+    LivePhysRegs PseudoUseRegs;
+    const MachineRegisterInfo &MRI = MF.getRegInfo();
+    const TargetRegisterInfo *TRI = MRI.getTargetRegisterInfo();
+    MBBUseRegs.init(*TRI);
+    PseudoUseRegs.init(*TRI);
 
     for (MachineBasicBlock *MBB : depth_first_ext(Entry, Visited)) {
+      MBBUseRegs.clear();
+      for (MachineBasicBlock::iterator Iter = MBB->instr_begin(),
+                                       End = MBB->instr_end();
+           Iter != End; Iter++) {
+        MachineInstr &MI = *Iter;
+        unsigned Opc = MI.getOpcode();
+
+        assert(!MI.isDebugInstr() && "Unhandled debug instruction found");
+        // xor reg, reg is a typical idiom used to clear reg. If reg happens to
+        // be an argument register, it should not be considered as such. Record
+        // it as such.
+        if (Opc == X86::XOR64rr || Opc == X86::XOR32rr || Opc == X86::XOR16rr ||
+            Opc == X86::XOR8rr) {
+          unsigned DestOpIndx = 0, SrcOp1Indx = 1, SrcOp2Indx = 2;
+          const MachineOperand &DestOp = MI.getOperand(DestOpIndx);
+          const MachineOperand &Use1Op = MI.getOperand(SrcOp1Indx);
+          const MachineOperand &Use2Op = MI.getOperand(SrcOp2Indx);
+
+          assert(Use1Op.isReg() && Use2Op.isReg() && DestOp.isReg() &&
+                 (MI.findTiedOperandIdx(SrcOp1Indx) == DestOpIndx) &&
+                 "Expecting register operands of xor instruction");
+
+          if (Use1Op.getReg() == Use2Op.getReg())
+            // If the source register has not been used before, add it to the
+            // list of registers that should not be considered as first use
+            if (!MBBUseRegs.contains(Use1Op.getReg()))
+              // XORDefRegs.emplace(DestOp.getReg());
+              PseudoUseRegs.addReg(DestOp.getReg());
+        } else {
+          MBBUseRegs.addUses(MI);
+        }
+      }
+
       for (const auto &LI : MBB->liveins()) {
         MCPhysReg PhysReg = LI.PhysReg;
-        bool found = false;
+        // Is PhysReg in pseudo-use register list?
+        bool found = PseudoUseRegs.contains(PhysReg);
         // Check if any of the sub-registers of PhysReg is in LiveRegs
         for (MCSubRegIterator SubRegs(PhysReg, TRI, /*IncludeSelf=*/true);
              (SubRegs.isValid() && !found); ++SubRegs) {
@@ -1831,8 +1873,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
              (SupRegs.isValid() && !found); ++SupRegs) {
           found = (LiveInRegs.find(*SupRegs) != LiveInRegs.end());
         }
-        // If neither sub or super registers of PhysReg is in LiveRegs set,
-        // insert it.
+        // If neither sub or super registers of PhysReg is in LiveRegs set and
+        // PhysReg is not in pseudo-usage list, then add it to the list of
+        // liveins.
         if (!found)
           LiveInRegs.emplace(LI.PhysReg);
       }

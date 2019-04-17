@@ -19,8 +19,8 @@
 // This class encapsulates all the necessary bookkeeping and look up of SSA
 // values constructed while a MachineFUnction is raised.
 
- // Begin - Type aliases of data structures used to facilitate promotion of
- // registers to stack slots.
+// Begin - Type aliases of data structures used to facilitate promotion of
+// registers to stack slots.
 
 // DefRegSizeInBits, Value pair
 using DefRegSzValuePair = std::pair<uint8_t, Value *>;

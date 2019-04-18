@@ -1833,7 +1833,6 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
         MachineInstr &MI = *Iter;
         unsigned Opc = MI.getOpcode();
 
-        assert(!MI.isDebugInstr() && "Unhandled debug instruction found");
         // xor reg, reg is a typical idiom used to clear reg. If reg happens to
         // be an argument register, it should not be considered as such. Record
         // it as such.
@@ -1852,8 +1851,11 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
             // If the source register has not been used before, add it to the
             // list of registers that should not be considered as first use
             if (!MBBUseRegs.contains(Use1Op.getReg()))
-              // XORDefRegs.emplace(DestOp.getReg());
-              PseudoUseRegs.addReg(DestOp.getReg());
+              // Record the 64-bit version of the register. Note that addReg()
+              // adds the register and all its sub-registers to the set. The
+              // corresponding set-membership test contains(), tests for the
+              // register and all its sub-registers.
+              PseudoUseRegs.addReg(find64BitSuperReg(DestOp.getReg()));
         } else {
           MBBUseRegs.addUses(MI);
         }

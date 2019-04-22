@@ -361,6 +361,11 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       Pred->removeSuccessor(MBB);
     MBB->eraseFromParent();
   }
+
+  if (PrintPass) {
+    outs() << "CFG : After Raising Jump Tables\n";
+    MF.dump();
+  }
   return true;
 }
 

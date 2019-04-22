@@ -4513,6 +4513,11 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
 }
 
 bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
+  if (PrintPass) {
+    outs() << "CFG : Before Raising Terminator Instructions\n";
+    raisedFunction->dump();
+  }
+
   // Raise branch instructions with control transfer records
   bool success = true;
   for (ControlTransferInfo *CTRec : CTInfo) {
@@ -4573,6 +4578,11 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
       }
     }
   }
+  if (PrintPass) {
+    outs() << "CFG : After Raising Terminator Instructions\n";
+    raisedFunction->dump();
+  }
+
   return true;
 }
 

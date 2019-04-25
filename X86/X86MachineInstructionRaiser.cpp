@@ -2346,23 +2346,35 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
 bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     const MachineInstr &MI) {
   unsigned int Opcode = MI.getOpcode();
+  int MBBNo = MI.getParent()->getNumber();
   LLVMContext &Ctx(MF.getFunction().getContext());
 
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  bool success = false;
+  bool Success = false;
   unsigned DstIndex = 0;
-  unsigned SrcIndex = 1;
-  assert(MI.getNumExplicitOperands() == 2 && MI.getOperand(DstIndex).isReg() &&
-         MI.getOperand(SrcIndex).isReg() &&
-         "Expecting exactly two operands for move reg-to-reg instructions");
+  unsigned Src1Index = 1;
+  unsigned Src2Index = 2;
+  assert(
+      (MI.getNumExplicitOperands() == 2 || MI.getNumExplicitOperands() == 4) &&
+      MI.getOperand(DstIndex).isReg() &&
+      (MI.getOperand(Src1Index).isReg() || MI.getOperand(Src2Index).isReg()) &&
+      "Expecting exactly two or four operands for move reg-to-reg "
+      "instructions");
 
   unsigned int DstPReg = MI.getOperand(DstIndex).getReg();
 
   // Get source operand value
-  Value *SrcValue = getRegOperandValue(MI, SrcIndex);
+  Value *SrcValue = nullptr;
+  if (MI.getNumExplicitOperands() == 2)
+    SrcValue = getRegOperandValue(MI, Src1Index);
+  else if (MI.getNumExplicitOperands() == 4)
+    SrcValue = getRegOperandValue(MI, Src2Index);
+  else
+    assert(false &&
+           "Unexpected operand numbers for move reg-to-reg instruction");
 
   switch (Opcode) {
   case X86::MOVSX16rr8:
@@ -2440,20 +2452,16 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     CastInst *CInst = CastInst::Create(Cast, SrcValue, Ty);
     RaisedBB->getInstList().push_back(CInst);
 
-    // Update the value mapping of dstReg
-    raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
-                                     CInst);
-    success = true;
-
+    // Update the value mapping of DstPReg
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, CInst);
+    Success = true;
   } break;
-
   case X86::MOV64rr:
   case X86::MOV32rr:
   case X86::MOV16rr:
   case X86::MOV8rr: {
-
     unsigned int DstPRegSize = getPhysRegOperandSize(MI, DstIndex);
-    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, SrcIndex);
+    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, Src1Index);
 
     // Verify sanity of the instruction.
     assert(DstPRegSize != 0 && DstPRegSize == SrcPRegSize &&
@@ -2463,17 +2471,116 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
            "Encountered mov instruction with undefined source register");
     assert(SrcValue->getType()->isSized() &&
            "Unsized source value in move instruction");
-    SrcValue = matchSSAValueToSrcRegSize(MI, SrcIndex);
-    // Update the value mapping of dstReg
-    raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
-                                     SrcValue);
-    success = true;
+    SrcValue = matchSSAValueToSrcRegSize(MI, Src1Index);
+
+    // Update the value mapping of DstPReg
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
+    Success = true;
+  } break;
+  case X86::CMOV16rr:
+  case X86::CMOV32rr:
+  case X86::CMOV64rr: {
+    unsigned int DstPRegSize = getPhysRegOperandSize(MI, DstIndex);
+    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, Src2Index);
+
+    // Verify sanity of the instruction.
+    assert(DstPRegSize != 0 && DstPRegSize == SrcPRegSize &&
+           "Unexpected sizes of source and destination registers size differ "
+           "in cmovcc instruction");
+    assert(SrcValue &&
+           "Encountered cmovcc instruction with undefined source register");
+    assert(SrcValue->getType()->isSized() &&
+           "Unsized source value in cmovcc instruction");
+    SrcValue = matchSSAValueToSrcRegSize(MI, Src2Index);
+
+    // Get destination operand value
+    Value *DstValue = getRegOrArgValue(DstPReg, MBBNo);
+    Value *TrueValue = ConstantInt::getTrue(Ctx);
+    Value *FalseValue = ConstantInt::getFalse(Ctx);
+    CmpInst::Predicate Pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
+    Value *CMOVCond = nullptr;
+
+    switch (X86::getCondFromCMov(MI)) {
+    case X86::COND_NE: {
+      // Check if ZF == 0
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      assert(ZFValue != nullptr &&
+             "Failed to get EFLAGS value while raising CMOVNE!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      CMOVCond = new ICmpInst(Pred, ZFValue, FalseValue, "Cond_CMOVNE");
+    } break;
+    case X86::COND_E: {
+      // Check if ZF == 1
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      assert(ZFValue != nullptr &&
+             "Failed to get EFLAGS value while raising CMOVE!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      CMOVCond = new ICmpInst(Pred, ZFValue, TrueValue, "Cond_CMOVE");
+    } break;
+    case X86::COND_A: {
+      // Check CF == 0 and ZF == 0
+      Value *CFValue = getRegOrArgValue(EFLAGS::CF, MBBNo);
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      assert((CFValue != nullptr) && (ZFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising CMOVA!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // CF or ZF
+      BinaryOperator *CFZFOrCond =
+          BinaryOperator::CreateOr(CFValue, ZFValue, "CFZFOR_CMOVA");
+      RaisedBB->getInstList().push_back(CFZFOrCond);
+      // Test CF == 0 and ZF == 0
+      CMOVCond = new ICmpInst(Pred, CFZFOrCond, FalseValue, "Cond_CMOVA");
+    } break;
+    case X86::COND_L: {
+      // Check SF != OF
+      Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+      Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+      assert((SFValue != nullptr) && (OFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising CMOVL!");
+      Pred = CmpInst::Predicate::ICMP_NE;
+      // Test SF != OF
+      CMOVCond = new ICmpInst(Pred, SFValue, OFValue, "Cond_CMOVL");
+    } break;
+    case X86::COND_G: {
+      // Check ZF == 0 and SF == OF
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+      Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+      assert((ZFValue != nullptr) && (SFValue != nullptr) &&
+             (OFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising CMOVG!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Compare ZF and 0
+      CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_CMOVG");
+      RaisedBB->getInstList().push_back(ZFCond);
+      // Test SF == OF
+      CmpInst *SFOFCond = new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_CMOVG");
+      RaisedBB->getInstList().push_back(SFOFCond);
+      CMOVCond = BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG");
+    } break;
+    case X86::COND_INVALID:
+      assert(false && "CMOV instruction with invalid condition found");
+      break;
+    default:
+      assert(false && "CMOV instruction with unhandled condition found");
+      break;
+    }
+    RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CMOVCond));
+    // Generate SelectInst for CMOV instruction
+    SelectInst *SI = SelectInst::Create(CMOVCond, SrcValue, DstValue, "CMOV");
+    RaisedBB->getInstList().push_back(SI);
+
+    // Update the value mapping of DstPReg
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SI);
+    Success = true;
   } break;
   default:
     assert(false && "Unhandled move reg-to-reg instruction");
     break;
   }
-  return success;
+  return Success;
 }
 
 bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {

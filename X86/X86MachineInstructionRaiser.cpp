@@ -784,7 +784,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   int DefinedPhysRegSzInBits =
       raisedValues->getInBlockPhysRegSize(SuperReg, DefiningMBB);
   assert(((DefinedPhysRegSzInBits == 64) || (DefinedPhysRegSzInBits == 32) ||
-          (DefinedPhysRegSzInBits == 16) || (DefinedPhysRegSzInBits == 8)) &&
+          (DefinedPhysRegSzInBits == 16) || (DefinedPhysRegSzInBits == 8) ||
+          (DefinedPhysRegSzInBits == 1)) &&
          "Unexpected physical register size of reaching definition ");
   // This could simply be set to 64 because the stack slot allocated is
   // a 64-bit value.
@@ -794,15 +795,24 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   Type *StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
   BasicBlock *ReachingBB =
       getRaisedBasicBlock(MF.getBlockNumbered(DefiningMBB));
+  // get terminating instruction. Add new instructions before
+  // terminator instruction if one exists.
+  Instruction *TermInst = ReachingBB->getTerminator();
   if (DefinedPhysRegSzInBits != StackLocSzInBits) {
     CastInst *CInst = CastInst::Create(
         CastInst::getCastOpcode(ReachingValue, false, StackLocTy, false),
         ReachingValue, StackLocTy);
-    ReachingBB->getInstList().push_back(CInst);
+    if (TermInst == nullptr)
+      ReachingBB->getInstList().push_back(CInst);
+    else
+      CInst->insertBefore(TermInst);
     ReachingValue = CInst;
   }
   StInst = new StoreInst(ReachingValue, Alloca);
-  ReachingBB->getInstList().push_back(StInst);
+  if (TermInst == nullptr)
+    ReachingBB->getInstList().push_back(StInst);
+  else
+    StInst->insertBefore(TermInst);
 
   return StInst;
 }
@@ -2828,8 +2838,6 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       Type *DestTy = getPhysRegOperandType(MI, 0);
       Value *Val = ConstantInt::get(DestTy, 0, false /* isSigned */);
       dstValue = Val;
-      if (isa<Instruction>(dstValue))
-        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
       // Set SF and ZF knowing that the value is 0
       raisedValues->setEflagValue(EFLAGS::SF, MBBNo, false);
       raisedValues->setEflagValue(EFLAGS::ZF, MBBNo, true);

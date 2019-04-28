@@ -38,7 +38,7 @@ using MBBNoToValueMap = std::map<unsigned int, DefRegSzValuePair>;
 //       ......
 //      }
 // Each entry of this map has the following sematics:
-// SuperReg is defined in MBBNo using Val and the as a sub-register of size
+// SuperReg is defined in MBBNo using Val as a sub-register of size
 // PhysReg_Sz. E.g., SuperReg RAX may be actually defined as register of size 16
 // (i.e. AX).
 using PhysRegMBBValueDefMap = std::map<unsigned int, MBBNoToValueMap>;
@@ -65,6 +65,8 @@ public:
 
   Value *getInBlockPhysRegDefVal(unsigned int PhysReg, int MBBNo);
   unsigned getInBlockPhysRegSize(unsigned int PhysReg, int MBBNo);
+
+  enum { INVALID_MBB = -1 };
 
 private:
   X86MachineInstructionRaiser *x86MIRaiser;

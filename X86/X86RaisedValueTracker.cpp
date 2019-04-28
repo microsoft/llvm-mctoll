@@ -14,6 +14,8 @@
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
 
+using namespace X86RegisterUtils;
+
 X86RaisedValueTracker::X86RaisedValueTracker(
     X86MachineInstructionRaiser *MIRaiser) {
   x86MIRaiser = MIRaiser;
@@ -118,8 +120,8 @@ X86RaisedValueTracker::getInBlockReachingDef(unsigned int PhysReg, int MBBNo) {
     }
   }
   // MachineBasicBlock with MBBNo does not define SuperReg.
-  // MBB number should be ignored when Value ie nullptr
-  return std::make_pair(MBBNo, nullptr);
+  // This is indicated by specifying INVALID_MBB
+  return std::make_pair(INVALID_MBB, nullptr);
 }
 
 // This function looks for reaching definitions of PhysReg from all the
@@ -150,14 +152,16 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo) {
 
     while (!WorkList.empty()) {
       MachineBasicBlock *PredMBB = WorkList.pop_back_val();
-      if (!BlockVisited[PredMBB->getNumber()]) {
+      int CurPredMBBNo = PredMBB->getNumber();
+      if (!BlockVisited[CurPredMBBNo]) {
         // Mark block as visited
-        BlockVisited.set(PredMBB->getNumber());
+        BlockVisited.set(CurPredMBBNo);
         const std::pair<int, Value *> ReachInfo =
-            getInBlockReachingDef(SuperReg, PredMBB->getNumber());
+            getInBlockReachingDef(SuperReg, CurPredMBBNo);
 
-        // if reach info found, record it
-        if (ReachInfo.second != nullptr)
+        // if reach info found or if CurPredMBB has a definition of SuperReg,
+        // record it
+        if (ReachInfo.first != INVALID_MBB)
           ReachingDefs.push_back(ReachInfo);
         else {
           // Reach info not found, continue walking the predecessors of CurBB.
@@ -275,7 +279,6 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       unsigned allocaAddrSpace = DL.getAllocaAddrSpace();
       Type *AllocTy = Type::getInt64Ty(Ctxt);
       unsigned int typeAlignment = DL.getPrefTypeAlignment(AllocTy);
-      ;
 
       // Create alloca instruction to allocate stack slot
       AllocaInst *Alloca =
@@ -307,9 +310,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       std::pair<int, Value *> MBBNoRDPair =
           getInBlockReachingDef(PhysReg, MBBNo);
       Value *DefValue = MBBNoRDPair.second;
-      assert(MBBNoRDPair.first == MBBNo &&
-             "Unexpected result of in-block reaching value lookup");
-      if (MBBNoRDPair.second != nullptr) {
+      if (DefValue != nullptr) {
         StoreInst *StInst = new StoreInst(DefValue, Alloca);
         x86MIRaiser->getRaisedFunction()
             ->getEntryBlock()

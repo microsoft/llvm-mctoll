@@ -129,7 +129,7 @@ bool ARMSelectionDAGISel::doSelection() {
 
   for (auto &FBB : CurFn->getBasicBlockList())
     if (FBB.getTerminator() == nullptr)
-      BranchInst *BrInst = BranchInst::Create(LBB, &FBB);
+      BranchInst::Create(LBB, &FBB);
 
   FuncInfo->clear();
 

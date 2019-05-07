@@ -172,9 +172,8 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
 }
 
 /// Relocate call branch instructions in object files.
-void ARMMIRevising::relocateBL(MachineInstr &MInst) {
+void ARMMIRevising::relocateBranch(MachineInstr &MInst) {
   int64_t relCallTargetOffset = MInst.getOperand(0).getImm();
-
   const ELF32LEObjectFile *Elf32LEObjFile =
       dyn_cast<ELF32LEObjectFile>(MR->getObjectFile());
   assert(Elf32LEObjFile != nullptr &&
@@ -187,35 +186,36 @@ void ARMMIRevising::relocateBL(MachineInstr &MInst) {
 
     // Get MCInst offset - the offset of machine instruction in the binary
     // and instruction size
-    uint64_t MCInstOffset = getMCInstIndex(MInst);
-    uint64_t CallTargetIndex =
-        MCInstOffset + textSectionAddress + relCallTargetOffset + 8;
-    uint64_t CallAddr = MCInstOffset + textSectionAddress;
-    Function *CalledFunc = nullptr;
+    int64_t MCInstOffset = getMCInstIndex(MInst);
+    int64_t CallAddr = MCInstOffset + textSectionAddress;
+    int64_t CallTargetIndex = CallAddr + relCallTargetOffset + 8;
     MCInstRaiser *MCIR =
         MR->getMachineFunctionRaiser(*(MInst.getParent()->getParent()))
             ->getMCInstRaiser();
     assert(MCIR != nullptr && "MCInstRaiser not initialized");
-    uint64_t MCInstSize = MCIR->getMCInstSize(MCInstOffset);
-    uint64_t Index = 1;
-    CalledFunc = MR->getFunctionAt(CallTargetIndex);
-    if (CalledFunc == nullptr) {
-      CalledFunc =
-          MR->getCalledFunctionUsingTextReloc(MCInstOffset, MCInstSize);
-    }
-    // Look up the PLT to find called function.
-    if (CalledFunc == nullptr) {
-      Index = getCalledFunctionAtPLTOffset(CallTargetIndex, CallAddr);
-    }
-    if (CalledFunc == nullptr) {
-      if (Index == 0)
+    int64_t CallTargetOffset = CallTargetIndex - textSectionAddress;
+    if (CallTargetOffset < 0 || !MCIR->isMCInstInRange(CallTargetOffset)) {
+      Function *CalledFunc = nullptr;
+      uint64_t MCInstSize = MCIR->getMCInstSize(MCInstOffset);
+      uint64_t Index = 1;
+      CalledFunc = MR->getFunctionAt(CallTargetIndex);
+      if (CalledFunc == nullptr) {
+        CalledFunc =
+            MR->getCalledFunctionUsingTextReloc(MCInstOffset, MCInstSize);
+      }
+      // Look up the PLT to find called function.
+      if (CalledFunc == nullptr)
+        Index = getCalledFunctionAtPLTOffset(CallTargetIndex, CallAddr);
+
+      if (CalledFunc == nullptr) {
+        if (Index == 0)
+          MInst.getOperand(0).setImm(CallTargetIndex);
+        else if (Index != 1)
+          MInst.getOperand(0).setImm(Index);
+        else
+          assert(false && "Failed to get the call function!");
+      } else
         MInst.getOperand(0).setImm(CallTargetIndex);
-      else if (Index != 1)
-        MInst.getOperand(0).setImm(Index);
-      else
-        assert(false && "Failed to get the call function!");
-    } else {
-      MInst.getOperand(0).setImm(CallTargetIndex);
     }
   } else {
     uint64_t Offset = getMCInstIndex(MInst);
@@ -483,10 +483,11 @@ bool ARMMIRevising::removeNeedlessInst(MachineInstr *MInst) {
 bool ARMMIRevising::reviseMI(MachineInstr &MInst) {
   decodeModImmOperand(MInst);
   // Relocate BL target in same section.
-  if (MInst.getOpcode() == ARM::BL || MInst.getOpcode() == ARM::BL_pred) {
+  if (MInst.getOpcode() == ARM::BL || MInst.getOpcode() == ARM::BL_pred ||
+      MInst.getOpcode() == ARM::Bcc) {
     MachineOperand &mo0 = MInst.getOperand(0);
     if (mo0.isImm())
-      relocateBL(MInst);
+      relocateBranch(MInst);
   }
 
   if (MInst.getOpcode() == ARM::LDRi12 || MInst.getOpcode() == ARM::STRi12) {

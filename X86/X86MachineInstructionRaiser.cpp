@@ -1,9 +1,8 @@
-//==-- X86MachineInstructionRaiser.cpp - Binary raiser utility llvm-mctoll -==//
+//===-- X86MachineInstructionRaiser.cpp -------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,13 +10,14 @@
 // for use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
+
 #include "X86MachineInstructionRaiser.h"
 #include "ExternalFunctions.h"
 #include "MachineFunctionRaiser.h"
 #include "X86InstrBuilder.h"
 #include "X86ModuleRaiser.h"
 #include "X86RaisedValueTracker.h"
-#include "X86RaiserUtils.h"
+#include "X86RegisterUtils.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
@@ -37,6 +37,7 @@
 #include <vector>
 using namespace llvm;
 using namespace mctoll;
+using namespace X86RegisterUtils;
 
 // Constructor
 
@@ -130,66 +131,54 @@ static inline Type *getImmOperandType(const MachineInstr &mi,
 
 static inline uint8_t getPhysRegOperandSize(const MachineInstr &mi,
                                             unsigned int OpIndex) {
-  MCOperandInfo OpInfo = mi.getDesc().OpInfo[OpIndex];
   MachineOperand Op = mi.getOperand(OpIndex);
   // Initialize to 0 - unknown
   uint8_t RegSize = 0;
   assert(Op.isReg() && "Attempt to get size of non-register operand");
-  if (TargetRegisterInfo::isPhysicalRegister(Op.getReg())) {
-    switch (OpInfo.RegClass) {
-    case X86::GR64RegClassID:
+  unsigned int RegNo = Op.getReg();
+  if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
+    if (is64BitPhysReg(RegNo))
       RegSize = 8;
-      break;
-    case X86::GR32RegClassID:
+    else if (is32BitPhysReg(RegNo))
       RegSize = 4;
-      break;
-    case X86::GR16RegClassID:
+    else if (is16BitPhysReg(RegNo))
       RegSize = 2;
-      break;
-    case X86::GR8RegClassID:
+    else if (is8BitPhysReg(RegNo))
       RegSize = 1;
-      break;
-    default:
+    else
       assert(false && "Register operand of unknown register class");
-      break;
-    }
   } else {
-    assert(false &&
-           "Unexpected non-physical register found in store instruction");
+    assert(
+        false &&
+        "Failed to get operand type for unknown physical register specified");
   }
   return RegSize;
 }
 
 static inline Type *getPhysRegOperandType(const MachineInstr &mi,
                                           unsigned int OpIndex) {
-  LLVMContext &llvmContext(mi.getMF()->getFunction().getContext());
   MachineOperand Op = mi.getOperand(OpIndex);
-  MCOperandInfo OpInfo = mi.getDesc().OpInfo[OpIndex];
   // Initialize to nullptr - unknown
   Type *RegTy = nullptr;
 
   assert(Op.isReg() && "Attempt to get type of non-register operand");
-  if (TargetRegisterInfo::isPhysicalRegister(Op.getReg())) {
-    switch (OpInfo.RegClass) {
-    case X86::GR64RegClassID:
-      RegTy = Type::getInt64Ty(llvmContext);
-      break;
-    case X86::GR32RegClassID:
-      RegTy = Type::getInt32Ty(llvmContext);
-      break;
-    case X86::GR16RegClassID:
-      RegTy = Type::getInt16Ty(llvmContext);
-      break;
-    case X86::GR8RegClassID:
-      RegTy = Type::getInt8Ty(llvmContext);
-      break;
-    default:
+  unsigned int RegNo = Op.getReg();
+  LLVMContext &Ctx(mi.getMF()->getFunction().getContext());
+  if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
+    if (is64BitPhysReg(RegNo))
+      RegTy = Type::getInt64Ty(Ctx);
+    else if (is32BitPhysReg(RegNo))
+      RegTy = Type::getInt32Ty(Ctx);
+    else if (is16BitPhysReg(RegNo))
+      RegTy = Type::getInt16Ty(Ctx);
+    else if (is8BitPhysReg(RegNo))
+      RegTy = Type::getInt8Ty(Ctx);
+    else
       assert(false && "Register operand of unknown register class");
-      break;
-    }
   } else {
-    assert(false &&
-           "Unexpected non-physical register found in store instruction");
+    assert(
+        false &&
+        "Failed to get operand type for unknown physical register specified");
   }
 
   return RegTy;
@@ -227,6 +216,11 @@ static inline bool isEffectiveAddrValue(Value *val) {
     return true;
   }
   return false;
+}
+
+bool X86MachineInstructionRaiser::appendInstToBB(BasicBlock *RaisedBB,
+                                                 Instruction *Inst) {
+  return true;
 }
 
 bool X86MachineInstructionRaiser::recordDefsToPromote(unsigned PhysReg,
@@ -730,9 +724,11 @@ X86MachineInstructionRaiser::find64BitSuperReg(unsigned int PhysReg) {
     return X86::NoRegister;
   }
 
-  // Nothing to do if PhysReg is one of EFLAGS, FPSW, FPCW
-  if ((PhysReg == X86::EFLAGS) || (PhysReg == X86::FPSW) ||
-      (PhysReg == X86::FPCW)) {
+  // Nothing to do if PhysReg is one of EFLAG bits, FPSW, FPCW
+  if (isEflagBit(PhysReg))
+    return PhysReg;
+
+  if ((PhysReg == X86::FPSW) || (PhysReg == X86::FPCW)) {
     return PhysReg;
   }
 
@@ -788,7 +784,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   int DefinedPhysRegSzInBits =
       raisedValues->getInBlockPhysRegSize(SuperReg, DefiningMBB);
   assert(((DefinedPhysRegSzInBits == 64) || (DefinedPhysRegSzInBits == 32) ||
-          (DefinedPhysRegSzInBits == 16) || (DefinedPhysRegSzInBits == 8)) &&
+          (DefinedPhysRegSzInBits == 16) || (DefinedPhysRegSzInBits == 8) ||
+          (DefinedPhysRegSzInBits == 1)) &&
          "Unexpected physical register size of reaching definition ");
   // This could simply be set to 64 because the stack slot allocated is
   // a 64-bit value.
@@ -798,15 +795,24 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   Type *StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
   BasicBlock *ReachingBB =
       getRaisedBasicBlock(MF.getBlockNumbered(DefiningMBB));
+  // get terminating instruction. Add new instructions before
+  // terminator instruction if one exists.
+  Instruction *TermInst = ReachingBB->getTerminator();
   if (DefinedPhysRegSzInBits != StackLocSzInBits) {
     CastInst *CInst = CastInst::Create(
         CastInst::getCastOpcode(ReachingValue, false, StackLocTy, false),
         ReachingValue, StackLocTy);
-    ReachingBB->getInstList().push_back(CInst);
+    if (TermInst == nullptr)
+      ReachingBB->getInstList().push_back(CInst);
+    else
+      CInst->insertBefore(TermInst);
     ReachingValue = CInst;
   }
   StInst = new StoreInst(ReachingValue, Alloca);
-  ReachingBB->getInstList().push_back(StInst);
+  if (TermInst == nullptr)
+    ReachingBB->getInstList().push_back(StInst);
+  else
+    StInst->insertBefore(TermInst);
 
   return StInst;
 }
@@ -1450,7 +1456,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         // has been asserted that array element is of integral type.
         PointerType *CastToArrTy = PointerType::get(
             ArrayType::get(Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8),
-                           GlobalArraySize),
+                           GlobalArraySize / MemAccessSizeInBytes),
             0);
 
         CastInst *CInst =
@@ -1467,7 +1473,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       GlobalVariableValue = GetElem;
     }
   }
-  assert((GlobalVariableValue != nullptr) && "Failed to global variable value");
+
   return GlobalVariableValue;
 }
 
@@ -1552,7 +1558,16 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
 
   if (BaseReg != X86::NoRegister) {
     Value *BaseRegVal = getRegOrArgValue(BaseReg, MI.getParent()->getNumber());
-    if (MemrefValue != nullptr) {
+    if (MemrefValue != nullptr && BaseRegVal != MemrefValue) {
+      // Ensure the type of BaseregVal matched that of MemrefValue.
+      Value *CastMemrefValue = nullptr;
+      if (BaseRegVal->getType() != MemrefValue->getType()) {
+        CastMemrefValue = CastInst::Create(
+            CastInst::getCastOpcode(BaseRegVal, false, MemrefValue->getType(),
+                                    false),
+            BaseRegVal, MemrefValue->getType());
+        BaseRegVal = CastMemrefValue;
+      }
       Instruction *AddInst = BinaryOperator::CreateAdd(BaseRegVal, MemrefValue);
       RaisedBB->getInstList().push_back(AddInst);
       MemrefValue = AddInst;
@@ -1565,12 +1580,32 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   //
   if (Disp != 0) {
     if (MemrefValue != nullptr) {
-      // Generate add memrefVal, Disp
       Type *DispTy = MemrefValue->getType();
       Value *DispValue = ConstantInt::get(DispTy, Disp);
-      Instruction *AddInst = BinaryOperator::CreateAdd(MemrefValue, DispValue);
-      RaisedBB->getInstList().push_back(AddInst);
-      MemrefValue = AddInst;
+
+      // Get a global symbol that represents the displacement, Disp.
+      Value *GV = getGlobalVariableValueAt(MI, Disp);
+      // If Disp represents a global symbol
+      if (GV != nullptr) {
+        // If it is a global array construct GEP
+        if (isa<GetElementPtrInst>(GV)) {
+          bool Inbounds = false;
+          if (auto *SrcGEP = dyn_cast<GetElementPtrInst>(GV)) {
+            Inbounds = SrcGEP->isInBounds();
+            if (Inbounds) {
+              SrcGEP->setOperand(SrcGEP->getNumOperands() - 1, MemrefValue);
+            }
+          }
+        }
+        MemrefValue = GV;
+      } else {
+        // If Disp does not represent a global symbol, consider Disp as a plain
+        // integer value. Generate add memrefVal, Disp.
+        Instruction *AddInst =
+            BinaryOperator::CreateAdd(MemrefValue, DispValue);
+        RaisedBB->getInstList().push_back(AddInst);
+        MemrefValue = AddInst;
+      }
     } else {
       // Check that this is an instruction of the kind
       // mov %rax, 0x605798 which in reality is
@@ -1790,12 +1825,56 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     std::set<MCPhysReg> LiveInRegs;
     MachineBasicBlock *Entry = &(MF.front());
     df_iterator_default_set<MachineBasicBlock *, 16> Visited;
-    const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
+    // List of registers used in a block
+    LivePhysRegs MBBUseRegs;
+    // List of registers that are cleared by an xor instruction prior to its
+    // first use.
+    LivePhysRegs PseudoUseRegs;
+    const MachineRegisterInfo &MRI = MF.getRegInfo();
+    const TargetRegisterInfo *TRI = MRI.getTargetRegisterInfo();
+    MBBUseRegs.init(*TRI);
+    PseudoUseRegs.init(*TRI);
 
     for (MachineBasicBlock *MBB : depth_first_ext(Entry, Visited)) {
+      MBBUseRegs.clear();
+      for (MachineBasicBlock::iterator Iter = MBB->instr_begin(),
+                                       End = MBB->instr_end();
+           Iter != End; Iter++) {
+        MachineInstr &MI = *Iter;
+        unsigned Opc = MI.getOpcode();
+
+        // xor reg, reg is a typical idiom used to clear reg. If reg happens to
+        // be an argument register, it should not be considered as such. Record
+        // it as such.
+        if (Opc == X86::XOR64rr || Opc == X86::XOR32rr || Opc == X86::XOR16rr ||
+            Opc == X86::XOR8rr) {
+          unsigned DestOpIndx = 0, SrcOp1Indx = 1, SrcOp2Indx = 2;
+          const MachineOperand &DestOp = MI.getOperand(DestOpIndx);
+          const MachineOperand &Use1Op = MI.getOperand(SrcOp1Indx);
+          const MachineOperand &Use2Op = MI.getOperand(SrcOp2Indx);
+
+          assert(Use1Op.isReg() && Use2Op.isReg() && DestOp.isReg() &&
+                 (MI.findTiedOperandIdx(SrcOp1Indx) == DestOpIndx) &&
+                 "Expecting register operands of xor instruction");
+
+          if (Use1Op.getReg() == Use2Op.getReg())
+            // If the source register has not been used before, add it to the
+            // list of registers that should not be considered as first use
+            if (!MBBUseRegs.contains(Use1Op.getReg()))
+              // Record the 64-bit version of the register. Note that addReg()
+              // adds the register and all its sub-registers to the set. The
+              // corresponding set-membership test contains(), tests for the
+              // register and all its sub-registers.
+              PseudoUseRegs.addReg(find64BitSuperReg(DestOp.getReg()));
+        } else {
+          MBBUseRegs.addUses(MI);
+        }
+      }
+
       for (const auto &LI : MBB->liveins()) {
         MCPhysReg PhysReg = LI.PhysReg;
-        bool found = false;
+        // Is PhysReg in pseudo-use register list?
+        bool found = PseudoUseRegs.contains(PhysReg);
         // Check if any of the sub-registers of PhysReg is in LiveRegs
         for (MCSubRegIterator SubRegs(PhysReg, TRI, /*IncludeSelf=*/true);
              (SubRegs.isValid() && !found); ++SubRegs) {
@@ -1806,8 +1885,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
              (SupRegs.isValid() && !found); ++SupRegs) {
           found = (LiveInRegs.find(*SupRegs) != LiveInRegs.end());
         }
-        // If neither sub or super registers of PhysReg is in LiveRegs set,
-        // insert it.
+        // If neither sub or super registers of PhysReg is in LiveRegs set and
+        // PhysReg is not in pseudo-usage list, then add it to the list of
+        // liveins.
         if (!found)
           LiveInRegs.emplace(LI.PhysReg);
       }
@@ -2011,10 +2091,20 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
       const MCPhysReg *ImplUses = MCID.getImplicitUses();
       for (unsigned i = 0; i < ImplUsesCount; i++) {
         // Get the reaching definition of the implicit use register.
-        Value *Val = getRegOrArgValue(ImplUses[i], MI.getParent()->getNumber());
-        assert((Val != nullptr) &&
-               "Unexpected null value of implicit defined registers");
-        CurCTInfo->RegValues.push_back(Val);
+        if (ImplUses[i] == X86::EFLAGS) {
+          for (auto FlgBit : EFlagBits) {
+            Value *Val = getRegOrArgValue(FlgBit, MI.getParent()->getNumber());
+            assert((Val != nullptr) &&
+                   "Unexpected null value of implicit eflags bits");
+            CurCTInfo->RegValues.push_back(Val);
+          }
+        } else {
+          Value *Val =
+              getRegOrArgValue(ImplUses[i], MI.getParent()->getNumber());
+          assert((Val != nullptr) &&
+                 "Unexpected null value of implicit defined registers");
+          CurCTInfo->RegValues.push_back(Val);
+        }
       }
     }
     CurCTInfo->Raised = false;
@@ -2060,8 +2150,8 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
       // Add the alloca instruction to entry block
       insertAllocaInEntryBlock(Alloca);
       // The alloca corresponds to the current location of stack pointer
-      raisedValues->updatePhysRegSSAValue(X86::RSP, mi.getParent()->getNumber(),
-                                          Alloca);
+      raisedValues->setPhysRegSSAValue(X86::RSP, mi.getParent()->getNumber(),
+                                       Alloca);
       return true;
     } else {
       assert(false && "Unhandled PUSH instruction with a non-register operand");
@@ -2145,8 +2235,8 @@ bool X86MachineInstructionRaiser::raiseConvertBWWDDQMachineInstr(
   RaisedBB->getInstList().push_back(SextInst);
 
   // Update the value mapping of DefReg
-  raisedValues->updatePhysRegSSAValue(DefReg, MI.getParent()->getNumber(),
-                                      SextInst);
+  raisedValues->setPhysRegSSAValue(DefReg, MI.getParent()->getNumber(),
+                                   SextInst);
   return true;
 }
 
@@ -2216,8 +2306,8 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
       CastInst::Create(Instruction::Trunc, LShrInst, UseRegTy);
   RaisedBB->getInstList().push_back(HighBytesInst);
   // Update the value mapping of DefReg_1
-  raisedValues->updatePhysRegSSAValue(DefReg_1, MI.getParent()->getNumber(),
-                                      HighBytesInst);
+  raisedValues->setPhysRegSSAValue(DefReg_1, MI.getParent()->getNumber(),
+                                   HighBytesInst);
 
   return true;
 }
@@ -2252,8 +2342,8 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
            "Mismatched imm and dest sizes in move imm to reg instruction.");
     srcValue = ConstantInt::get(ImmTy, SrcImm);
     // Update the value mapping of dstReg
-    raisedValues->updatePhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
-                                        srcValue);
+    raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
+                                     srcValue);
     success = true;
   } break;
   default:
@@ -2266,23 +2356,35 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
 bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     const MachineInstr &MI) {
   unsigned int Opcode = MI.getOpcode();
+  int MBBNo = MI.getParent()->getNumber();
   LLVMContext &Ctx(MF.getFunction().getContext());
 
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  bool success = false;
+  bool Success = false;
   unsigned DstIndex = 0;
-  unsigned SrcIndex = 1;
-  assert(MI.getNumExplicitOperands() == 2 && MI.getOperand(DstIndex).isReg() &&
-         MI.getOperand(SrcIndex).isReg() &&
-         "Expecting exactly two operands for move reg-to-reg instructions");
+  unsigned Src1Index = 1;
+  unsigned Src2Index = 2;
+  assert(
+      (MI.getNumExplicitOperands() == 2 || MI.getNumExplicitOperands() == 4) &&
+      MI.getOperand(DstIndex).isReg() &&
+      (MI.getOperand(Src1Index).isReg() || MI.getOperand(Src2Index).isReg()) &&
+      "Expecting exactly two or four operands for move reg-to-reg "
+      "instructions");
 
   unsigned int DstPReg = MI.getOperand(DstIndex).getReg();
 
   // Get source operand value
-  Value *SrcValue = getRegOperandValue(MI, SrcIndex);
+  Value *SrcValue = nullptr;
+  if (MI.getNumExplicitOperands() == 2)
+    SrcValue = getRegOperandValue(MI, Src1Index);
+  else if (MI.getNumExplicitOperands() == 4)
+    SrcValue = getRegOperandValue(MI, Src2Index);
+  else
+    assert(false &&
+           "Unexpected operand numbers for move reg-to-reg instruction");
 
   switch (Opcode) {
   case X86::MOVSX16rr8:
@@ -2360,20 +2462,16 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     CastInst *CInst = CastInst::Create(Cast, SrcValue, Ty);
     RaisedBB->getInstList().push_back(CInst);
 
-    // Update the value mapping of dstReg
-    raisedValues->updatePhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
-                                        CInst);
-    success = true;
-
+    // Update the value mapping of DstPReg
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, CInst);
+    Success = true;
   } break;
-
   case X86::MOV64rr:
   case X86::MOV32rr:
   case X86::MOV16rr:
   case X86::MOV8rr: {
-
     unsigned int DstPRegSize = getPhysRegOperandSize(MI, DstIndex);
-    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, SrcIndex);
+    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, Src1Index);
 
     // Verify sanity of the instruction.
     assert(DstPRegSize != 0 && DstPRegSize == SrcPRegSize &&
@@ -2383,17 +2481,116 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
            "Encountered mov instruction with undefined source register");
     assert(SrcValue->getType()->isSized() &&
            "Unsized source value in move instruction");
-    SrcValue = matchSSAValueToSrcRegSize(MI, SrcIndex);
-    // Update the value mapping of dstReg
-    raisedValues->updatePhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
-                                        SrcValue);
-    success = true;
+    SrcValue = matchSSAValueToSrcRegSize(MI, Src1Index);
+
+    // Update the value mapping of DstPReg
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
+    Success = true;
+  } break;
+  case X86::CMOV16rr:
+  case X86::CMOV32rr:
+  case X86::CMOV64rr: {
+    unsigned int DstPRegSize = getPhysRegOperandSize(MI, DstIndex);
+    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, Src2Index);
+
+    // Verify sanity of the instruction.
+    assert(DstPRegSize != 0 && DstPRegSize == SrcPRegSize &&
+           "Unexpected sizes of source and destination registers size differ "
+           "in cmovcc instruction");
+    assert(SrcValue &&
+           "Encountered cmovcc instruction with undefined source register");
+    assert(SrcValue->getType()->isSized() &&
+           "Unsized source value in cmovcc instruction");
+    SrcValue = matchSSAValueToSrcRegSize(MI, Src2Index);
+
+    // Get destination operand value
+    Value *DstValue = getRegOrArgValue(DstPReg, MBBNo);
+    Value *TrueValue = ConstantInt::getTrue(Ctx);
+    Value *FalseValue = ConstantInt::getFalse(Ctx);
+    CmpInst::Predicate Pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
+    Value *CMOVCond = nullptr;
+
+    switch (X86::getCondFromCMov(MI)) {
+    case X86::COND_NE: {
+      // Check if ZF == 0
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      assert(ZFValue != nullptr &&
+             "Failed to get EFLAGS value while raising CMOVNE!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      CMOVCond = new ICmpInst(Pred, ZFValue, FalseValue, "Cond_CMOVNE");
+    } break;
+    case X86::COND_E: {
+      // Check if ZF == 1
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      assert(ZFValue != nullptr &&
+             "Failed to get EFLAGS value while raising CMOVE!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      CMOVCond = new ICmpInst(Pred, ZFValue, TrueValue, "Cond_CMOVE");
+    } break;
+    case X86::COND_A: {
+      // Check CF == 0 and ZF == 0
+      Value *CFValue = getRegOrArgValue(EFLAGS::CF, MBBNo);
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      assert((CFValue != nullptr) && (ZFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising CMOVA!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // CF or ZF
+      BinaryOperator *CFZFOrCond =
+          BinaryOperator::CreateOr(CFValue, ZFValue, "CFZFOR_CMOVA");
+      RaisedBB->getInstList().push_back(CFZFOrCond);
+      // Test CF == 0 and ZF == 0
+      CMOVCond = new ICmpInst(Pred, CFZFOrCond, FalseValue, "Cond_CMOVA");
+    } break;
+    case X86::COND_L: {
+      // Check SF != OF
+      Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+      Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+      assert((SFValue != nullptr) && (OFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising CMOVL!");
+      Pred = CmpInst::Predicate::ICMP_NE;
+      // Test SF != OF
+      CMOVCond = new ICmpInst(Pred, SFValue, OFValue, "Cond_CMOVL");
+    } break;
+    case X86::COND_G: {
+      // Check ZF == 0 and SF == OF
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+      Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+      assert((ZFValue != nullptr) && (SFValue != nullptr) &&
+             (OFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising CMOVG!");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Compare ZF and 0
+      CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_CMOVG");
+      RaisedBB->getInstList().push_back(ZFCond);
+      // Test SF == OF
+      CmpInst *SFOFCond = new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_CMOVG");
+      RaisedBB->getInstList().push_back(SFOFCond);
+      CMOVCond = BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG");
+    } break;
+    case X86::COND_INVALID:
+      assert(false && "CMOV instruction with invalid condition found");
+      break;
+    default:
+      assert(false && "CMOV instruction with unhandled condition found");
+      break;
+    }
+    RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CMOVCond));
+    // Generate SelectInst for CMOV instruction
+    SelectInst *SI = SelectInst::Create(CMOVCond, SrcValue, DstValue, "CMOV");
+    RaisedBB->getInstList().push_back(SI);
+
+    // Update the value mapping of DstPReg
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SI);
+    Success = true;
   } break;
   default:
     assert(false && "Unhandled move reg-to-reg instruction");
     break;
   }
-  return success;
+  return Success;
 }
 
 bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {
@@ -2489,8 +2686,8 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {
          "Failed to get effective address value");
 
   // Update the value mapping of DestReg
-  raisedValues->updatePhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
-                                      EffectiveAddrValue);
+  raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
+                                   EffectiveAddrValue);
   return true;
 }
 
@@ -2506,11 +2703,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   // operands
   const unsigned DestOpIndex = 0, UseOp1Index = 1, UseOp2Index = 2;
   std::vector<Value *> Uses;
+  int MBBNo = MI.getParent()->getNumber();
+
   for (const MachineOperand &MO : MI.explicit_uses()) {
     assert(MO.isReg() &&
            "Unexpected non-register operand in binary op instruction");
     unsigned int SrcReg = MO.getReg();
-    Value *SrcValue = getRegOrArgValue(SrcReg, MI.getParent()->getNumber());
+    Value *SrcValue = getRegOrArgValue(SrcReg, MBBNo);
     Uses.push_back(SrcValue);
   }
   // Verify there are exactly 2 use operands or source and dest operands are
@@ -2584,6 +2783,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            "add");
     dstReg = MI.getOperand(DestOpIndex).getReg();
     dstValue = BinaryOperator::CreateNSWAdd(Uses.at(0), Uses.at(1));
+    if (isa<Instruction>(dstValue))
+      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    // Set SF and ZF based on dstValue; technically OF, AF, CF and PF also needs
+    // to be set but ignoring for now.
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
+
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
     break;
   case X86::IMUL32rr:
   case X86::IMUL64rr:
@@ -2598,6 +2806,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            "mul");
     dstReg = MI.getOperand(DestOpIndex).getReg();
     dstValue = BinaryOperator::CreateNSWMul(Uses.at(0), Uses.at(1));
+    if (isa<Instruction>(dstValue))
+      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    // Setting EFLAG bits does not seem to matter, so not setting
+    // Set the dstReg value
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
     break;
 
   case X86::AND8rr:
@@ -2625,6 +2838,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       Type *DestTy = getPhysRegOperandType(MI, 0);
       Value *Val = ConstantInt::get(DestTy, 0, false /* isSigned */);
       dstValue = Val;
+      // Set SF and ZF knowing that the value is 0
+      raisedValues->setEflagValue(EFLAGS::SF, MBBNo, false);
+      raisedValues->setEflagValue(EFLAGS::ZF, MBBNo, true);
     } else {
       assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
              "Unhandled situation: register used before initialization in "
@@ -2647,7 +2863,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       default:
         assert(false && "Reached unexpected location");
       }
+      if (isa<Instruction>(dstValue))
+        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+      // Set SF and ZF based on dstValue; technically PF also needs
+      // to be set but ignoring for now.
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
     }
+    // Clear OF and CF
+    raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+    raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
   case X86::TEST8rr:
   case X86::TEST16rr:
@@ -2661,6 +2888,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            "test");
     dstReg = X86::EFLAGS;
     dstValue = BinaryOperator::CreateAnd(Uses.at(0), Uses.at(1));
+    if (isa<Instruction>(dstValue))
+      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    // Clear OF and CF
+    raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+    raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+    // Set SF and ZF based on dstValue; technically PF also needs
+    // to be set but ignoring for now.
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
     break;
   case X86::NEG8r:
   case X86::NEG16r:
@@ -2676,18 +2912,32 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            "Unexpected defines in a neg instruction");
     dstReg = DestOp.getReg();
-    dstValue = BinaryOperator::CreateNeg(Uses.at(0));
+    Value *SrcOp = Uses.at(0);
+    dstValue = BinaryOperator::CreateNeg(SrcOp);
+    // Set CF to 0 if source operand is 0
+    // Note: Add this instruction _before_ adding the result of neg
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MBBNo, SrcOp);
+    // Now add the neg instruction
+    if (isa<Instruction>(dstValue))
+      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    // Now set up the flags according to the result
+    // Set SF and ZF based on dstValue; technically PF also needs
+    // to be set but ignoring for now.
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
+
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
   default:
     assert(false && "Unhandled binary instruction");
   }
   assert(dstValue != nullptr && (dstReg != X86::NoRegister) &&
          "Raising of instruction unimplemented");
-  if (isa<Instruction>(dstValue)) {
-    RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
-  }
-  raisedValues->updatePhysRegSSAValue(dstReg, MI.getParent()->getNumber(),
-                                      dstValue);
+  if (dstReg != X86::EFLAGS)
+    // dstReg is set to X86::EFLAGS for TEST instruction which does not write to
+    // any physical register
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   return true;
 }
 
@@ -2817,8 +3067,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   RaisedBB->getInstList().push_back(BinOpInst);
 
   // Update PhysReg to Value map
-  raisedValues->updatePhysRegSSAValue(DestPReg, MI.getParent()->getNumber(),
-                                      BinOpInst);
+  raisedValues->setPhysRegSSAValue(DestPReg, MI.getParent()->getNumber(),
+                                   BinOpInst);
   return true;
 }
 
@@ -3081,12 +3331,12 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
           isa<GetElementPtrInst>(MemRefValue)) &&
          "Unexpected type of memory reference in binary mem op instruction");
 
-  if (IsPCRelMemRef) {
+  if (IsPCRelMemRef && !isa<GetElementPtrInst>(MemRefValue)) {
     // memRefValue already represents the global value loaded from
     // PC-relative memory location. It is incorrect to generate an
     // additional load of this value. It should be directly used.
-    raisedValues->updatePhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
-                                        MemRefValue);
+    raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
+                                     MemRefValue);
   } else {
     // If it is an effective address value, convert it to a pointer to the
     // type of load reg.
@@ -3113,8 +3363,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     Type *ExtTy = nullptr;
     switch (Opcode) {
     default: {
-      raisedValues->updatePhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
-                                          LdInst);
+      raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
+                                       LdInst);
     } break;
     case X86::MOVSX64rm32: {
       ExtTy = Type::getInt64Ty(Ctx);
@@ -3184,13 +3434,13 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       }
       RaisedBB->getInstList().push_back(ExtInst);
       // Update PhysReg to Value map
-      raisedValues->updatePhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
-                                          ExtInst);
+      raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
+                                       ExtInst);
     } else {
       // This is a normal mov instruction
       // Update PhysReg to Value map
-      raisedValues->updatePhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
-                                          LdInst);
+      raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
+                                       LdInst);
     }
   }
 
@@ -3381,8 +3631,8 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
 
   RaisedBB->getInstList().push_back(Quotient);
   // Update ssa val of UseDefReg_0
-  raisedValues->updatePhysRegSSAValue(UseDefReg_0, MI.getParent()->getNumber(),
-                                      Quotient);
+  raisedValues->setPhysRegSSAValue(UseDefReg_0, MI.getParent()->getNumber(),
+                                   Quotient);
 
   // remainder
   Instruction *RemainderDT =
@@ -3397,8 +3647,8 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
 
   RaisedBB->getInstList().push_back(Remainder);
   // Update ssa val of UseDefReg_1
-  raisedValues->updatePhysRegSSAValue(UseDefReg_1, MI.getParent()->getNumber(),
-                                      Remainder);
+  raisedValues->setPhysRegSSAValue(UseDefReg_1, MI.getParent()->getNumber(),
+                                   Remainder);
 
   return true;
 }
@@ -3423,8 +3673,8 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  // Is this a cmp instruction?
-  bool isCMPInst = x86InstrInfo->getName(MCIDesc.getOpcode()).startswith("CMP");
+  // Is this a sub instruction?
+  bool isSUBInst = x86InstrInfo->getName(MCIDesc.getOpcode()).startswith("SUB");
 
   SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
 
@@ -3527,29 +3777,11 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   assert(OpValues[0] != nullptr && OpValues[1] != nullptr &&
          "Unable to materialize compare operand values");
 
-  Instruction *CmpInst = nullptr;
-  // Sub instruction is marked as a compare instruction (MCID::Compare)
-  switch (MI.getOpcode()) {
-  case X86::SUB8mi:
-  case X86::SUB8mr:
-  case X86::SUB8rm:
-  case X86::SUB16mi:
-  case X86::SUB16mr:
-  case X86::SUB16rm:
-  case X86::SUB32mi:
-  case X86::SUB32mr:
-  case X86::SUB32rm:
-  case X86::SUB64mi8:
-  case X86::SUB64mi32:
-  case X86::SUB64mr:
-  case X86::SUB64rm:
-  case X86::SUB32rr: {
-    assert(MCIDesc.getNumDefs() == 1 &&
-           "Unexpected number of def operands of sub memref instruction");
-    const MachineOperand &MO = MI.getOperand(0);
-    assert(MI.getOperand(0).isReg() && "Unexpected non-register def operand");
-    // Make sure the source operand value types are the same as destination
-    // register type.
+  assert(MI.getOperand(0).isReg() && "Unexpected non-register def operand");
+  // Make sure the source operand value types are the same as destination
+  // register type.
+  unsigned int DestReg = MI.getOperand(0).getReg();
+  if (DestReg != X86::NoRegister) {
     Type *DestTy = getPhysRegOperandType(MI, 0);
     for (int i = 0; i < 2; i++) {
       if (OpValues[i]->getType() != DestTy) {
@@ -3560,43 +3792,53 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
         OpValues[i] = CInst;
       }
     }
+  } else {
+    assert(OpValues[0]->getType() == OpValues[1]->getType() &&
+           "Mis-matched operand types encountered while raising compare "
+           "instruction");
+  }
+  Instruction *SubInst = BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
+  RaisedBB->getInstList().push_back(SubInst);
 
-    CmpInst = BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
-    raisedValues->updatePhysRegSSAValue(MO.getReg(),
-                                        MI.getParent()->getNumber(), CmpInst);
-  } break;
-  default: {
-    assert(isCMPInst &&
-           "Expect compare instruction. Possibly an unhandled compare "
-           "instruction?");
-    if (OpValues[0]->getType()->isIntegerTy() &&
-        OpValues[1]->getType()->isIntegerTy()) {
-      // The predicate value used ICMP_EQ is temporary. This will be fixed
-      // based on the condition of the branch using the effects of this
-      // comparison.
-      CmpInst =
-          new ICmpInst(CmpInst::Predicate::ICMP_EQ, OpValues[0], OpValues[1]);
-    } else if (OpValues[0]->getType()->isFloatTy() &&
-               OpValues[1]->getType()->isFloatTy()) {
-      // The predicate value used FCMP_OEQ is temporary. This will be fixed
-      // based on the condition of the branch using the effects of this
-      // comparison.
-      CmpInst =
-          new FCmpInst(CmpInst::Predicate::FCMP_OEQ, OpValues[0], OpValues[1]);
-    } else {
-      assert(false && "Incompatible types of comparison operands found");
+  if (isSUBInst) {
+    switch (MI.getOpcode()) {
+    case X86::SUB8mi:
+    case X86::SUB8mr:
+    case X86::SUB8rm:
+    case X86::SUB16mi:
+    case X86::SUB16mr:
+    case X86::SUB16rm:
+    case X86::SUB32mi:
+    case X86::SUB32mr:
+    case X86::SUB32rm:
+    case X86::SUB64mi8:
+    case X86::SUB64mi32:
+    case X86::SUB64mr:
+    case X86::SUB64rm:
+    case X86::SUB32rr: {
+      assert(MCIDesc.getNumDefs() == 1 &&
+             "Unexpected number of def operands of sub instruction");
+      // Update the DestReg only if this is a sub instruction. Do not update if
+      // this is a cmp instruction
+      raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
+                                       SubInst);
+    } break;
+    default:
+      assert(false && "Unhandled sub instruction found");
     }
-    assert(MCIDesc.getNumImplicitDefs() == 1 &&
-           "Compare instruction does not have exactly one implicit def");
-    MCPhysReg ImpDefReg = MCIDesc.ImplicitDefs[0];
-    assert(ImpDefReg == X86::EFLAGS &&
-           "Expected implicit EFLAGS def in compare instruction");
-    raisedValues->updatePhysRegSSAValue(ImpDefReg, MI.getParent()->getNumber(),
-                                        CmpInst);
   }
-  }
-  // Add the compare instruction
-  RaisedBB->getInstList().push_back(CmpInst);
+  // Now update EFLAGS
+  assert(MCIDesc.getNumImplicitDefs() == 1 &&
+         "Compare instruction does not have exactly one implicit def");
+  MCPhysReg ImpDefReg = MCIDesc.ImplicitDefs[0];
+  assert(ImpDefReg == X86::EFLAGS &&
+         "Expected implicit EFLAGS def in compare instruction");
+  // Create instructions to set CF and ZF flags according to the result
+  // SubInst.
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI.getParent()->getNumber(),
+                                        SubInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI.getParent()->getNumber(),
+                                        SubInst);
   return true;
 }
 
@@ -3754,28 +3996,32 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
 
   const MachineOperand &DestOp = MI.getOperand(0);
   CmpInst::Predicate pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
-  uint64_t EflagsCond = EFLAGS_UNDEFINED;
+  uint64_t EflagBit = EFLAGS::UNDEFINED;
 
   int cmpConst = 0;
 
-  switch (MI.getOpcode()) {
-  case X86::SETNEm:
-  case X86::SETNEr:
-    pred = CmpInst::Predicate::ICMP_NE;
-    cmpConst = 1;
-    EflagsCond = EFLAGS_ZF;
-    break;
-  case X86::SETEm:
-  case X86::SETEr:
+  switch (X86::getCondFromSETCC(MI)) {
+  case X86::COND_NE: {
+    // Check if ZF == 0
     pred = CmpInst::Predicate::ICMP_EQ;
     cmpConst = 0;
-    EflagsCond = EFLAGS_ZF;
+    EflagBit = EFLAGS::ZF;
+  } break;
+  case X86::COND_E: {
+    // Check if ZF == 1
+    pred = CmpInst::Predicate::ICMP_EQ;
+    cmpConst = 1;
+    EflagBit = EFLAGS::ZF;
+  } break;
+  case X86::COND_INVALID:
+    assert(false && "Set instruction with invalid condition found");
     break;
   default:
+    assert(false && "Set instruction with unhandled condition found");
     break;
   }
 
-  assert(EflagsCond != EFLAGS_UNDEFINED && "Undefined EFLAGS");
+  assert(EflagBit != EFLAGS::UNDEFINED && "Unhandled EFLAGS");
 
   if (pred == CmpInst::Predicate::BAD_ICMP_PREDICATE) {
     MI.dump();
@@ -3783,16 +4029,14 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
   }
 
   if (DestOp.isReg()) {
-    // TODO : Using the eflags value seems very coarse. May be I should
-    // model the constituent flags as separate values ???
-    Value *EflagsVal =
-        getRegOrArgValue(X86::EFLAGS, MI.getParent()->getNumber());
+    Value *EflagVal = raisedValues->getEflagReachingDef(
+        EflagBit, MI.getParent()->getNumber());
     Value *cmpConstVal =
-        ConstantInt::get(EflagsVal->getType(), cmpConst, false /* isSigned */);
-    CmpInst *cmp = new ICmpInst(pred, EflagsVal, cmpConstVal);
+        ConstantInt::get(EflagVal->getType(), cmpConst, false /* isSigned */);
+    CmpInst *cmp = new ICmpInst(pred, EflagVal, cmpConstVal);
     RaisedBB->getInstList().push_back(cmp);
-    raisedValues->updatePhysRegSSAValue(DestOp.getReg(),
-                                        MI.getParent()->getNumber(), cmp);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), cmp);
     Success = true;
   } else {
     outs() << "Unhandled set instruction with memory destination\n";
@@ -3859,8 +4103,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
       Value *StackRefVal = getStackAllocatedValue(MI, AdjSPRef, true);
       assert((StackRefVal != nullptr) && "Reference to unallocated stack slot");
-      raisedValues->updatePhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
-                                          StackRefVal);
+      raisedValues->setPhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
+                                       StackRefVal);
     } else {
       Value *SrcOp1Value = nullptr;
       Value *SrcOp2Value = nullptr;
@@ -4020,8 +4264,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
       RaisedBB->getInstList().push_back(BinOpInstr);
       // Update PhysReg to Value map
-      raisedValues->updatePhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
-                                          BinOpInstr);
+      raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
+                                       BinOpInstr);
     }
   } else {
     MI.dump();
@@ -4120,6 +4364,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
   } else if (MI->isConditionalBranch()) {
     // Find the fall through basic block
     MCInstRaiser::const_mcinst_iter MCIter = MCIR->getMCInstAt(MCInstOffset);
+    LLVMContext &Ctx(MF.getFunction().getContext());
     // Go to next instruction
     MCIter++;
     assert(MCIter != MCIR->const_mcinstr_end() &&
@@ -4135,125 +4380,166 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
            "found");
     BasicBlock *FTBB = (*mapIter).second;
     // Get the condition value
-    assert(CTRec->RegValues.size() == 1 &&
-           "Multiple implicit uses in conditional branch not handled");
+    assert(CTRec->RegValues.size() == EFlagBits.size() &&
+           "Unexpected number of ELFAGS bit values in conditional branch not "
+           "handled");
 
-    // If the Cond value is a compare, change the predicate of the compare
-    // instruction based on condition of the branch.
+    // Branch condition value
+    Value *BranchCond = nullptr;
+    // Predicate operation to be performed
+    CmpInst::Predicate Pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
+    Value *TrueValue = ConstantInt::getTrue(Ctx);
+    Value *FalseValue = ConstantInt::getFalse(Ctx);
+    auto Opcode = MI->getOpcode();
+    assert(((Opcode == X86::JCC_1) || (Opcode == X86::JCC_2) ||
+            (Opcode == X86::JCC_4)) &&
+           "Conditional branch instruction expected");
+    X86::CondCode CC = X86::COND_INVALID;
 
-    Value *Cond = CTRec->RegValues[0];
-    // Instruction *Inst = dyn_cast<Instruction>(Cond);
-    if (isa<CmpInst>(Cond)) {
-      if (ICmpInst *IntCmpInst = dyn_cast<ICmpInst>(Cond)) {
-        // Detect the appropriate predicate
-        switch (MI->getOpcode()) {
-        case X86::JE_1:
-        case X86::JE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_EQ);
-          break;
-        case X86::JNE_1:
-        case X86::JNE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_NE);
-          break;
-        case X86::JA_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_UGT);
-          break;
-        case X86::JAE_1:
-        case X86::JAE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_UGE);
-          break;
-        case X86::JB_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_ULT);
-          break;
-        case X86::JBE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_ULE);
-          break;
-        case X86::JG_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SGT);
-          break;
-        case X86::JGE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SGE);
-          break;
-        case X86::JS_1:
-        case X86::JL_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SLT);
-          break;
-        case X86::JLE_1:
-        case X86::JLE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SLE);
-          break;
-        default:
-          MI->dump();
-          assert(false && "Unhandled conditional branch");
-        }
-      } else if (FCmpInst *FC = dyn_cast<FCmpInst>(Cond)) {
-        assert(false && "Unhandled FCMP based branch raising");
-      }
+    // Unfortunately X86::getCondFromBranch(MI) only looks at JCC_1. We need to
+    // handle JCC_2 and JCC_4 as well.
+    switch (MI->getOpcode()) {
+    default:
+      CC = X86::COND_INVALID;
+      break;
+    case X86::JCC_1:
+    case X86::JCC_2:
+    case X86::JCC_4:
+      CC = static_cast<X86::CondCode>(
+          MI->getOperand(MI->getDesc().getNumOperands() - 1).getImm());
     }
-    // If Cond is not a conditional instruction, construct one
-    else {
-      Value *CmpVal1 = Cond;
-      Type *CmpType = Cond->getType();
-      Value *CmpVal2 = ConstantInt::get(CmpType, 0);
 
-      if (CmpType->isIntegerTy()) {
-        CmpInst *IntCmpInst = new ICmpInst(
-            CmpInst::Predicate::FIRST_ICMP_PREDICATE, CmpVal1, CmpVal2);
-        CandBB->getInstList().push_back(IntCmpInst);
-        // Set this value to be used as branch condition
-        Cond = IntCmpInst;
-        // Detect the appropriate predicate
-        switch (MI->getOpcode()) {
-        case X86::JE_1:
-        case X86::JE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_EQ);
-          break;
-        case X86::JNE_1:
-        case X86::JNE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_NE);
-          break;
-        case X86::JA_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_UGT);
-          break;
-        case X86::JAE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_UGE);
-          break;
-        case X86::JB_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_ULT);
-          break;
-        case X86::JBE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_ULE);
-          break;
-        case X86::JG_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SGT);
-          break;
-        case X86::JGE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SGE);
-          break;
-        case X86::JS_1:
-        case X86::JL_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SLT);
-          break;
-        case X86::JLE_1:
-        case X86::JLE_4:
-          IntCmpInst->setPredicate(CmpInst::Predicate::ICMP_SLE);
-          break;
-        default:
-          MI->dump();
-          assert(false && "Unhandled conditional branch");
-        }
-      } else if (CmpType->isFloatTy()) {
-        assert(false &&
-               "NYI - Generation of floating point compare instructions.");
-      } else {
-        assert(false && "Incompatible types of comparison operands found");
-      }
+    switch (CC) {
+    case X86::COND_E: {
+      // Test ZF == 1
+      int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
+      Value *ZFValue = CTRec->RegValues[ZFIndex];
+      assert(ZFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JE");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      BranchCond = new ICmpInst(Pred, ZFValue, TrueValue);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+    case X86::COND_NE: {
+      // Test ZF == 0
+      int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
+      Value *ZFValue = CTRec->RegValues[ZFIndex];
+      assert(ZFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JNE");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      BranchCond = new ICmpInst(Pred, ZFValue, FalseValue);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+    case X86::COND_S: {
+      // Test SF == 1
+      int SFIndex = getEflagBitIndex(EFLAGS::SF);
+      Value *SFValue = CTRec->RegValues[SFIndex];
+      assert(SFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JS");
+
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      BranchCond = new ICmpInst(Pred, SFValue, TrueValue);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+#if 0
+    // TODO: set EFLAGS appropriately
+    case X86::COND_A:
+      break;
+    case X86::COND_AE:
+      break;
+    case X86::COND_B:
+      break;
+    case X86::COND_BE:
+      break;
+#endif
+    case X86::COND_G: {
+      // ZF == 0 and (SF == OF)
+      int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
+      int SFIndex = getEflagBitIndex(EFLAGS::SF);
+      int OFIndex = getEflagBitIndex(EFLAGS::OF);
+      Value *ZFValue = CTRec->RegValues[ZFIndex];
+      Value *SFValue = CTRec->RegValues[SFIndex];
+      Value *OFValue = CTRec->RegValues[OFIndex];
+      Instruction *ZFCond = nullptr;
+      Instruction *SFOFCond = nullptr;
+      assert(((ZFValue != nullptr) && (SFValue != nullptr) &&
+              (OFValue != nullptr)) &&
+             "Improper ELFAGS Values for JLE");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Compare ZF and 0
+      ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_JG");
+      CandBB->getInstList().push_back(ZFCond);
+      // Test SF == OF
+      SFOFCond = new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_JG");
+      CandBB->getInstList().push_back(SFOFCond);
+      BranchCond = BinaryOperator::CreateAnd(ZFCond, SFOFCond, "ZFAndSFOF_JG");
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+    case X86::COND_GE: {
+      // SF == OF
+      int SFIndex = getEflagBitIndex(EFLAGS::SF);
+      int OFIndex = getEflagBitIndex(EFLAGS::OF);
+      Value *SFValue = CTRec->RegValues[SFIndex];
+      Value *OFValue = CTRec->RegValues[OFIndex];
+      assert(SFValue != nullptr && OFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JGE");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Compare SF and OF
+      BranchCond = new ICmpInst(Pred, SFValue, OFValue);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+    case X86::COND_L: {
+      // SF != OF
+      int SFIndex = getEflagBitIndex(EFLAGS::SF);
+      int OFIndex = getEflagBitIndex(EFLAGS::OF);
+      Value *SFValue = CTRec->RegValues[SFIndex];
+      Value *OFValue = CTRec->RegValues[OFIndex];
+      assert(((SFValue != nullptr) && (OFValue != nullptr)) &&
+             "Improper ELFAGS Values for JL");
+      // Test SF != OF
+      Pred = CmpInst::Predicate::ICMP_NE;
+      // Compare SF and OF
+      BranchCond = new ICmpInst(Pred, SFValue, OFValue);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+    case X86::COND_LE: {
+      // ZF == 1 or (SF != OF)
+      int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
+      int SFIndex = getEflagBitIndex(EFLAGS::SF);
+      int OFIndex = getEflagBitIndex(EFLAGS::OF);
+      Value *ZFValue = CTRec->RegValues[ZFIndex];
+      Value *SFValue = CTRec->RegValues[SFIndex];
+      Value *OFValue = CTRec->RegValues[OFIndex];
+      Instruction *ZFCond = nullptr;
+      Instruction *SFOFCond = nullptr;
+      assert(((ZFValue != nullptr) && (SFValue != nullptr) &&
+              (OFValue != nullptr)) &&
+             "Improper ELFAGS Values for JLE");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Compare ZF and 1
+      ZFCond = new ICmpInst(Pred, ZFValue, TrueValue);
+      CandBB->getInstList().push_back(ZFCond);
+      // Test SF != OF
+      Pred = CmpInst::Predicate::ICMP_NE;
+      // Compare SF and OF
+      SFOFCond = new ICmpInst(Pred, SFValue, OFValue);
+      CandBB->getInstList().push_back(SFOFCond);
+      BranchCond = BinaryOperator::CreateOr(ZFCond, SFOFCond);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+    case X86::COND_INVALID:
+      assert(false && "Invalid condition on branch");
+      break;
+    default:
+      MI->dump();
+      assert(false && "Unhandled conditional branch");
     }
-    // Set the predicate of the compare instruction according to the
-    // branch condition
 
     // Create branch instruction
-    BranchInst *CondBr = BranchInst::Create(TgtBB, FTBB, Cond);
+    BranchInst *CondBr = BranchInst::Create(TgtBB, FTBB, BranchCond);
     CandBB->getInstList().push_back(CondBr);
     CTRec->Raised = true;
   } else {
@@ -4342,6 +4628,11 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
 }
 
 bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
+  if (PrintPass) {
+    outs() << "CFG : Before Raising Terminator Instructions\n";
+    raisedFunction->dump();
+  }
+
   // Raise branch instructions with control transfer records
   bool success = true;
   for (ControlTransferInfo *CTRec : CTInfo) {
@@ -4402,6 +4693,11 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
       }
     }
   }
+  if (PrintPass) {
+    outs() << "CFG : After Raising Terminator Instructions\n";
+    raisedFunction->dump();
+  }
+
   return true;
 }
 
@@ -4671,8 +4967,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     // RAX.
     Type *RetType = CalledFunc->getReturnType();
     if (!RetType->isVoidTy()) {
-      raisedValues->updatePhysRegSSAValue(X86::RAX, MI.getParent()->getNumber(),
-                                          callInst);
+      raisedValues->setPhysRegSSAValue(X86::RAX, MI.getParent()->getNumber(),
+                                       callInst);
     }
     if (MI.isBranch()) {
       // Emit ret void since there will be no ret instruction in the binary
@@ -4718,18 +5014,19 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
   // Initialize the raised value tracking mechanism.
   raisedValues = new X86RaisedValueTracker(this);
 
-  // Start with an assumption that value of EFLAGS is 0 at the
-  // entry of each function.
-  Value *Zero32BitValue =
-      ConstantInt::get(Type::getInt32Ty(Ctx), 0, false /* isSigned */);
   Value *Zero64BitValue =
       ConstantInt::get(Type::getInt64Ty(Ctx), 0, false /* isSigned */);
-  raisedValues->updatePhysRegSSAValue(X86::EFLAGS, 0, Zero32BitValue);
+
+  // Start with an assumption that value of EFLAGS is 0 at the
+  // entry of each function.
+  for (auto b : EFlagBits)
+    // raisedValues->setPhysRegSSAValue(b, 0, Zero1BitValue);
+    raisedValues->setEflagValue(b, 0, false);
 
   // Set values of some registers that appear to be used in main function to
   // 0.
   if (CurFunction->getName().equals("main")) {
-    raisedValues->updatePhysRegSSAValue(X86::RCX, 0, Zero64BitValue);
+    raisedValues->setPhysRegSSAValue(X86::RCX, 0, Zero64BitValue);
   }
 
   // Walk basic blocks of the MachineFunction in LoopTraversal - except that

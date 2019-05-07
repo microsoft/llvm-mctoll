@@ -5,7 +5,7 @@
 # CHECK: %0:gprnopc = ADDrr $r1, 4
 # CHECK-NEXT: STRi12 $r0, %0:gprnopc
 # CHECK-NEXT: %1:gprnopc = ADDrr $r1, 4
-# CHECK-NEXT: LDRi12 %stack.0, %1:gprnopc
+# CHECK-NEXT: $r0 = LDRi12 %1:gprnopc
 # CHECK: ARMInstructionSplitting end
 
 # CHECK: ARMInstructionSplitting start

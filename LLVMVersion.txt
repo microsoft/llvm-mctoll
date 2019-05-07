@@ -5,22 +5,32 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit ac90f79174e0c2e9a9f9a3387f41e41980793319
-Author: Simon Pilgrim <llvm-dev@redking.me.uk>
-Date:   Fri Mar 22 20:53:49 2019 +0000
+commit 324cbd6cc8ba611191f0b40009e539d39360125c
+Author: Zachary Turner <zturner@google.com>
+Date:   Fri Apr 12 15:51:40 2019 +0000
 
-    [TargetLowering] SimplifyDemandedBits trunc(srl(x, C1)) - early out for out of range C1. NFCI.
+    [PDB Docs] Add some prose describing public and global symbols.
 
-    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@356810 91177308-0d34-0410-b5e6-96231b3b80d8
+    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@358289 91177308-0d34-0410-b5e6-96231b3b80d8
 
 clang:
 
-commit 884b0b4b1912d272bdf140a63b7d779c785ce7c1
-Author: Evandro Menezes <e.menezes@samsung.com>
-Date:   Fri Mar 22 18:44:09 2019 +0000
+commit 78607564933f0543d0e9cc402b7652be7ec59b71
+Author: Bruno Ricci <riccibrun@gmail.com>
+Date:   Fri Apr 12 15:36:02 2019 +0000
 
-    [clang] Add support for Exynos M5 (NFC)
+    [AST][NFC] Add const children() accessors to all AST nodes
 
-    Add Exynos M5 test cases.
+    Systematically add the const-qualified version of children()
+    to all statement/expression nodes. Previously the const-qualified
+    variant was only defined for some nodes. NFC.
 
-    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@356794 91177308-0d34-0410-b5e6-96231b3b80d8
+    Patch by: Nicolas Manichon
+
+    Differential Revision: https://reviews.llvm.org/D60029
+
+    Reviewed By: riccibruno
+
+
+
+    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@358288 91177308-0d34-0410-b5e6-96231b3b80d8

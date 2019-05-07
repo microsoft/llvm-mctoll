@@ -1,7 +1,7 @@
 # Introduction
 This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
-# Getting Started (Linux/Mac)
+# Getting Started (Linux)
 ## Building as part of LLVM tree
 
 1.  `mkdir $PWD/src && mkdir -p $PWD/build/llvm && cd src`

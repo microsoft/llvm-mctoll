@@ -14,6 +14,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMARGUMENTRAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMARGUMENTRAISER_H
 
+#include "ARMBaseInstrInfo.h"
 #include "ARMRaiserBase.h"
 
 using namespace llvm;
@@ -45,8 +46,12 @@ private:
   /// Using newly created stack elements replace relative operands in
   /// MachineInstr.
   void updateParameterInstr(MachineFunction &mf);
+  /// Move arguments which are passed by ARM registers(R0 - R3) from function
+  /// arg.x to corresponding registers in entry block.
+  void moveArgumentToRegister(unsigned Reg, MachineBasicBlock &PMBB);
 
   MachineFrameInfo *MFI;
+  const ARMBaseInstrInfo *TII;
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMARGUMENTRAISER_H

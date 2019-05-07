@@ -56,6 +56,7 @@ void FunctionRaisingInfo::clear() {
   ArgValMap.clear();
   NodeRegMap.clear();
   AllocaMap.clear();
+  RetValMap.clear();
 }
 
 /// Get the corresponding BasicBlock of given MachineBasicBlock.

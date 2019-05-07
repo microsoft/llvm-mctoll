@@ -41,7 +41,7 @@ private:
   /// Create function for external function.
   uint64_t getCalledFunctionAtPLTOffset(uint64_t PLTEndOff, uint64_t CallAddr);
   /// Relocate call branch instructions in object files.
-  void relocateBL(MachineInstr &MInst);
+  void relocateBranch(MachineInstr &MInst);
   /// Address PC relative data in function, and create corresponding global
   /// value.
   void addressPCRelativeData(MachineInstr &MInst);

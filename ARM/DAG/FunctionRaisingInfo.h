@@ -38,6 +38,9 @@ public:
   DenseMap<SDNode *, unsigned> NodeRegMap;
   /// NZCV mapping.
   DenseMap<unsigned, Value *> AllocaMap;
+  /// Function return IR value mapping with its parent BasicBlock, it is used
+  /// to create exit BasicBlock.
+  DenseMap<BasicBlock *, Value *> RetValMap;
 
   /// Record the latest value of ARM::R0, if the current function has return
   /// value.

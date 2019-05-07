@@ -6,7 +6,7 @@
 # CHECK-NEXT: STRi12 $r0, $r1
 # CHECK-NEXT: $r1 = SUBri $r1, 4, 14
 # CHECK-NEXT: $r1 = ADDrr $r1, 4
-# CHECK-NEXT: LDRi12 %stack.0, $r1
+# CHECK-NEXT: $r0 = LDRi12 $r1
 # CHECK: ARMInstructionSplitting end
 
 # CHECK: ARMInstructionSplitting start

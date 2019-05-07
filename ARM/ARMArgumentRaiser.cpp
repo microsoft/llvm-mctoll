@@ -13,6 +13,7 @@
 
 #include "ARMArgumentRaiser.h"
 #include "ARMSubtarget.h"
+#include "llvm/ADT/DepthFirstIterator.h"
 #include <vector>
 
 using namespace llvm;
@@ -27,6 +28,7 @@ ARMArgumentRaiser::~ARMArgumentRaiser() {}
 void ARMArgumentRaiser::init(MachineFunction *mf, Function *rf) {
   ARMRaiserBase::init(mf, rf);
   MFI = &MF->getFrameInfo();
+  TII = MF->getSubtarget<ARMSubtarget>().getInstrInfo();
 }
 
 /// Change all return relative register operands to stack 0.
@@ -110,30 +112,34 @@ void ARMArgumentRaiser::updateParameterFrame(MachineFunction &mf) {
   }
 }
 
-/// Using newly created stack elements replace relative operands in
-/// MachineInstr.
+/// Move arguments which are passed by ARM registers(R0 - R3) from function
+/// arg.x to corresponding registers in entry block.
+void ARMArgumentRaiser::moveArgumentToRegister(unsigned Reg,
+                                               MachineBasicBlock &PMBB) {
+  const MCInstrDesc &mcInstrDesc = TII->get(ARM::MOVr);
+  MachineInstrBuilder builder = BuildMI(*MF, *(new DebugLoc()), mcInstrDesc);
+  builder.addDef(Reg);
+  builder.addFrameIndex(Reg - ARM::R0 + 1);
+  PMBB.insert(PMBB.begin(), builder.getInstr());
+}
+
+/// updateParameterInstr - Using newly created stack elements replace relative
+/// operands in MachineInstr.
 void ARMArgumentRaiser::updateParameterInstr(MachineFunction &mf) {
-
   Function *fn = getCRF();
-
-  if (!fn->getReturnType()->isVoidTy())
-    updateReturnRegister(mf);
-
-  MachineBasicBlock &fmbb = mf.front();
-  // FIXME: Need to track register liveness on CFG.
-  // FIXME: We should consider that some passed parameters are not used.
-  unsigned argCount = fn->arg_size();
-  switch (argCount) {
+  // Move arguments to corresponding registers.
+  MachineBasicBlock &EntryMBB = mf.front();
+  switch (fn->arg_size()) {
   default:
     updateParameterFrame(mf);
   case 4:
-    updateParameterRegister(ARM::R3, fmbb);
+    moveArgumentToRegister(ARM::R3, EntryMBB);
   case 3:
-    updateParameterRegister(ARM::R2, fmbb);
+    moveArgumentToRegister(ARM::R2, EntryMBB);
   case 2:
-    updateParameterRegister(ARM::R1, fmbb);
+    moveArgumentToRegister(ARM::R1, EntryMBB);
   case 1:
-    updateParameterRegister(ARM::R0, fmbb);
+    moveArgumentToRegister(ARM::R0, EntryMBB);
   case 0:
     break;
   }

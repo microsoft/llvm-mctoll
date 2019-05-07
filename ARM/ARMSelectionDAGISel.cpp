@@ -49,6 +49,18 @@ void ARMSelectionDAGISel::selectBasicBlock() {
   doInstructionSelection();
   emitDAG();
 
+  // If the current function has return value, records relationship between
+  // BasicBlock and each Value which is mapped with R0. In order to record
+  // the return Value of each exit BasicBlock.
+  Type *RTy = FuncInfo->Fn->getReturnType();
+  if (RTy != nullptr && !RTy->isVoidTy() && MBB->succ_size() == 0) {
+    Instruction *TInst = dyn_cast<Instruction>(
+        DAGInfo->getRealValue(FuncInfo->RegValMap[ARM::R0]));
+    assert(TInst && "A def R0 was pointed to a non-instruction!!!");
+    BasicBlock *TBB = TInst->getParent();
+    FuncInfo->RetValMap[TBB] = TInst;
+  }
+
   // Free the SelectionDAG state, now that we're finished with it.
   DAGInfo->clear();
   CurDAG->clear();
@@ -97,6 +109,27 @@ bool ARMSelectionDAGISel::doSelection() {
     BB = FuncInfo->getOrCreateBasicBlock(MBB);
     selectBasicBlock();
   }
+
+  // Add an additional exit BasicBlock, all of original return BasicBlocks
+  // will branch to this exit BasicBlock. This will lead to the function has
+  // one and only exit. If the function has return value, this help return
+  // R0.
+  Function *CurFn = const_cast<Function *>(FuncInfo->Fn);
+  BasicBlock *LBB = FuncInfo->getOrCreateBasicBlock();
+
+  if (CurFn->getReturnType()) {
+    PHINode *LPHI = PHINode::Create(FuncInfo->getCRF()->getReturnType(),
+                                    FuncInfo->RetValMap.size(), "", LBB);
+    for (auto Pair : FuncInfo->RetValMap)
+      LPHI->addIncoming(Pair.second, Pair.first);
+
+    ReturnInst::Create(CurFn->getContext(), LPHI, LBB);
+  } else
+    ReturnInst::Create(CurFn->getContext(), LBB);
+
+  for (auto &FBB : CurFn->getBasicBlockList())
+    if (FBB.getTerminator() == nullptr)
+      BranchInst *BrInst = BranchInst::Create(LBB, &FBB);
 
   FuncInfo->clear();
 

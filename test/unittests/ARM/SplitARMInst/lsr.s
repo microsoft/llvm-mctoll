@@ -5,14 +5,14 @@
 # CHECK: %0:gprnopc = LSRi $r0, 2
 # CHECK-NEXT: $r0 = ADDrr $r1, %0:gprnopc
 # CHECK-NEXT: %1:gprnopc = LSRi $r0, 2
-# CHECK-NEXT: MOVr %stack.0, %1:gprnopc
+# CHECK-NEXT: $r0 = MOVr %1:gprnopc
 # CHECK: ARMInstructionSplitting end
 
 # CHECK: ARMInstructionSplitting start
 # CHECK: %0:gprnopc = LSRr $r0, $r1
 # CHECK-NEXT: $r0 = ADDrr $r1, %0:gprnopc
 # CHECK-NEXT: %1:gprnopc = LSRr $r0, $r1
-# CHECK-NEXT: MOVr %stack.0, %1:gprnopc
+# CHECK-NEXT: $r0 = MOVr %1:gprnopc
 # CHECK: ARMInstructionSplitting end
 
   .text

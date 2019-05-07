@@ -5,7 +5,7 @@
 # CHECK: %0:gprnopc = RRX $r0, <{{0x[0-9a-f]+}}>, implicit $cpsr
 # CHECK-NEXT: $r0 = ADDrr $r1, %0:gprnopc
 # CHECK-NEXT: %1:gprnopc = RRX $r1, <{{0x[0-9a-f]+}}>, implicit $cpsr
-# CHECK-NEXT: MOVr %stack.0, %1:gprnopc
+# CHECK-NEXT: $r0 = MOVr %1:gprnopc
 # CHECK: ARMInstructionSplitting end
 
   .text

@@ -7,7 +7,7 @@
 # CHECK-NEXT: STRi12 $r0, %1:gprnopc
 # CHECK-NEXT: %2:gprnopc = LSLi $r1, 2
 # CHECK-NEXT: %3:gprnopc = ADDrr $r0, %2:gprnopc
-# CHECK-NEXT: LDRi12 %stack.0, %3:gprnopc
+# CHECK-NEXT: $r0 = LDRi12 %3:gprnopc
 # CHECK: ARMInstructionSplitting end
 
 # CHECK: ARMInstructionSplitting start
@@ -25,7 +25,7 @@
 # CHECK-NEXT: STRi12 $r0, %1:gprnopc
 # CHECK-NEXT: %2:gprnopc = RRX $r1, <{{0x[0-9a-f]+}}>, implicit $cpsr
 # CHECK-NEXT: %3:gprnopc = ADDrr $r0, %2:gprnopc
-# CHECK-NEXT: LDRi12 %stack.0, %3:gprnopc
+# CHECK-NEXT: $r0 = LDRi12 %3:gprnopc
 # CHECK: ARMInstructionSplitting end
 
 # CHECK: ARMInstructionSplitting start

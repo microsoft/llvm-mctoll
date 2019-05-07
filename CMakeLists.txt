@@ -42,7 +42,6 @@ add_llvm_tool(llvm-mctoll
   ELFDump.cpp
   ExternalFunctions.cpp
   MachODump.cpp
-  WasmDump.cpp
   MachineFunctionRaiser.cpp
   MCInstOrData.cpp
   MCInstRaiser.cpp

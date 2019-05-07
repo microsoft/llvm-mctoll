@@ -430,6 +430,11 @@ void InstSelector::selectCode(SDNode *N) {
           CurDAG->getNode(ISD::BR, dl, getDefaultEVT(), Iftrue, getMDOperand(N))
               .getNode();
 
+    const MachineBasicBlock *LMBB = DAGInfo->NPMap[N]->MI->getParent();
+    if (LMBB->succ_size() == 0) {
+      FuncInfo->setValueByRegister(ARM::R0, SDValue(Node, 0));
+      FuncInfo->NodeRegMap[Node] = ARM::R0;
+    }
     replaceNode(N, Node);
   } break;
   case ARM::B:
@@ -494,27 +499,10 @@ void InstSelector::selectCode(SDNode *N) {
     replaceNode(N, Node);
   } break;
   case ARM::BX_RET:
-  case ARM::tBX_RET: {
-    SDValue Ret = FuncInfo->RetValue;
-    // Need get return type to do this.
-    Type *FuncRetTy = FuncInfo->Fn->getReturnType();
-    SDNode *Node = nullptr;
-
-    // TODO:
-    // Need to identify return type, int, long, float or double.
-    if (FuncRetTy == Type::getVoidTy(*CurDAG->getContext()))
-      Node = CurDAG
-                 ->getNode(EXT_ARMISD::BX_RET, dl, getDefaultEVT(),
-                           CurDAG->getConstant(0, dl, getDefaultEVT()))
-                 .getNode();
-    else
-      Node = CurDAG
-                 ->getNode(EXT_ARMISD::BX_RET, dl, getDefaultEVT(), Ret,
-                           getMDOperand(N))
-                 .getNode();
-
-    replaceNode(N, Node);
-  } break;
+  case ARM::tBX_RET:
+    // assert(0 && "Branch instructions are removed in previous stage. should
+    // not get here!");
+    break;
   case ARM::tCMPhir:
   case ARM::CMPrr:
   case ARM::t2CMPri:

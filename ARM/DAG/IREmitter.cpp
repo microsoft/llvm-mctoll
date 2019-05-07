@@ -561,6 +561,8 @@ void IREmitter::emitSDNode(SDNode *Node) {
       } else {
         Inst = IRB.CreateAlignedLoad(Ptr, DLT->getPointerPrefAlignment());
 
+        // TODO:
+        // Temporary method for this.
         if (Inst->getType() == Type::getInt64Ty(*CTX))
           Inst = IRB.CreateTrunc(Inst, getDefaultType());
         else if (Inst->getType() != getDefaultType())
@@ -674,16 +676,14 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
   } break;
   case ISD::BR: {
     // br label %xxx
-    MachineBasicBlock *MBB = FuncInfo->MBBMap[CurBB];
-    MachineBasicBlock::succ_iterator SuI = MBB->succ_begin();
-    BasicBlock *BrDest = FuncInfo->getOrCreateBasicBlock(*SuI);
-    IRB.CreateBr(BrDest);
-  } break;
-  case ISD::BRIND: {
-    Value *Func = getIRValue(Node->getOperand(0));
-    unsigned NumDests = Node->getNumOperands();
-    IRB.CreateIndirectBr(Func, NumDests);
-  } break;
+    MachineBasicBlock *LMBB = FuncInfo->MBBMap[CurBB];
+    MachineBasicBlock::succ_iterator SuI = LMBB->succ_begin();
+    if (SuI != LMBB->succ_end()) {
+      BasicBlock *BrDest = FuncInfo->getOrCreateBasicBlock(*SuI);
+      IRB.CreateBr(BrDest);
+      break;
+    }
+  }
   case EXT_ARMISD::BRD: {
     // Get the function call Index.
     uint64_t Index = Node->getConstantOperandVal(0);
@@ -738,7 +738,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
               CastInst::getCastOpcode(ArgVal, false,
                                       CalledFuncArgs[i].getType(), false),
               ArgVal, CalledFuncArgs[i].getType());
-          BB->getInstList().push_back(CInst);
+          IRB.GetInsertBlock()->getInstList().push_back(CInst);
           ArgVal = CInst;
         }
         CallInstFuncArgs.push_back(ArgVal);
@@ -748,6 +748,11 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       Inst = IRB.CreateCall(CallFunc);
 
     DAGInfo->setRealValue(Node, Inst);
+  } break;
+  case ISD::BRIND: {
+    Value *Func = getIRValue(Node->getOperand(0));
+    unsigned NumDests = Node->getNumOperands();
+    IRB.CreateIndirectBr(Func, NumDests);
   } break;
   case ISD::BR_JT: {
     // Emit the switch instruction.

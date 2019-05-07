@@ -5,7 +5,7 @@
 # CHECK: %0:gprnopc = ASRi $r0, 2, 0, $cpsr
 # CHECK-NEXT: $r0 = ADDrr $r1, %0:gprnopc, 0, $cpsr
 # CHECK-NEXT: %1:gprnopc = ASRi $r0, 2, 0, $cpsr
-# CHECK-NEXT: EORrr %stack.0, $r1, %1:gprnopc, 0, $cpsr
+# CHECK-NEXT: $r0 = EORrr $r1, %1:gprnopc, 0, $cpsr
 # CHECK: ARMInstructionSplitting end
 
   .text

@@ -1765,7 +1765,7 @@ int main(int argc, char **argv) {
   // Change its help string value appropriately
   assert(Map.count("print-after-all") > 0);
   Map["print-after-all"]->setHiddenFlag(cl::NotHidden);
-  Map["print-after-all"]->setCategory(LLVMMCToLLCategory);
+  Map["print-after-all"]->addCategory(LLVMMCToLLCategory);
   Map["print-after-all"]->setDescription("Print IR after each raiser pass");
 
   cl::ParseCommandLineOptions(argc, argv, "MC to LLVM IR dumper\n");

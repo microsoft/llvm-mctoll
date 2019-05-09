@@ -5,32 +5,39 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit 324cbd6cc8ba611191f0b40009e539d39360125c
-Author: Zachary Turner <zturner@google.com>
-Date:   Fri Apr 12 15:51:40 2019 +0000
+commit 5c75d64b7bb54bdb62ea3d4dab256ff0cdda269a
+Author: Quentin Colombet <quentin.colombet@gmail.com>
+Date:   Wed May 8 18:30:26 2019 +0000
 
-    [PDB Docs] Add some prose describing public and global symbols.
+    [RegAllocFast] Scan physcial reg definitions before assigning virtual reg definitions
 
-    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@358289 91177308-0d34-0410-b5e6-96231b3b80d8
+    When assigning the definitions of an instruction we were updating
+    the available registers while walking the definitions. Some of
+    those definitions may be from physical registers and thus, they are
+    not available for other definitions to take, but by the time we see
+    that we may have already assign these registers to another
+    virtual register.
+
+    Fix that by walking through all the definitions and mark as unavailable
+    the physical register definitions, then do the virtual register assignments.
+
+    PR41790
+
+    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@360278 91177308-0d34-0410-b5e6-96231b3b80d8
 
 clang:
 
-commit 78607564933f0543d0e9cc402b7652be7ec59b71
-Author: Bruno Ricci <riccibrun@gmail.com>
-Date:   Fri Apr 12 15:36:02 2019 +0000
+commit 729396776ea301063e6b2f18f65a815ab3d77ae0
+Author: Mike Rice <michael.p.rice@intel.com>
+Date:   Wed May 8 17:15:21 2019 +0000
 
-    [AST][NFC] Add const children() accessors to all AST nodes
+    Include corecrt.h in stddef.h and vcruntime.h in stdarg.h to improve MS
+    compatibility.  This allows some applications developed with MSVC to
+    compile with clang without any extra changes.
 
-    Systematically add the const-qualified version of children()
-    to all statement/expression nodes. Previously the const-qualified
-    variant was only defined for some nodes. NFC.
+    Fixes: llvm.org/PR40789
 
-    Patch by: Nicolas Manichon
-
-    Differential Revision: https://reviews.llvm.org/D60029
-
-    Reviewed By: riccibruno
+    Differential Revision: https://reviews.llvm.org/D61646
 
 
-
-    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@358288 91177308-0d34-0410-b5e6-96231b3b80d8
+    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@360271 91177308-0d34-0410-b5e6-96231b3b80d8

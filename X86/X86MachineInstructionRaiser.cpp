@@ -2678,8 +2678,10 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {
       assert(is16BitPhysReg(DestReg) &&
              "Unexpected non-16 bit dest register in lea instruction");
     }
-
-    EffectiveAddrValue = getMemoryAddressExprValue(MI);
+    if (BaseReg == X86::RIP)
+      EffectiveAddrValue = createPCRelativeAccesssValue(MI);
+    else
+      EffectiveAddrValue = getMemoryAddressExprValue(MI);
   }
 
   assert((EffectiveAddrValue != nullptr) &&

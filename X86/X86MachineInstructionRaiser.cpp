@@ -1512,6 +1512,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
+  llvm::LLVMContext &Ctx(MF.getFunction().getContext());
   // Construct non-stack memory referencing value
   unsigned BaseReg = MemRef.Base.Reg;
   unsigned IndexReg = MemRef.IndexReg;
@@ -1558,15 +1559,18 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
 
   if (BaseReg != X86::NoRegister) {
     Value *BaseRegVal = getRegOrArgValue(BaseReg, MI.getParent()->getNumber());
-    if (MemrefValue != nullptr && BaseRegVal != MemrefValue) {
-      // Ensure the type of BaseregVal matched that of MemrefValue.
-      Value *CastMemrefValue = nullptr;
+    if (MemrefValue != nullptr) {
+      assert((BaseRegVal != nullptr) &&
+             "Unexpected null value of base reg while constructing memory "
+             "address expression");
+      // Ensure the type of BaseRegVal matched that of MemrefValue.
       if (BaseRegVal->getType() != MemrefValue->getType()) {
-        CastMemrefValue = CastInst::Create(
+        Instruction *CastMemrefValInst = CastInst::Create(
             CastInst::getCastOpcode(BaseRegVal, false, MemrefValue->getType(),
                                     false),
             BaseRegVal, MemrefValue->getType());
-        BaseRegVal = CastMemrefValue;
+        RaisedBB->getInstList().push_back(CastMemrefValInst);
+        BaseRegVal = CastMemrefValInst;
       }
       Instruction *AddInst = BinaryOperator::CreateAdd(BaseRegVal, MemrefValue);
       RaisedBB->getInstList().push_back(AddInst);
@@ -1585,27 +1589,106 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
 
       // Get a global symbol that represents the displacement, Disp.
       Value *GV = getGlobalVariableValueAt(MI, Disp);
-      // If Disp represents a global symbol
+      // If Disp represents a global symbol, generate correct instructions for
+      // byte sized access, since displacement is always in terms of bytes. If
+      // Disp does not represent a global symbol, consider Disp as a plain
+      // integer value.
       if (GV != nullptr) {
         // If it is a global array construct GEP
         if (isa<GetElementPtrInst>(GV)) {
           bool Inbounds = false;
-          if (auto *SrcGEP = dyn_cast<GetElementPtrInst>(GV)) {
-            Inbounds = SrcGEP->isInBounds();
+          if (auto *GlobGEP = dyn_cast<GetElementPtrInst>(GV)) {
+            Inbounds = GlobGEP->isInBounds();
             if (Inbounds) {
-              SrcGEP->setOperand(SrcGEP->getNumOperands() - 1, MemrefValue);
+              Type *GlobGEPSrcTy = GlobGEP->getSourceElementType();
+              if (GlobGEPSrcTy->isArrayTy()) {
+                // If it is not a byte-array
+                Type *ByteTy = Type::getInt8Ty(Ctx);
+                if (GlobGEPSrcTy->getArrayElementType() != ByteTy) {
+                  // Create global byte array type based on the size of
+                  // GlobalGEPSrc.
+                  unsigned int GlobGEPSrcTySzInBytes =
+                      GlobGEPSrcTy->getArrayElementType()
+                          ->getScalarSizeInBits() /
+                      8;
+                  uint64_t SymbSize = GlobGEPSrcTy->getArrayNumElements() *
+                                      GlobGEPSrcTySzInBytes;
+                  Type *ByteArrValTy = ArrayType::get(ByteTy, SymbSize);
+
+                  // Cast array operand of GlobalGEP to ByteArrTy
+                  PointerType *ByteArrValPtrTy = ByteArrValTy->getPointerTo();
+                  CastInst *CastToArrInst = CastInst::Create(
+                      CastInst::getCastOpcode(GlobGEP->getPointerOperand(),
+                                              false, ByteArrValPtrTy, false),
+                      GlobGEP->getPointerOperand(), ByteArrValPtrTy);
+                  RaisedBB->getInstList().push_back(CastToArrInst);
+
+                  // Construct index array for a GEP instruction that accesses
+                  // byte array
+                  std::vector<Value *> ByteAccessGEPIdxArr;
+                  for (auto IdxIter = GlobGEP->idx_begin();
+                       IdxIter != GlobGEP->idx_end(); IdxIter++) {
+                    Value *IdxVal = IdxIter->get();
+                    // Special case for index value of 0
+                    if (isa<ConstantInt>(IdxVal)) {
+                      ConstantInt *ConstIdxVal = dyn_cast<ConstantInt>(IdxVal);
+                      if (ConstIdxVal->getSExtValue() == 0) {
+                        ByteAccessGEPIdxArr.push_back(IdxVal);
+                        continue;
+                      }
+                    }
+                    // Index value not zero. So, scale it up by multiplying with
+                    // GlobGEPSrcTySzInBytes, since the we are changing the
+                    // access to byte array access.
+                    Constant *ScaleVal = ConstantInt::get(IdxVal->getType(),
+                                                          GlobGEPSrcTySzInBytes,
+                                                          false /* isSigned */);
+                    Instruction *IdxMulInst =
+                        BinaryOperator::CreateNSWMul(ScaleVal, IdxVal);
+                    // Insert the new instruction
+                    RaisedBB->getInstList().push_back(IdxMulInst);
+                    // Add the value to array used to construct new GEP
+                    ByteAccessGEPIdxArr.push_back(IdxVal);
+                  }
+                  // Create new GEP.
+                  Instruction *ByteAccessGEP =
+                      GetElementPtrInst::CreateInBounds(
+                          ByteArrValTy, CastToArrInst,
+                          ArrayRef<Value *>(ByteAccessGEPIdxArr), "", RaisedBB);
+                  // Cast the byte access GEP to MemrefValue type as needed
+                  if (MemrefValue->getType() != ByteAccessGEP->getType()) {
+                    CastInst *CInst = CastInst::Create(
+                        CastInst::getCastOpcode(ByteAccessGEP, false,
+                                                MemrefValue->getType(), false),
+                        ByteAccessGEP, MemrefValue->getType());
+                    RaisedBB->getInstList().push_back(CInst);
+                    ByteAccessGEP = CInst;
+                  }
+                  DispValue = ByteAccessGEP;
+                } else {
+                  // Global GEP is already a byte array.
+                  DispValue = GlobGEP;
+                }
+              } else {
+                assert(false && "Unhandled situation where global symbol GEP "
+                                "is not an array");
+              }
+            } else {
+              assert(false && "Unhandled situation where global symbol GEP is "
+                              "not inbounds");
             }
           }
+        } else {
+          assert(
+              false &&
+              "Unhandled situation where global symbol not accessed via GEP");
         }
-        MemrefValue = GV;
-      } else {
-        // If Disp does not represent a global symbol, consider Disp as a plain
-        // integer value. Generate add memrefVal, Disp.
-        Instruction *AddInst =
-            BinaryOperator::CreateAdd(MemrefValue, DispValue);
-        RaisedBB->getInstList().push_back(AddInst);
-        MemrefValue = AddInst;
       }
+      // Generate add memrefVal, Disp.
+      Instruction *AddInst = BinaryOperator::CreateAdd(MemrefValue, DispValue);
+      RaisedBB->getInstList().push_back(AddInst);
+      MemrefValue = AddInst;
+      //}
     } else {
       // Check that this is an instruction of the kind
       // mov %rax, 0x605798 which in reality is
@@ -3666,6 +3749,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     const MachineInstr &MI, bool isMemCompare, Value *MemRefValue) {
   // Get index of memory reference in the instruction.
   int memoryRefOpIndex = getMemoryRefOpIndex(MI);
+  int MBBNo = MI.getParent()->getNumber();
   assert((((memoryRefOpIndex != -1) && isMemCompare) ||
           ((memoryRefOpIndex == -1) && !isMemCompare)) &&
          "Inconsistent memory reference operand information specified for "
@@ -3799,6 +3883,8 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
            "Mis-matched operand types encountered while raising compare "
            "instruction");
   }
+  raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+  raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
   Instruction *SubInst = BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
   RaisedBB->getInstList().push_back(SubInst);
 
@@ -3817,7 +3903,8 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     case X86::SUB64mi32:
     case X86::SUB64mr:
     case X86::SUB64rm:
-    case X86::SUB32rr: {
+    case X86::SUB32rr:
+    case X86::SUB64rr: {
       assert(MCIDesc.getNumDefs() == 1 &&
              "Unexpected number of def operands of sub instruction");
       // Update the DestReg only if this is a sub instruction. Do not update if
@@ -4051,6 +4138,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     const MachineInstr &MI) {
   unsigned int DstIndex = 0, SrcOp1Index = 1, SrcOp2Index = 2;
   const MCInstrDesc &MIDesc = MI.getDesc();
+  int MBBNo = MI.getParent()->getNumber();
 
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
@@ -4201,10 +4289,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       case X86::ADD32ri8:
       case X86::ADD64ri8:
       case X86::ADD64ri32:
-      case X86::ADD64i32:
+      case X86::ADD64i32: {
         // Generate add instruction
         BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
-        break;
+        // Clear OF and CF
+        raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+        raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      } break;
       case X86::SUB32ri:
       case X86::SUB32ri8:
       case X86::SUB64ri8:
@@ -4265,6 +4356,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       }
 
       RaisedBB->getInstList().push_back(BinOpInstr);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MBBNo, BinOpInstr);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, BinOpInstr);
+
       // Update PhysReg to Value map
       raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                        BinOpInstr);
@@ -4450,8 +4544,19 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     // TODO: set EFLAGS appropriately
     case X86::COND_A:
       break;
-    case X86::COND_AE:
-      break;
+#endif
+    case X86::COND_AE: {
+      // CF = 0
+      int CFIndex = getEflagBitIndex(EFLAGS::CF);
+      Value *CFValue = CTRec->RegValues[CFIndex];
+      assert(CFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JAE");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Compare CF = 0
+      BranchCond = new ICmpInst(Pred, CFValue, FalseValue, "CFCmp_JAE");
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
+#if 0
     case X86::COND_B:
       break;
     case X86::COND_BE:

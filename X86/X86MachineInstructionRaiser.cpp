@@ -2793,8 +2793,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   for (const MachineOperand &MO : MI.explicit_uses()) {
     assert(MO.isReg() &&
            "Unexpected non-register operand in binary op instruction");
-    unsigned int SrcReg = MO.getReg();
-    Value *SrcValue = getRegOrArgValue(SrcReg, MBBNo);
+    auto UseOpIndex = MI.findRegisterUseOperandIdx(MO.getReg(), false, nullptr);
+    Value *SrcValue = getRegOperandValue(MI, UseOpIndex);
+
     Uses.push_back(SrcValue);
   }
   // Verify there are exactly 2 use operands or source and dest operands are

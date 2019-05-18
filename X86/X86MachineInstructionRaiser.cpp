@@ -18,6 +18,7 @@
 #include "X86ModuleRaiser.h"
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
+#include "llvm-mctoll.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
@@ -570,8 +571,8 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
               if (SecIter->isBSS()) {
                 Lnkg = GlobalValue::CommonLinkage;
               } else {
-                StringRef SecData;
-                SecIter->getContents(SecData);
+                StringRef SecData = unwrapOrError(
+                    SecIter->getContents(), MR->getObjectFile()->getFileName());
                 unsigned Index = SymVirtualAddr - SecStart;
                 const unsigned char *Begin = SecData.bytes_begin() + Index;
                 char Shift = 0;
@@ -658,8 +659,8 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
 
           for (section_iterator SecIter : Elf64LEObjFile->sections()) {
             if (SecIter->getIndex() == SymValSecIndex) {
-              StringRef SecData;
-              SecIter->getContents(SecData);
+              StringRef SecData = unwrapOrError(
+                  SecIter->getContents(), MR->getObjectFile()->getFileName());
               const unsigned char *Begin = SecData.bytes_begin() + SymVal;
               char Shift = 0;
               while (SymSize-- > 0) {
@@ -960,8 +961,8 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       if (SecName.compare(".plt") != 0) {
         assert(false && "Unexpected section name of PLT offset");
       }
-      StringRef SecData;
-      SecIter->getContents(SecData);
+      StringRef SecData = unwrapOrError(SecIter->getContents(),
+                                        MR->getObjectFile()->getFileName());
       // StringRef BytesStr;
       //    error(Section.getContents(BytesStr));
       ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(SecData.data()),
@@ -1097,8 +1098,8 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
       // We know that SrcImm is a positive value. So, casting it is OK.
       if ((SecStart <= (uint64_t)Offset) && (SecEnd >= (uint64_t)Offset)) {
         if (SecIter->isData()) {
-          StringRef SecData;
-          SecIter->getContents(SecData);
+          StringRef SecData = unwrapOrError(SecIter->getContents(),
+                                            MR->getObjectFile()->getFileName());
           unsigned DataOffset = Offset - SecStart;
           const unsigned char *RODataBegin = SecData.bytes_begin() + DataOffset;
           StringRef ROStringRef(reinterpret_cast<const char *>(RODataBegin));
@@ -1319,8 +1320,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             Lnkg = GlobalValue::CommonLinkage;
             isBSSSymbol = true;
           } else {
-            StringRef SecData;
-            SecIter->getContents(SecData);
+            StringRef SecData = unwrapOrError(
+                SecIter->getContents(), MR->getObjectFile()->getFileName());
             unsigned Index = SymVirtualAddr - SecStart;
             const char *beg =
                 reinterpret_cast<const char *>(SecData.bytes_begin() + Index);
@@ -1791,17 +1792,43 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
       // the last call instruction.
       if (I->isCall())
         break;
-      // Check if any of RAX, EAX, AX or AL are defined
+
+      unsigned DefReg = X86::NoRegister;
+      const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
+      // Check if any of RAX, EAX, AX or AL are explicitly defined
       if (I->getDesc().getNumDefs() != 0) {
         const MachineOperand &MO = I->getOperand(0);
-        if (!MO.isReg()) {
+        if (MO.isReg()) {
+          unsigned PReg = MO.getReg();
+          if (!TargetRegisterInfo::isPhysicalRegister(PReg)) {
+            continue;
+          }
+          // Check if PReg is any of the sub-registers of RAX (including itself)
+          for (MCSubRegIterator SubRegs(X86::RAX, TRI, /*IncludeSelf=*/true);
+               (SubRegs.isValid() && DefReg == X86::NoRegister); ++SubRegs) {
+            if (*SubRegs == PReg) {
+              DefReg = *SubRegs;
+              break;
+            }
+          }
+        }
+      }
+      // If explicitly defined register is not a return register, check if any
+      // of the sub-registers of RAX (including itself) is implicitly defined.
+      for (MCSubRegIterator SubRegs(X86::RAX, TRI, /*IncludeSelf=*/true);
+           (SubRegs.isValid() && DefReg == X86::NoRegister); ++SubRegs) {
+        if (I->getDesc().hasImplicitDefOfPhysReg(*SubRegs, TRI)) {
+          DefReg = *SubRegs;
+          break;
+        }
+      }
+
+      // If the defined register is a return register
+      if (DefReg != X86::NoRegister) {
+        if (!TargetRegisterInfo::isPhysicalRegister(DefReg)) {
           continue;
         }
-        unsigned PReg = MO.getReg();
-        if (!TargetRegisterInfo::isPhysicalRegister(PReg)) {
-          continue;
-        }
-        if (PReg == X86::RAX) {
+        if (DefReg == X86::RAX) {
           if (returnType == nullptr) {
             returnType = Type::getInt64Ty(MF.getFunction().getContext());
             break;
@@ -1810,7 +1837,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
                    returnType->getScalarSizeInBits() == 64 &&
                    "Inconsistency while discovering return type");
           }
-        } else if (PReg == X86::EAX) {
+        } else if (DefReg == X86::EAX) {
           if (returnType == nullptr) {
             returnType = Type::getInt32Ty(MF.getFunction().getContext());
             break;
@@ -1819,7 +1846,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
                    returnType->getScalarSizeInBits() == 32 &&
                    "Inconsistency while discovering return type");
           }
-        } else if (PReg == X86::AX) {
+        } else if (DefReg == X86::AX) {
           if (returnType == nullptr) {
             returnType = Type::getInt16Ty(MF.getFunction().getContext());
             break;
@@ -1828,7 +1855,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
                    returnType->getScalarSizeInBits() == 16 &&
                    "Inconsistency while discovering return type");
           }
-        } else if (PReg == X86::AL) {
+        } else if (DefReg == X86::AL) {
           if (returnType == nullptr) {
             returnType = Type::getInt8Ty(MF.getFunction().getContext());
             break;

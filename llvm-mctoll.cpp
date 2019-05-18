@@ -68,6 +68,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -300,6 +301,13 @@ void llvm::error(std::error_code EC) {
   exit(1);
 }
 
+void llvm::error(Error E) {
+  if (!E)
+    return;
+  WithColor::error(errs(), ToolName) << toString(std::move(E));
+  exit(1);
+}
+
 LLVM_ATTRIBUTE_NORETURN void llvm::error(Twine Message) {
   errs() << ToolName << ": " << Message << ".\n";
   errs().flush();
@@ -307,33 +315,26 @@ LLVM_ATTRIBUTE_NORETURN void llvm::error(Twine Message) {
 }
 
 LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef File, Twine Message) {
-  errs() << ToolName << ": '" << File << "': " << Message << ".\n";
+  WithColor::error(errs(), ToolName)
+      << "'" << File << "': " << Message << ".\n";
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef File,
-                                                std::error_code EC) {
-  assert(EC);
-  errs() << ToolName << ": '" << File << "': " << EC.message() << ".\n";
-  exit(1);
-}
-
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef File, llvm::Error E) {
+LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef File) {
   assert(E);
   std::string Buf;
   raw_string_ostream OS(Buf);
-  logAllUnhandledErrors(std::move(E), OS, "");
+  logAllUnhandledErrors(std::move(E), OS);
   OS.flush();
-  errs() << ToolName << ": '" << File << "': " << Buf;
+  WithColor::error(errs(), ToolName) << "'" << File << "': " << Buf;
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef ArchiveName,
+LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef ArchiveName,
                                                 StringRef FileName,
-                                                llvm::Error E,
                                                 StringRef ArchitectureName) {
   assert(E);
-  errs() << ToolName << ": ";
+  WithColor::error(errs(), ToolName);
   if (ArchiveName != "")
     errs() << ArchiveName << "(" << FileName << ")";
   else
@@ -342,15 +343,14 @@ LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef ArchiveName,
     errs() << " (for architecture " << ArchitectureName << ")";
   std::string Buf;
   raw_string_ostream OS(Buf);
-  logAllUnhandledErrors(std::move(E), OS, "");
+  logAllUnhandledErrors(std::move(E), OS);
   OS.flush();
   errs() << ": " << Buf;
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef ArchiveName,
+LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef ArchiveName,
                                                 const object::Archive::Child &C,
-                                                llvm::Error E,
                                                 StringRef ArchitectureName) {
   Expected<StringRef> NameOrErr = C.getName();
   // TODO: if we have a error getting the name then it would be nice to print
@@ -358,10 +358,9 @@ LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef ArchiveName,
   // archive instead of "???" as the name.
   if (!NameOrErr) {
     consumeError(NameOrErr.takeError());
-    llvm::report_error(ArchiveName, "???", std::move(E), ArchitectureName);
+    report_error(std::move(E), ArchiveName, "???", ArchitectureName);
   } else
-    llvm::report_error(ArchiveName, NameOrErr.get(), std::move(E),
-                       ArchitectureName);
+    report_error(std::move(E), ArchiveName, NameOrErr.get(), ArchitectureName);
 }
 
 static const Target *getTarget(const ObjectFile *Obj = nullptr) {
@@ -540,6 +539,10 @@ PrettyPrinter &selectPrettyPrinter(Triple const &Triple) {
 }
 } // namespace
 
+bool llvm::isRelocAddressLess(RelocationRef A, RelocationRef B) {
+  return A.getOffset() < B.getOffset();
+}
+
 template <class ELFT>
 static std::error_code getRelocationValueString(const ELFObjectFile<ELFT> *Obj,
                                                 const RelocationRef &RelRef,
@@ -685,18 +688,18 @@ addDynamicElfSymbols(const ELFObjectFile<ELFT> *Obj,
 
     Expected<uint64_t> AddressOrErr = Symbol.getAddress();
     if (!AddressOrErr)
-      report_error(Obj->getFileName(), AddressOrErr.takeError());
+      report_error(AddressOrErr.takeError(), Obj->getFileName());
     uint64_t Address = *AddressOrErr;
 
     Expected<StringRef> Name = Symbol.getName();
     if (!Name)
-      report_error(Obj->getFileName(), Name.takeError());
+      report_error(Name.takeError(), Obj->getFileName());
     if (Name->empty())
       continue;
 
     Expected<section_iterator> SectionOrErr = Symbol.getSection();
     if (!SectionOrErr)
-      report_error(Obj->getFileName(), SectionOrErr.takeError());
+      report_error(SectionOrErr.takeError(), Obj->getFileName());
     section_iterator SecI = *SectionOrErr;
     if (SecI == Obj->section_end())
       continue;
@@ -907,18 +910,18 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   for (const SymbolRef &Symbol : Obj->symbols()) {
     Expected<uint64_t> AddressOrErr = Symbol.getAddress();
     if (!AddressOrErr)
-      report_error(Obj->getFileName(), AddressOrErr.takeError());
+      report_error(AddressOrErr.takeError(), Obj->getFileName());
     uint64_t Address = *AddressOrErr;
 
     Expected<StringRef> Name = Symbol.getName();
     if (!Name)
-      report_error(Obj->getFileName(), Name.takeError());
+      report_error(Name.takeError(), Obj->getFileName());
     if (Name->empty())
       continue;
 
     Expected<section_iterator> SectionOrErr = Symbol.getSection();
     if (!SectionOrErr)
-      report_error(Obj->getFileName(), SectionOrErr.takeError());
+      report_error(SectionOrErr.takeError(), Obj->getFileName());
     section_iterator SecI = *SectionOrErr;
     if (SecI == Obj->section_end())
       continue;
@@ -1062,8 +1065,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     SmallString<40> Comments;
     raw_svector_ostream CommentStream(Comments);
 
-    StringRef BytesStr;
-    error(Section.getContents(BytesStr));
+    StringRef BytesStr =
+        unwrapOrError(Section.getContents(), Obj->getFileName());
     ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(BytesStr.data()),
                             BytesStr.size());
 
@@ -1497,7 +1500,7 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
   for (const SymbolRef &Symbol : o->symbols()) {
     Expected<uint64_t> AddressOrError = Symbol.getAddress();
     if (!AddressOrError)
-      report_error(ArchiveName, o->getFileName(), AddressOrError.takeError(),
+      report_error(AddressOrError.takeError(), o->getFileName(), ArchiveName,
                    ArchitectureName);
     uint64_t Address = *AddressOrError;
     if ((Address < StartAddress) || (Address > StopAddress))
@@ -1505,14 +1508,14 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
 
     Expected<SymbolRef::Type> TypeOrError = Symbol.getType();
     if (!TypeOrError)
-      report_error(ArchiveName, o->getFileName(), TypeOrError.takeError(),
+      report_error(TypeOrError.takeError(), o->getFileName(), ArchiveName,
                    ArchitectureName);
 
     SymbolRef::Type Type = *TypeOrError;
     uint32_t Flags = Symbol.getFlags();
     Expected<section_iterator> SectionOrErr = Symbol.getSection();
     if (!SectionOrErr)
-      report_error(ArchiveName, o->getFileName(), SectionOrErr.takeError(),
+      report_error(SectionOrErr.takeError(), o->getFileName(), ArchiveName,
                    ArchitectureName);
 
     section_iterator Section = *SectionOrErr;
@@ -1522,7 +1525,7 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
     } else {
       Expected<StringRef> NameOrErr = Symbol.getName();
       if (!NameOrErr)
-        report_error(ArchiveName, o->getFileName(), NameOrErr.takeError(),
+        report_error(NameOrErr.takeError(), o->getFileName(), ArchiveName,
                      ArchitectureName);
       Name = *NameOrErr;
     }
@@ -1669,8 +1672,8 @@ void llvm::printRawClangAST(const ObjectFile *Obj) {
   if (!ClangASTSection)
     return;
 
-  StringRef ClangASTContents;
-  error(ClangASTSection.getValue().getContents(ClangASTContents));
+  StringRef ClangASTContents = unwrapOrError(
+      ClangASTSection.getValue().getContents(), Obj->getFileName());
   outs().write(ClangASTContents.data(), ClangASTContents.size());
 }
 
@@ -1703,7 +1706,7 @@ static void DumpArchive(const Archive *a) {
     Expected<std::unique_ptr<Binary>> ChildOrErr = C.getAsBinary();
     if (!ChildOrErr) {
       if (auto E = isNotObjectErrorInvalidFileType(ChildOrErr.takeError()))
-        report_error(a->getFileName(), C, std::move(E));
+        report_error(std::move(E), a->getFileName(), C);
       continue;
     }
     if (ObjectFile *o = dyn_cast<ObjectFile>(&*ChildOrErr.get()))
@@ -1711,10 +1714,11 @@ static void DumpArchive(const Archive *a) {
     else if (COFFImportFile *I = dyn_cast<COFFImportFile>(&*ChildOrErr.get()))
       DumpObject(I, a);
     else
-      report_error(a->getFileName(), object_error::invalid_file_type);
+      report_error(errorCodeToError(object_error::invalid_file_type),
+                   a->getFileName());
   }
   if (Err)
-    report_error(a->getFileName(), std::move(Err));
+    report_error(std::move(Err), a->getFileName());
 }
 
 /// @brief Open file and figure out how to dump it.
@@ -1724,14 +1728,14 @@ static void DumpInput(StringRef file) {
   // the file and process the command line options.  So the -arch flags can
   // be used to select specific slices, etc.
   if (MachOOpt) {
-    ParseInputMachO(file);
+    parseInputMachO(file);
     return;
   }
 
   // Attempt to open the binary.
   Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(file);
   if (!BinaryOrErr)
-    report_error(file, BinaryOrErr.takeError());
+    report_error(BinaryOrErr.takeError(), file);
   Binary &Binary = *BinaryOrErr.get().getBinary();
 
   if (Archive *a = dyn_cast<Archive>(&Binary))
@@ -1739,7 +1743,7 @@ static void DumpInput(StringRef file) {
   else if (ObjectFile *o = dyn_cast<ObjectFile>(&Binary))
     DumpObject(o);
   else
-    report_error(file, object_error::invalid_file_type);
+    report_error(errorCodeToError(object_error::invalid_file_type), file);
 }
 
 int main(int argc, char **argv) {

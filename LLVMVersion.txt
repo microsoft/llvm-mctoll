@@ -5,25 +5,28 @@ Following is the tip of the git trees used for successful build of llvm-mctoll.
 
 llvm:
 
-commit 89c70147ceb1da23def6979fd2178ca0ac3bb1b2
-Author: Simon Pilgrim <llvm-dev@redking.me.uk>
-Date:   Mon May 13 15:51:26 2019 +0000
+commit 2ec48fc90d9daa2dae46cfeee465be33299fed65
+Author: Saleem Abdulrasool <compnerd@compnerd.org>
+Date:   Fri May 17 20:09:06 2019 +0000
 
-    [TargetLowering] Add SimplifyDemandedBits support for ZERO_EXTEND_VECTOR_INREG
+    build: use clang-cl for runtimes when targeting Windows
     
-    More work for PR39709.
+    When targeting Windows and building a runtime (subproject) prefer to use
+    `clang-cl` rather than the `clang` driver.  This allows us to cross-compile
+    runtimes for the Windows environment from Linux.
     
-    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@360592 91177308-0d34-0410-b5e6-96231b3b80d8
+    git-svn-id: https://llvm.org/svn/llvm-project/llvm/trunk@361072 91177308-0d34-0410-b5e6-96231b3b80d8
 
 clang:
 
-commit 24e6d2a7b6f041a6df9e61cf9cecfc15c1f7ccac
-Author: Hans Wennborg <hans@hanshq.net>
-Date:   Mon May 13 13:19:09 2019 +0000
+commit 28f597c2ef2338dcae6d3aa47c73639eec99afd9
+Author: Richard Smith <richard-llvm@metafoo.co.uk>
+Date:   Fri May 17 19:19:28 2019 +0000
 
-    Revert r360559 "[c++20] P1064R0: Allow virtual function calls in constant expression evaluation."
+    [c++20] P1327R1: Support for typeid applied to objects of polymorphic
+    class type in constant evaluation.
     
-    This caused Chromium builds to hit the new "can't handle virtual calls with
-    virtual bases" assert. Reduced repro coming up.
+    This reinstates r360977, reverted in r360987, now that its rerequisite
+    patch is reinstated and fixed.
     
-    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@360580 91177308-0d34-0410-b5e6-96231b3b80d8
+    git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@361067 91177308-0d34-0410-b5e6-96231b3b80d8

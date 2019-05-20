@@ -205,6 +205,9 @@ static inline bool isPopFromStack(const MachineInstr &mi) {
 static inline bool isEffectiveAddrValue(Value *val) {
   if (isa<LoadInst>(val)) {
     return true;
+  } else if (isa<CallInst>(val)) {
+    // A call may return a pointer that can be considered an effective address.
+    return true;
   } else if (isa<BinaryOperator>(val)) {
     BinaryOperator *binOpVal = dyn_cast<BinaryOperator>(val);
     if (binOpVal->isBinaryOp(BinaryOperator::Add) ||

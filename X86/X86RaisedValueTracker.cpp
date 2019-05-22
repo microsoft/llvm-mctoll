@@ -91,6 +91,11 @@ bool X86RaisedValueTracker::setPhysRegSSAValue(unsigned int PhysReg, int MBBNo,
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
   physRegDefsInMBB[SuperReg][MBBNo].second = Val;
+  physRegDefsInMBB[SuperReg][MBBNo].first =
+      X86RegisterUtils::getPhysRegSizeInBits(PhysReg);
+
+  assert((physRegDefsInMBB[SuperReg][MBBNo].first != 0) &&
+         "Found incorrect size of physical register");
   return true;
 }
 
@@ -115,6 +120,8 @@ X86RaisedValueTracker::getInBlockReachingDef(unsigned int PhysReg, int MBBNo) {
     MBBNoToValueMap mbbToValMap = PhysRegBBValDefIter->second;
     MBBNoToValueMap::iterator mbbToValMapIter = mbbToValMap.find(MBBNo);
     if (mbbToValMapIter != mbbToValMap.end()) {
+      assert((mbbToValMapIter->second.first != 0) &&
+             "Found incorrect size of physical register");
       return std::make_pair(mbbToValMapIter->first,
                             mbbToValMapIter->second.second);
     }
@@ -206,6 +213,8 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
     MBBNoToValueMap mbbToValMap = PhysRegBBValDefIter->second;
     MBBNoToValueMap::iterator mbbToValMapIter = mbbToValMap.find(MBBNo);
     if (mbbToValMapIter != mbbToValMap.end()) {
+      assert((mbbToValMapIter->second.first != 0) &&
+             "Found incorrect size of physical register");
       return mbbToValMapIter->second.second;
     }
   }
@@ -234,6 +243,8 @@ unsigned X86RaisedValueTracker::getInBlockPhysRegSize(unsigned int PhysReg,
     MBBNoToValueMap mbbToValMap = PhysRegBBValDefIter->second;
     MBBNoToValueMap::iterator mbbToValMapIter = mbbToValMap.find(MBBNo);
     if (mbbToValMapIter != mbbToValMap.end()) {
+      assert((mbbToValMapIter->second.first != 0) &&
+             "Found incorrect size of physical register");
       return mbbToValMapIter->second.first;
     }
   }
@@ -418,6 +429,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
   default:
     assert(false && "Unhandled EFLAGS bit specified");
   }
+  // EFLAGS bit size is 1
+  physRegDefsInMBB[FlagBit][MBBNo].first = 1;
   return true;
 }
 
@@ -431,6 +444,8 @@ bool X86RaisedValueTracker::setEflagValue(unsigned int FlagBit, int MBBNo,
   Value *Val = Set ? ConstantInt::getTrue(Ctx) : ConstantInt::getFalse(Ctx);
   Val->setName(X86RegisterUtils::getEflagName(FlagBit));
   physRegDefsInMBB[FlagBit][MBBNo].second = Val;
+  // EFLAGS bit size is 1
+  physRegDefsInMBB[FlagBit][MBBNo].first = 1;
   return true;
 }
 

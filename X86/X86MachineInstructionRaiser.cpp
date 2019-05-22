@@ -84,6 +84,39 @@ bool X86MachineInstructionRaiser::deleteNOOPInstrMF() {
   return modified;
 }
 
+bool X86MachineInstructionRaiser::unlinkEmptyMBBs() {
+  bool modified = false;
+  std::set<unsigned> EmptyMBBNos;
+  // Collect empty basic block numbers
+  for (MachineBasicBlock &MBB : MF) {
+    if (MBB.empty())
+      EmptyMBBNos.insert(MBB.getNumber());
+  }
+  // Get rid of any empty MachineBasicBlocks
+  if (!EmptyMBBNos.empty()) {
+    for (auto MBBNo : EmptyMBBNos) {
+      MachineBasicBlock *DelMBB = MF.getBlockNumbered(MBBNo);
+      // Transfer all successors of DelMBB as successors of each of the
+      // predecessors of DelMBB.
+      if (DelMBB->pred_size() > 0) {
+        for (auto DelMBBPred : DelMBB->predecessors()) {
+          DelMBBPred->transferSuccessors(DelMBB);
+        }
+      } else {
+        // If DelMBB does not have any predecessors, successors of DelMBB would
+        // not be deleted since transferAllSuccessors will not be called. So, we
+        // need to explicitly delete all successors of DelMBB.
+        for (auto DelMBBSucc : DelMBB->successors()) {
+          DelMBB->removeSuccessor(DelMBBSucc);
+        }
+      }
+      // Do not delete DelMBB
+    }
+    modified = true;
+  }
+  return modified;
+}
+
 // Return the Type of the physical register.
 Type *X86MachineInstructionRaiser::getPhysRegType(unsigned int PReg) {
   LLVMContext &Ctx(MF.getFunction().getContext());
@@ -206,7 +239,8 @@ static inline bool isEffectiveAddrValue(Value *val) {
   if (isa<LoadInst>(val)) {
     return true;
   } else if (isa<CallInst>(val)) {
-    // A call may return a pointer that can be considered an effective address.
+    // A call may return a pointer that can be considered an effective
+    // address.
     return true;
   } else if (isa<BinaryOperator>(val)) {
     BinaryOperator *binOpVal = dyn_cast<BinaryOperator>(val);
@@ -561,16 +595,16 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
           uint64_t SymVirtualAddr = Symb->st_value;
 
           // get the initial value of the global data symbol at symVirtualAddr
-          // from the section that contains the virtual address symVirtualAddr.
-          // In executable and shared object files, st_value holds a virtual
-          // address.
+          // from the section that contains the virtual address
+          // symVirtualAddr. In executable and shared object files, st_value
+          // holds a virtual address.
           uint64_t SymbVal = 0;
           for (section_iterator SecIter : Elf64LEObjFile->sections()) {
             uint64_t SecStart = SecIter->getAddress();
             uint64_t SecEnd = SecStart + SecIter->getSize();
             if ((SecStart <= SymVirtualAddr) && (SecEnd >= SymVirtualAddr)) {
-              // Get the initial symbol value only if this is not a bss section.
-              // Else, symVal is already initialized to 0.
+              // Get the initial symbol value only if this is not a bss
+              // section. Else, symVal is already initialized to 0.
               if (SecIter->isBSS()) {
                 Lnkg = GlobalValue::CommonLinkage;
               } else {
@@ -854,14 +888,15 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
          "Stack or base pointer expected for stack allocated value lookup");
   Value *CurSPVal = getRegOrArgValue(PReg, mi.getParent()->getNumber());
 
-  // If the memory reference offset is 0 i.e., not different from the current sp
-  // reference and there is already a stack allocation, just return that value
+  // If the memory reference offset is 0 i.e., not different from the current
+  // sp reference and there is already a stack allocation, just return that
+  // value
   if ((memRef.Disp == 0) && (CurSPVal != nullptr)) {
     return CurSPVal;
   }
   // At this point, the stack offset specified in the memory opernad is
-  // different from that if the alloca corresponding to sp or there is no stack
-  // allocation corresponding to sp.
+  // different from that if the alloca corresponding to sp or there is no
+  // stack allocation corresponding to sp.
   int NewDisp;
   MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
   // If there is no allocation corresponding to sp, set the offset of new
@@ -1248,7 +1283,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         const_cast<Value *>(getOrCreateGlobalRODataValueAtOffset(
             Offset, Type::getInt64Ty(MF.getFunction().getContext())));
   } else {
-    // If Offset corresponds to a global symbol, materialize a global variable.
+    // If Offset corresponds to a global symbol, materialize a global
+    // variable.
     unsigned MemAccessSizeInBytes = getInstructionMemOpSize(MI.getOpcode());
     assert((MemAccessSizeInBytes != 0) && "Unknown memory access size");
     Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
@@ -1400,8 +1436,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
           Type *GlobalArrValTy = ArrayType::get(ByteType, SymbSize);
           GlobalInit = ConstantAggregateZero::get(GlobalArrValTy);
 
-          // Change the global value type to byte type to indicate that the data
-          // is interpreted as bytes.
+          // Change the global value type to byte type to indicate that the
+          // data is interpreted as bytes.
           GlobalValTy = GlobalArrValTy;
         }
       } else {
@@ -1641,9 +1677,9 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                         continue;
                       }
                     }
-                    // Index value not zero. So, scale it up by multiplying with
-                    // GlobGEPSrcTySzInBytes, since the we are changing the
-                    // access to byte array access.
+                    // Index value not zero. So, scale it up by multiplying
+                    // with GlobGEPSrcTySzInBytes, since the we are changing
+                    // the access to byte array access.
                     Constant *ScaleVal = ConstantInt::get(IdxVal->getType(),
                                                           GlobGEPSrcTySzInBytes,
                                                           false /* isSigned */);
@@ -1774,14 +1810,17 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
   return PRegValue;
 }
 
-// Get the 64-bit super register of PhysReg. Return PhysReg is it is
-// a 64-bit register.
-// Add a new PhysReg-Val pair if no mapping for PhysReg exists
-// Replace the mapping to PhysReg-Val if one already exists.
+// Discover and return the return-type using the return block MBB.
+// Return type is constructed based on the last definition of RAX (or its
+// sub-register) in MBB. If no such definition definition is found, return type
+// is constructed based on RAX (or its sub-register) being part of MBB's
+// live-ins.
 Type *
 X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
   Type *returnType = nullptr;
 
+  assert(MBB.isReturnBlock() &&
+         "Attempt to discover return type from a non-return MBB");
   // Check liveness of EAX in the return block. We assume that EAX (or
   // RAX) would have to be defined in the return block.
   // TODO : We may have to revisit this assumption, if needed.
@@ -1806,7 +1845,8 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
           if (!TargetRegisterInfo::isPhysicalRegister(PReg)) {
             continue;
           }
-          // Check if PReg is any of the sub-registers of RAX (including itself)
+          // Check if PReg is any of the sub-registers of RAX (including
+          // itself)
           for (MCSubRegIterator SubRegs(X86::RAX, TRI, /*IncludeSelf=*/true);
                (SubRegs.isValid() && DefReg == X86::NoRegister); ++SubRegs) {
             if (*SubRegs == PReg) {
@@ -1871,6 +1911,28 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB) {
       }
     } while (I != MBB.begin());
   }
+
+  // If return type not found
+  if (returnType == nullptr) {
+    // Check if return register is a live-in i.e., if the sub-registers of RAX
+    // (including itself) is live-in
+    unsigned LIRetReg = X86::NoRegister;
+    const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
+
+    for (const auto &LI : MBB.liveins()) {
+      MCPhysReg PhysReg = LI.PhysReg;
+
+      for (MCSubRegIterator SubRegs(X86::RAX, TRI, /*IncludeSelf=*/true);
+           (SubRegs.isValid() && LIRetReg == X86::NoRegister); ++SubRegs) {
+        if (*SubRegs == PhysReg) {
+          LIRetReg = *SubRegs;
+        }
+      }
+    }
+    if (LIRetReg != X86::NoRegister)
+      returnType = getPhysRegType(LIRetReg);
+  }
+
   return returnType;
 }
 
@@ -1881,10 +1943,9 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
 
   assert(x86TargetInfo.is64Bit() && "Only x86_64 binaries supported for now");
 
-  // Find a return block. It is sufficient to get the dominator tree path
-  // whose leaf is one of the return blocks to find the return type. This
-  // type should be the same on any of the dominator paths from entry to
-  // return block.
+  // Find a return block. It is sufficient to get one of the return blocks to
+  // find the return type. This type should be the same on any of the paths from
+  // entry to any other return blocks.
   MachineBasicBlock *RetBlock = nullptr;
   for (MachineBasicBlock &MBB : MF) {
     if (MBB.isReturnBlock()) {
@@ -1893,27 +1954,16 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
     }
   }
 
-  if (RetBlock != nullptr)
-    WorkList.push_back(RetBlock);
-
-  while (!WorkList.empty()) {
-    MachineBasicBlock *N = WorkList.pop_back_val();
-    assert(!BlockVisited[N->getNumber()] &&
-           "Encountered previously visited block");
-    // Mark block as visited
-    BlockVisited.set(N->getNumber());
-    returnType = getReturnTypeFromMBB(*N);
-    if (returnType != nullptr)
-      return returnType;
-
-    for (auto P : N->predecessors()) {
-      // When a BasicBlock has the same predecessor and successor,
-      // push_back the block which was not visited.
-      if (!BlockVisited[P->getNumber()])
-        WorkList.push_back(P);
-    }
+  if (RetBlock != nullptr) {
+    returnType = getReturnTypeFromMBB(*RetBlock);
   }
-  return nullptr;
+
+  // If we are unable to discover the return type assume that the return
+  // type is void.
+  if (returnType == nullptr)
+    returnType = Type::getVoidTy(MF.getFunction().getContext());
+
+  return returnType;
 }
 
 // Construct prototype of the Function for the MachineFunction being raised.
@@ -1922,6 +1972,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   if (raisedFunction == nullptr) {
     // Cleanup NOOP instructions from all MachineBasicBlocks
     deleteNOOPInstrMF();
+    // Clean up any empty basic blocks
+    unlinkEmptyMBBs();
 
     MF.getRegInfo().freezeReservedRegs(MF);
     Type *returnType = nullptr;
@@ -1956,9 +2008,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
         MachineInstr &MI = *Iter;
         unsigned Opc = MI.getOpcode();
 
-        // xor reg, reg is a typical idiom used to clear reg. If reg happens to
-        // be an argument register, it should not be considered as such. Record
-        // it as such.
+        // xor reg, reg is a typical idiom used to clear reg. If reg happens
+        // to be an argument register, it should not be considered as such.
+        // Record it as such.
         if (Opc == X86::XOR64rr || Opc == X86::XOR32rr || Opc == X86::XOR16rr ||
             Opc == X86::XOR8rr) {
           unsigned DestOpIndx = 0, SrcOp1Indx = 1, SrcOp2Indx = 2;
@@ -2010,12 +2062,6 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     buildFuncArgTypeVector(LiveInRegs, argTypeVector);
     // 2. Discover function return type
     returnType = getFunctionReturnType();
-    // If we are unable to discover the return type assume that the return
-    // type is void.
-    // TODO : Refine this once support is added to discover arguments passed
-    // on the stack??
-    if (returnType == nullptr)
-      returnType = Type::getVoidTy(MF.getFunction().getContext());
 
     // The Function object associated with current MachineFunction object
     // is only a place holder. It was created to facilitate creation of
@@ -2901,8 +2947,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstValue = BinaryOperator::CreateNSWAdd(Uses.at(0), Uses.at(1));
     if (isa<Instruction>(dstValue))
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
-    // Set SF and ZF based on dstValue; technically OF, AF, CF and PF also needs
-    // to be set but ignoring for now.
+    // Set SF and ZF based on dstValue; technically OF, AF, CF and PF also
+    // needs to be set but ignoring for now.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
 
@@ -3051,8 +3097,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   assert(dstValue != nullptr && (dstReg != X86::NoRegister) &&
          "Raising of instruction unimplemented");
   if (dstReg != X86::EFLAGS)
-    // dstReg is set to X86::EFLAGS for TEST instruction which does not write to
-    // any physical register
+    // dstReg is set to X86::EFLAGS for TEST instruction which does not write
+    // to any physical register
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   return true;
 }
@@ -3938,8 +3984,8 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     case X86::SUB64rr: {
       assert(MCIDesc.getNumDefs() == 1 &&
              "Unexpected number of def operands of sub instruction");
-      // Update the DestReg only if this is a sub instruction. Do not update if
-      // this is a cmp instruction
+      // Update the DestReg only if this is a sub instruction. Do not update
+      // if this is a cmp instruction
       raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
                                        SubInst);
     } break;
@@ -4523,8 +4569,8 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
            "Conditional branch instruction expected");
     X86::CondCode CC = X86::COND_INVALID;
 
-    // Unfortunately X86::getCondFromBranch(MI) only looks at JCC_1. We need to
-    // handle JCC_2 and JCC_4 as well.
+    // Unfortunately X86::getCondFromBranch(MI) only looks at JCC_1. We need
+    // to handle JCC_2 and JCC_4 as well.
     switch (MI->getOpcode()) {
     default:
       CC = X86::COND_INVALID;
@@ -4970,9 +5016,10 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       uint8_t PositionMask = 0;
 
       const MachineBasicBlock *CurMBB = MI.getParent();
-      // If an argument register does not have a definition in a block that has
-      // a call instruction between block entry and MI, there is no need (and is
-      // not correct) to look for a reaching definition in its predecessors.
+      // If an argument register does not have a definition in a block that
+      // has a call instruction between block entry and MI, there is no need
+      // (and is not correct) to look for a reaching definition in its
+      // predecessors.
       bool HasCallInst = false;
       unsigned int ArgNo = 1;
       // Find if CurMBB has call between block entry and MI
@@ -5000,15 +5047,15 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
                 BlockVisited.set(PredMBB->getNumber());
                 // Need to consider definitions after any call instructions in
                 // the block. This is the reason we can not use
-                // getReachingDefs() which does not consider the position where
-                // the register is defined.
+                // getReachingDefs() which does not consider the position
+                // where the register is defined.
                 bool Ignored;
                 if (hasPhysRegDefInBlock(ArgReg, nullptr, PredMBB, MCID::Call,
                                          Ignored))
                   ReachDefPredEdgeCount++;
                 else {
-                  // Reach info not found, continue walking the predecessors of
-                  // CurBB.
+                  // Reach info not found, continue walking the predecessors
+                  // of CurBB.
                   for (auto P : PredMBB->predecessors()) {
                     // push_back the block which was not visited.
                     if (!BlockVisited[P->getNumber()])
@@ -5054,8 +5101,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     // in C calling convention (the calling convention currently supported).
     for (unsigned i = 0; i < NumArgs; i++) {
       // Get the values of argument registers
-      // Do not match types since we are explicitly using 64-bit GPR array. Any
-      // necessary casting will be done later in this function.
+      // Do not match types since we are explicitly using 64-bit GPR array.
+      // Any necessary casting will be done later in this function.
       Value *ArgVal =
           getRegOrArgValue(GPR64ArgRegs64Bit[i], MI.getParent()->getNumber());
       // This condition will not be true for varargs of a variadic function.
@@ -5102,10 +5149,31 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
 
     RaisedBB->getInstList().push_back(callInst);
     // A function call with a non-void return will modify
-    // RAX.
+    // RAX (or its sub-register).
     Type *RetType = CalledFunc->getReturnType();
     if (!RetType->isVoidTy()) {
-      raisedValues->setPhysRegSSAValue(X86::RAX, MI.getParent()->getNumber(),
+      unsigned int RetReg = X86::NoRegister;
+      if (RetType->isPointerTy()) {
+        RetReg = X86::RAX;
+      } else {
+        switch (RetType->getScalarSizeInBits()) {
+        case 64:
+          RetReg = X86::RAX;
+          break;
+        case 32:
+          RetReg = X86::EAX;
+          break;
+        case 16:
+          RetReg = X86::AX;
+          break;
+        case 8:
+          RetReg = X86::AL;
+          break;
+        default:
+          assert(false && "Unhandled return value size");
+        }
+      }
+      raisedValues->setPhysRegSSAValue(RetReg, MI.getParent()->getNumber(),
                                        callInst);
     }
     if (MI.isBranch()) {

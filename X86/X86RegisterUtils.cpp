@@ -95,4 +95,18 @@ bool is16BitPhysReg(unsigned int PReg) {
 bool is8BitPhysReg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::GR8RegClassID].contains(PReg);
 }
+
+unsigned int getPhysRegSizeInBits(unsigned int PReg) {
+  if (is64BitPhysReg(PReg))
+    return 64;
+  else if (is32BitPhysReg(PReg))
+    return 32;
+  else if (is16BitPhysReg(PReg))
+    return 16;
+  else if (is8BitPhysReg(PReg))
+    return 8;
+  else
+    assert(false && "Unhandled physical register specified");
+  return 0;
+}
 } // namespace X86RegisterUtils

@@ -89,6 +89,7 @@ private:
   // Cleanup MachineBasicBlocks
   bool deleteNOOPInstrMI(MachineBasicBlock &, MachineBasicBlock::iterator);
   bool deleteNOOPInstrMF();
+  bool unlinkEmptyMBBs();
 
   // Raise specific classes of instructions
   bool raisePushInstruction(const MachineInstr &);

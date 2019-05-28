@@ -6,13 +6,6 @@
 // CHECK: %stack.4.stack.4
 // CHECK: %stack.5.stack.5
 // CHECK: %stack.6.stack.6
-// CHECK: %stack.7.stack.7
-// CHECK: %stack.2 = alloca
-// CHECK-NEXT: %stack.3 = alloca
-// CHECK-NEXT: %stack.4 = alloca
-// CHECK-NEXT: %stack.5 = alloca
-// CHECK-NEXT: %stack.6 = alloca
-// CHECK-NEXT: %stack.7 = alloca
 // CHECK: ARMFrameBuilder end
 
 int func(int x) {

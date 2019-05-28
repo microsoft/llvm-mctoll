@@ -36,6 +36,7 @@ bool ARMMachineInstructionRaiser::raiseMachineFunction() {
 
   ARMMIRevising mir(rmr);
   mir.init(&MF, raisedFunction);
+  mir.setMCInstRaiser(mcInstRaiser);
   mir.revise();
 
   ARMEliminatePrologEpilog epe(rmr);
@@ -44,6 +45,7 @@ bool ARMMachineInstructionRaiser::raiseMachineFunction() {
 
   ARMCreateJumpTable cjt(rmr);
   cjt.init(&MF, raisedFunction);
+  cjt.setMCInstRaiser(mcInstRaiser);
   cjt.create();
   cjt.getJTlist(jtList);
 

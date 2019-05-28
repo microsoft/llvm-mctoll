@@ -42,6 +42,8 @@ void ARMCreateJumpTable::init(MachineFunction *mf, Function *rf) {
   ARMRaiserBase::init(mf, rf);
 }
 
+void ARMCreateJumpTable::setMCInstRaiser(MCInstRaiser *PMCIR) { MCIR = PMCIR; }
+
 /// Get the MachineBasicBlock to add the jumptable instruction.
 MachineBasicBlock *ARMCreateJumpTable::checkJumptableBB(MachineFunction &MF) {
   MachineBasicBlock *jumptableBB = nullptr;
@@ -52,7 +54,7 @@ MachineBasicBlock *ARMCreateJumpTable::checkJumptableBB(MachineFunction &MF) {
 
       // Find the MI: %r0 = ADDri %pc
       if (curMachInstr.getOpcode() == ARM::ADDri &&
-          curMachInstr.getOperand(1).getReg() == 11) {
+          curMachInstr.getOperand(1).getReg() == ARM::PC) {
         jumptableBB = curMachInstr.getParent();
       }
     }
@@ -118,8 +120,6 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
   std::map<uint64_t, MCInstOrData> mcInstMapData;
   std::map<uint64_t, MCInstOrData>::iterator iter_in;
 
-  MachineFunctionRaiser *MRI = MR->getMachineFunctionRaiser(MF);
-  MCInstRaiser *MCIR = MRI->getMCInstRaiser();
   int64_t TSAddr = MR->getTextSectionAddress();
 
   // Save the ADDri and Calculate the start address of data.
@@ -129,12 +129,13 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
       MachineInstr &JmpTblOffsetCalcMI = (*CurMBBIter);
       // Find the MI: %r0 = ADDri %pc
       if (JmpTblOffsetCalcMI.getOpcode() == ARM::ADDri &&
-          JmpTblOffsetCalcMI.getOperand(1).getReg() == 11 &&
+          JmpTblOffsetCalcMI.getOperand(1).getReg() == ARM::PC &&
           JmpTblOffsetCalcMI.getOperand(2).getImm() == 8) {
-
         // A vector of switch target MBBs
         std::vector<MachineBasicBlock *> JmpTgtMBBvec;
-
+        assert(
+            MCIR != nullptr &&
+            "Current function machine instruction raiser wasn't initialized!");
         mcInstMapData = MCIR->getMCInstMap();
         for (iter_in = mcInstMapData.begin(); iter_in != mcInstMapData.end();
              iter_in++) {
@@ -144,8 +145,6 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
             auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(Offset);
             if (MBBNo != -1) {
               MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);
-              // addrMapMBB.insert(std::make_pair(iter_in->first + TSAddr,
-              // MBB));
               JmpTgtMBBvec.push_back(MBB);
             }
           }

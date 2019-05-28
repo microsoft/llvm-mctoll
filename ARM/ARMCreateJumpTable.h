@@ -28,6 +28,7 @@ public:
   bool create();
   bool runOnMachineFunction(MachineFunction &mf) override;
   bool getJTlist(std::vector<JumpTableInfo> &List);
+  void setMCInstRaiser(MCInstRaiser *PMCIR);
 
 private:
   unsigned int getARMCPSR(unsigned int PhysReg);
@@ -35,6 +36,8 @@ private:
   /// Get the MachineBasicBlock to add the jumptable instruction.
   MachineBasicBlock *checkJumptableBB(MachineFunction &MF);
   bool UpdatetheBranchInst(MachineBasicBlock &MBB);
+
   std::vector<JumpTableInfo> jtList;
+  MCInstRaiser *MCIR;
 };
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMCREATEJUMPTABLE_H

@@ -64,8 +64,10 @@ extern cl::opt<DIDumpType> DwarfDumpType;
 
 // Various helper functions.
 void error(std::error_code ec);
+void error(Error E);
+bool isRelocAddressLess(object::RelocationRef A, object::RelocationRef B);
 bool RelocAddressLess(object::RelocationRef a, object::RelocationRef b);
-void ParseInputMachO(StringRef Filename);
+void parseInputMachO(StringRef Filename);
 void printCOFFUnwindInfo(const object::COFFObjectFile *o);
 void printMachOUnwindInfo(const object::MachOObjectFile *o);
 void printMachOExportsTrie(const object::MachOObjectFile *o);
@@ -93,14 +95,20 @@ void PrintSymbolTable(const object::ObjectFile *o, StringRef ArchiveName,
                       StringRef ArchitectureName = StringRef());
 LLVM_ATTRIBUTE_NORETURN void error(Twine Message);
 LLVM_ATTRIBUTE_NORETURN void report_error(StringRef File, Twine Message);
-LLVM_ATTRIBUTE_NORETURN void report_error(StringRef File, std::error_code EC);
-LLVM_ATTRIBUTE_NORETURN void report_error(StringRef File, llvm::Error E);
+LLVM_ATTRIBUTE_NORETURN void report_error(Error E, StringRef File);
 LLVM_ATTRIBUTE_NORETURN void
-report_error(StringRef FileName, StringRef ArchiveName, llvm::Error E,
+report_error(Error E, StringRef FileName, StringRef ArchiveName,
              StringRef ArchitectureName = StringRef());
 LLVM_ATTRIBUTE_NORETURN void
-report_error(StringRef ArchiveName, const object::Archive::Child &C,
-             llvm::Error E, StringRef ArchitectureName = StringRef());
+report_error(Error E, StringRef ArchiveName, const object::Archive::Child &C,
+             StringRef ArchitectureName = StringRef());
+
+template <typename T, typename... Ts>
+T unwrapOrError(Expected<T> EO, Ts &&... Args) {
+  if (EO)
+    return std::move(*EO);
+  report_error(EO.takeError(), std::forward<Ts>(Args)...);
+}
 
 } // end namespace llvm
 

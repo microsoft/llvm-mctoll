@@ -82,8 +82,6 @@ public:
     return nullptr;
   }
 
-  MachineFunctionRaiser *getMachineFunctionRaiser(MachineFunction &MF);
-
   // Insert the map of raised function R to place-holder function PH pointer
   // that inturn has the to corresponding MachineFunction.
 

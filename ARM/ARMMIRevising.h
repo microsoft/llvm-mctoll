@@ -15,6 +15,7 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMIREVISING_H
 
 #include "ARMRaiserBase.h"
+#include "MCInstRaiser.h"
 #include "llvm/CodeGen/MachineInstr.h"
 
 using namespace llvm;
@@ -33,6 +34,7 @@ public:
   void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
   bool revise();
   bool runOnMachineFunction(MachineFunction &mf) override;
+  void setMCInstRaiser(MCInstRaiser *PMCIR);
 
 private:
   bool reviseMI(MachineInstr &MI);
@@ -48,6 +50,8 @@ private:
   /// Decode modified immediate constants in some instructions with immediate
   /// operand.
   void decodeModImmOperand(MachineInstr &MInst);
+
+  MCInstRaiser *MCIR;
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMIREVISING_H

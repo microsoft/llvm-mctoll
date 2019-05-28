@@ -59,5 +59,6 @@ bool is64BitPhysReg(unsigned int PReg);
 bool is32BitPhysReg(unsigned int PReg);
 bool is16BitPhysReg(unsigned int PReg);
 bool is8BitPhysReg(unsigned int PReg);
+unsigned getPhysRegSizeInBits(unsigned int PReg);
 } // namespace X86RegisterUtils
 #endif /* TOOLS_LLVM_MCTOLL_X86_X86RAISERUTILS_H_ */

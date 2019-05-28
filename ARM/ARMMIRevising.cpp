@@ -34,6 +34,8 @@ void ARMMIRevising::init(MachineFunction *mf, Function *rf) {
   ARMRaiserBase::init(mf, rf);
 }
 
+void ARMMIRevising::setMCInstRaiser(MCInstRaiser *PMCIR) { MCIR = PMCIR; }
+
 // Extract the offset of MachineInstr MI from the Metadata operand.
 static uint64_t getMCInstIndex(const MachineInstr &MI) {
   unsigned NumExpOps = MI.getNumExplicitOperands();
@@ -93,9 +95,9 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
         assert(false && "Unexpected section name of PLT offset");
       }
 
-      StringRef SecData;
-      SecIter->getContents(SecData);
-
+      auto StrOrErr = SecIter->getContents();
+      assert(StrOrErr && "Failed to get the content of section!");
+      auto SecData = *StrOrErr;
       ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(SecData.data()),
                               SecData.size());
 
@@ -189,10 +191,7 @@ void ARMMIRevising::relocateBranch(MachineInstr &MInst) {
     int64_t MCInstOffset = getMCInstIndex(MInst);
     int64_t CallAddr = MCInstOffset + textSectionAddress;
     int64_t CallTargetIndex = CallAddr + relCallTargetOffset + 8;
-    MCInstRaiser *MCIR =
-        MR->getMachineFunctionRaiser(*(MInst.getParent()->getParent()))
-            ->getMCInstRaiser();
-    assert(MCIR != nullptr && "MCInstRaiser not initialized");
+    assert(MCIR != nullptr && "MCInstRaiser was not initialized");
     int64_t CallTargetOffset = CallTargetIndex - textSectionAddress;
     if (CallTargetOffset < 0 || !MCIR->isMCInstInRange(CallTargetOffset)) {
       Function *CalledFunc = nullptr;
@@ -257,10 +256,7 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
   if (DynReloc && DynReloc->getType() == ELF::R_ARM_ABS32)
     Symbol = &*DynReloc->getSymbol();
 
-  MCInstRaiser *MCIR =
-      MR->getMachineFunctionRaiser(*(MInst.getParent()->getParent()))
-          ->getMCInstRaiser();
-  assert(MCIR != nullptr && "MCInstRaiser is not initialized!");
+  assert(MCIR != nullptr && "MCInstRaiser was not initialized!");
   if (Symbol == nullptr) {
     auto Iter =
         MCIR->getMCInstAt(MCInstOffset + static_cast<uint64_t>(Imm) + 8);
@@ -331,8 +327,9 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
         else
           GlobInit = ConstantInt::get(GlobValTy, 0);
       } else {
-        StringRef SecData;
-        SecIter->getContents(SecData);
+        auto StrOrErr = SecIter->getContents();
+        assert(StrOrErr && "Failed to get the content of section!");
+        StringRef SecData = *StrOrErr;
         // Currently, Symbol->getValue() is virtual address.
         unsigned Index = SymVirtAddr - SecIter->getAddress();
         const unsigned char *Beg = SecData.bytes_begin() + Index;
@@ -390,8 +387,9 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
 
             if ((SecStart <= DataAddr) && (SecEnd >= DataAddr)) {
               if (SecIter->isData()) {
-                StringRef SecData;
-                SecIter->getContents(SecData);
+                auto StrOrErr = SecIter->getContents();
+                assert(StrOrErr && "Failed to get the content of section!");
+                StringRef SecData = *StrOrErr;
                 uint64_t DataOffset = DataAddr - SecStart;
                 const unsigned char *RODataBegin =
                     SecData.bytes_begin() + DataOffset;

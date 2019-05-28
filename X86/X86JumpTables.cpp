@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86MachineInstructionRaiser.h"
+#include "llvm-mctoll.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -54,7 +55,6 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
             dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
         assert(Elf64LEObjFile != nullptr &&
                "Only 64-bit ELF binaries supported at present.");
-        StringRef Contents;
         const unsigned char *DataContent = nullptr;
         size_t DataSize = 0;
         size_t JmpTblEntryOffset = 0;
@@ -64,12 +64,13 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
           uint64_t SecEnd = SecStart + SecIter->getSize();
           if ((SecStart <= JmpTblBaseMemAddress) &&
               (SecEnd >= JmpTblBaseMemAddress)) {
-            if (!SecIter->getContents(Contents)) {
-              DataContent =
-                  static_cast<const unsigned char *>(Contents.bytes_begin());
-              DataSize = SecIter->getSize();
-              JmpTblEntryOffset = JmpTblBaseMemAddress - SecStart;
-            }
+            StringRef Contents = unwrapOrError(
+                SecIter->getContents(), MR->getObjectFile()->getFileName());
+            DataContent =
+                static_cast<const unsigned char *>(Contents.bytes_begin());
+            DataSize = SecIter->getSize();
+            JmpTblEntryOffset = JmpTblBaseMemAddress - SecStart;
+
             break;
           }
         }
@@ -158,10 +159,10 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
               if ((SecStart <= (unsigned)JmpTblBaseAddress) &&
                   (SecEnd >= (unsigned)JmpTblBaseAddress) &&
                   SecIter->isData()) {
-                if (!SecIter->getContents(Contents)) {
-                  DataSize = SecIter->getSize();
-                  JmpTblBaseOffset = JmpTblBaseAddress - SecStart;
-                }
+                Contents = unwrapOrError(SecIter->getContents(),
+                                         MR->getObjectFile()->getFileName());
+                DataSize = SecIter->getSize();
+                JmpTblBaseOffset = JmpTblBaseAddress - SecStart;
                 break;
               }
             }

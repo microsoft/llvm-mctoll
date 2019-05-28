@@ -186,67 +186,65 @@ static void printAllUnwindCodes(ArrayRef<UnwindCode> UCs) {
 }
 
 // Given a symbol sym this functions returns the address and section of it.
-static std::error_code
-resolveSectionAndAddress(const COFFObjectFile *Obj, const SymbolRef &Sym,
-                         const coff_section *&ResolvedSection,
-                         uint64_t &ResolvedAddr) {
+static Error resolveSectionAndAddress(const COFFObjectFile *Obj,
+                                      const SymbolRef &Sym,
+                                      const coff_section *&ResolvedSection,
+                                      uint64_t &ResolvedAddr) {
   Expected<uint64_t> ResolvedAddrOrErr = Sym.getAddress();
   if (!ResolvedAddrOrErr)
-    return errorToErrorCode(ResolvedAddrOrErr.takeError());
+    return ResolvedAddrOrErr.takeError();
   ResolvedAddr = *ResolvedAddrOrErr;
   Expected<section_iterator> Iter = Sym.getSection();
   if (!Iter)
-    return errorToErrorCode(Iter.takeError());
+    return Iter.takeError();
   ResolvedSection = Obj->getCOFFSection(**Iter);
-  return std::error_code();
+  return Error::success();
 }
 
 // Given a vector of relocations for a section and an offset into this section
 // the function returns the symbol used for the relocation at the offset.
-static std::error_code resolveSymbol(const std::vector<RelocationRef> &Rels,
-                                     uint64_t Offset, SymbolRef &Sym) {
+static Error resolveSymbol(const std::vector<RelocationRef> &Rels,
+                           uint64_t Offset, SymbolRef &Sym) {
   for (auto &R : Rels) {
     uint64_t Ofs = R.getOffset();
     if (Ofs == Offset) {
       Sym = *R.getSymbol();
-      return std::error_code();
+      return Error::success();
     }
   }
-  return object_error::parse_failed;
+  return make_error<BinaryError>();
 }
 
 // Given a vector of relocations for a section and an offset into this section
 // the function resolves the symbol used for the relocation at the offset and
 // returns the section content and the address inside the content pointed to
 // by the symbol.
-static std::error_code
-getSectionContents(const COFFObjectFile *Obj,
-                   const std::vector<RelocationRef> &Rels, uint64_t Offset,
-                   ArrayRef<uint8_t> &Contents, uint64_t &Addr) {
+static Error getSectionContents(const COFFObjectFile *Obj,
+                                const std::vector<RelocationRef> &Rels,
+                                uint64_t Offset, ArrayRef<uint8_t> &Contents,
+                                uint64_t &Addr) {
   SymbolRef Sym;
-  if (std::error_code EC = resolveSymbol(Rels, Offset, Sym))
-    return EC;
+  if (Error E = resolveSymbol(Rels, Offset, Sym))
+    return E;
   const coff_section *Section;
-  if (std::error_code EC = resolveSectionAndAddress(Obj, Sym, Section, Addr))
-    return EC;
-  if (std::error_code EC = Obj->getSectionContents(Section, Contents))
-    return EC;
-  return std::error_code();
+  if (Error E = resolveSectionAndAddress(Obj, Sym, Section, Addr))
+    return E;
+  return Obj->getSectionContents(Section, Contents);
 }
 
 // Given a vector of relocations for a section and an offset into this section
 // the function returns the name of the symbol used for the relocation at the
 // offset.
-static std::error_code resolveSymbolName(const std::vector<RelocationRef> &Rels,
-                                         uint64_t Offset, StringRef &Name) {
+static Error resolveSymbolName(const std::vector<RelocationRef> &Rels,
+                               uint64_t Offset, StringRef &Name) {
   SymbolRef Sym;
-  if (std::error_code EC = resolveSymbol(Rels, Offset, Sym))
+  if (Error EC = resolveSymbol(Rels, Offset, Sym))
     return EC;
   Expected<StringRef> NameOrErr = Sym.getName();
   if (!NameOrErr)
-    return errorToErrorCode(NameOrErr.takeError());
+    return NameOrErr.takeError();
   Name = *NameOrErr;
-  return std::error_code();
+  return Error::success();
 }
 
 static void printCOFFSymbolAddress(llvm::raw_ostream &Out,
@@ -485,7 +483,7 @@ static bool getPDataSection(const COFFObjectFile *Obj,
       Rels.push_back(Reloc);
 
     // Sort relocations by address.
-    std::sort(Rels.begin(), Rels.end(), RelocAddressLess);
+    llvm::sort(Rels, isRelocAddressLess);
 
     ArrayRef<uint8_t> Contents;
     error(Obj->getSectionContents(Pdata, Contents));

@@ -1993,7 +1993,8 @@ bool X86MachineInstructionRaiser::raiseConvertBWWDDQMachineInstr(
   }
   assert(TargetTy != nullptr &&
          "Target type not set for cbw/cwde/cdqe instruction");
-  Value *UseValue = getRegOrArgValue(UseReg, MI.getParent()->getNumber());
+  Value *UseValue = getRegOperandValue(
+      MI, MI.findRegisterUseOperandIdx(UseReg, false, nullptr));
 
   // Generate sign-extend instruction
   SExtInst *SextInst = new SExtInst(UseValue, TargetTy);
@@ -3854,6 +3855,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
       switch (MI.getOpcode()) {
       case X86::ADD8i8:
+      case X86::ADD16i16:
+      case X86::ADD32i32:
       case X86::ADD64i32:
       case X86::ADD16ri:
       case X86::ADD16ri8:
@@ -3966,10 +3969,12 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       Instruction *BinOpInstr = nullptr;
       switch (MI.getOpcode()) {
       case X86::ADD8i8:
+      case X86::ADD16i16:
       case X86::ADD16ri:
       case X86::ADD16ri8:
       case X86::ADD32ri:
       case X86::ADD32ri8:
+      case X86::ADD32i32:
       case X86::ADD64ri8:
       case X86::ADD64ri32:
       case X86::ADD64i32: {
@@ -3989,10 +3994,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
         break;
       case X86::AND8i8:
       case X86::AND8ri:
+      case X86::AND16i16:
       case X86::AND16ri:
       case X86::AND16ri8:
+      case X86::AND32i32:
       case X86::AND32ri:
       case X86::AND32ri8:
+      case X86::AND64i32:
       case X86::AND64ri8:
       case X86::AND64ri32:
         // Generate and instruction

@@ -15,6 +15,7 @@
 const std::map<StringRef, ExternalFunctions::RetAndArgs>
     ExternalFunctions::GlibcFunctions = {
         {"printf", {"i32", {"i8*"}, true}},
+        {"__printf_chk", {"i32", {"i8*"}, true}},
         {"malloc", {"i8*", {"i64"}, false}},
         {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
         {"strcpy", {"i8*", {"i8*", "i8*"}, false}},

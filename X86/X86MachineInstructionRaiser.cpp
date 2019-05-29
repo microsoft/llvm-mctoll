@@ -2698,6 +2698,29 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
+  case X86::NOT8r:
+  case X86::NOT16r:
+  case X86::NOT32r:
+  case X86::NOT64r: {
+    // Verify source and dest are tied and are registers
+    const MachineOperand &DestOp = MI.getOperand(DestOpIndex);
+    assert(DestOp.isTied() &&
+           (MI.findTiedOperandIdx(DestOpIndex) == UseOp1Index) &&
+           "Expect tied operand in not instruction");
+    assert(DestOp.isReg() && "Expect reg operand in not instruction");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected defines in a not instruction");
+    dstReg = DestOp.getReg();
+    Value *SrcOp = Uses.at(0);
+    dstValue = BinaryOperator::CreateNot(SrcOp);
+    // No EFLAGS are effected
+    // Add the not instruction
+    if (isa<Instruction>(dstValue))
+      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+  } break;
+
   default:
     assert(false && "Unhandled binary instruction");
   }
@@ -3294,6 +3317,51 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   return true;
 }
 
+// Raise not instruction with memory operand
+bool X86MachineInstructionRaiser::raiseNotOpMemInstr(const MachineInstr &MI,
+                                                     Value *MemRefVal) {
+  // Get the BasicBlock corresponding to MachineBasicBlock of MI.
+  // Raised instruction is added to this BasicBlock.
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+  LLVMContext &Ctx(MF.getFunction().getContext());
+
+  unsigned int memAlignment = getInstructionMemOpSize(MI.getOpcode());
+
+  // Note that not instruction with memory operand loads from MemrefVal,
+  // computes not operation on the loaded value and stores it back in the
+  // location MemRegVal
+
+  // Load the value from memory location of memRefValue.
+  Type *SrcTy = MemRefVal->getType();
+  // Get the pointer type of data stored by the instruction
+  Type *MemPtrTy = Type::getIntNPtrTy(Ctx, memAlignment * 8);
+  // If Cast the value to pointer type of size memAlignment
+  if (!SrcTy->isPointerTy() || (SrcTy != MemPtrTy)) {
+    CastInst *CInst = CastInst::Create(
+        CastInst::getCastOpcode(MemRefVal, false, MemPtrTy, false), MemRefVal,
+        MemPtrTy);
+    RaisedBB->getInstList().push_back(CInst);
+    MemRefVal = CInst;
+  }
+
+  // Load the value from memory location
+  LoadInst *SrcValue = new LoadInst(MemRefVal);
+  SrcValue->setAlignment(
+      MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout()));
+  RaisedBB->getInstList().push_back(SrcValue);
+
+  // Generate a not instruction
+  Instruction *NotInst = BinaryOperator::CreateNot(SrcValue);
+  RaisedBB->getInstList().push_back(NotInst);
+
+  // Store the result back in MemRefVal
+  StoreInst *StInst = new StoreInst(NotInst, MemRefVal);
+
+  StInst->setAlignment(memAlignment);
+  RaisedBB->getInstList().push_back(StInst);
+  return true;
+}
+
 // Raise idiv instruction with source operand with value srcValue.
 bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
                                                    Value *SrcValue) {
@@ -3649,8 +3717,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   if (MIDesc.mayStore()) {
     // If the instruction stores to stack, find the register whose value is
     // being stored. It would be the operand at offset
-    // memRefOperandStartIndex
-    // + X86::AddrNumOperands
+    // memRefOperandStartIndex + X86::AddrNumOperands
     LoadOrStoreOpIndex = MemoryRefOpIndex + X86::AddrNumOperands;
   } else if (MIDesc.mayLoad()) {
     // If the instruction loads to memory to a register, it has 1 def.
@@ -3729,7 +3796,12 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   case InstructionKind::MOV_TO_MEM: {
     success = raiseMoveToMemInstr(MI, MemoryRefValue);
   } break;
-    // Move register from memory
+  // not instruction with memory operand. It is an instruction that loads and
+  // stores to memory.
+  case InstructionKind::NOT_OP_MEM:
+    success = raiseNotOpMemInstr(MI, MemoryRefValue);
+    break;
+  // Move register from memory
   case InstructionKind::MOV_FROM_MEM: {
     success = raiseMoveFromMemInstr(MI, MemoryRefValue);
   } break;

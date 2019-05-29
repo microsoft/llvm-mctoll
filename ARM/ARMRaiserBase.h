@@ -1,4 +1,4 @@
-//===- ARMRaiserBase.h ------------------------------------------*- C++ -*-===//
+//===-- ARMRaiserBase.h -----------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,8 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 // This file contains the declaration of the ARMRaiserBase class. This class
-// is a base class of other ARM raisers, it supports some basic utilities for
-// sub ARM raisers.
+// is a base class that provides some basic utilities to ARM raisers.
 //
 //===----------------------------------------------------------------------===//
 

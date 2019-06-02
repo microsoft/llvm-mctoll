@@ -1,5 +1,4 @@
-// RUN: clang %S/../dhry_funcs_mod.c -o %t.o -c -mx32 -target armv4t -mfloat-abi=soft -g -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
-// RUN: arm-none-linux-gnueabi-gcc %t.o -shared -fPIC -o %t.so
+// RUN: clang %S/../dhry_funcs_mod.c -o %t.so --target=%arm_triple -shared -fPIC -g -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %S/../dhry_main.c %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mx32
 // RUN: %t1 2>&1| FileCheck %s

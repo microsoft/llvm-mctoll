@@ -4303,6 +4303,18 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       BranchCond = new ICmpInst(Pred, SFValue, TrueValue);
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
+    case X86::COND_NS: {
+      // Test SF == 0
+      int SFIndex = getEflagBitIndex(EFLAGS::SF);
+      Value *SFValue = CTRec->RegValues[SFIndex];
+      assert(SFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JNS");
+
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      BranchCond = new ICmpInst(Pred, SFValue, FalseValue);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
 #if 0
     // TODO: set EFLAGS appropriately
     case X86::COND_A:

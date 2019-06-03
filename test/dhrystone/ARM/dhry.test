@@ -1,4 +1,4 @@
-// RUN: clang %S/../dhry_funcs_mod.c -o %t.so --target=%arm_triple -shared -fPIC -g -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
+// RUN: clang %S/../dhry_funcs_mod.c -o %t.so --target=%arm_triple -shared -g -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %S/../dhry_main.c %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mx32
 // RUN: %t1 2>&1| FileCheck %s

@@ -1,4 +1,4 @@
-// RUN: clang %S/../Inputs/test-2.c -o %t.so --target=%arm_triple -shared -fPIC
+// RUN: clang %S/../Inputs/test-2.c -o %t.so --target=%arm_triple -shared
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll -mx32
 // RUN: %t1 2>&1 | FileCheck %s

@@ -4315,11 +4315,25 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       BranchCond = new ICmpInst(Pred, SFValue, FalseValue);
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
-#if 0
-    // TODO: set EFLAGS appropriately
-    case X86::COND_A:
-      break;
-#endif
+    case X86::COND_A: {
+      // CF==0 and ZF==0
+      int CFIndex = getEflagBitIndex(EFLAGS::CF);
+      int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
+      Value *CFValue = CTRec->RegValues[CFIndex];
+      Value *ZFValue = CTRec->RegValues[ZFIndex];
+
+      assert((CFValue != nullptr) && (ZFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising JA");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Test CF == 0
+      Instruction *CFCond = new ICmpInst(Pred, CFValue, FalseValue, "CFCmp_JA");
+      CandBB->getInstList().push_back(CFCond);
+      // Test ZF == 0
+      Instruction *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "CFCmp_JA");
+      CandBB->getInstList().push_back(ZFCond);
+      BranchCond = BinaryOperator::CreateAnd(ZFCond, CFCond, "CFAndZF_JA");
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
     case X86::COND_AE: {
       // CF = 0
       int CFIndex = getEflagBitIndex(EFLAGS::CF);
@@ -4349,7 +4363,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Instruction *SFOFCond = nullptr;
       assert(((ZFValue != nullptr) && (SFValue != nullptr) &&
               (OFValue != nullptr)) &&
-             "Improper ELFAGS Values for JLE");
+             "Failed to get EFLAGS value while raising JG");
       Pred = CmpInst::Predicate::ICMP_EQ;
       // Compare ZF and 0
       ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_JG");
@@ -4380,7 +4394,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *SFValue = CTRec->RegValues[SFIndex];
       Value *OFValue = CTRec->RegValues[OFIndex];
       assert(((SFValue != nullptr) && (OFValue != nullptr)) &&
-             "Improper ELFAGS Values for JL");
+             "Failed to get EFLAGS value while raising JL");
       // Test SF != OF
       Pred = CmpInst::Predicate::ICMP_NE;
       // Compare SF and OF
@@ -4399,7 +4413,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Instruction *SFOFCond = nullptr;
       assert(((ZFValue != nullptr) && (SFValue != nullptr) &&
               (OFValue != nullptr)) &&
-             "Improper ELFAGS Values for JLE");
+             "Failed to get EFLAGS value while raising JLE");
       Pred = CmpInst::Predicate::ICMP_EQ;
       // Compare ZF and 1
       ZFCond = new ICmpInst(Pred, ZFValue, TrueValue);

@@ -1,4 +1,4 @@
-// RUN: clang -o %t.o %s -O2 --target=%arm_triple
+// RUN: clang -o %t %s -O2 --target=%arm_triple
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t1 %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s

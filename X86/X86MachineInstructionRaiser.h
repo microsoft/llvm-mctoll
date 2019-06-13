@@ -107,11 +107,10 @@ private:
   bool raiseBinaryOpRegToRegMachineInstr(const MachineInstr &);
   bool raiseBinaryOpImmToRegMachineInstr(const MachineInstr &);
   bool raiseSetCCMachineInstr(const MachineInstr &);
-
-  bool raiseCompareMachineInstr(const MachineInstr &, bool, Value *);
-
   bool raiseCallMachineInstr(const MachineInstr &);
 
+  bool raiseCompareMachineInstr(const MachineInstr &, bool, Value *);
+  bool raiseNotOpMemInstr(const MachineInstr &, Value *);
   bool raiseMoveToMemInstr(const MachineInstr &, Value *);
   bool raiseMoveFromMemInstr(const MachineInstr &, Value *);
   bool raiseBinaryOpMemToRegInstr(const MachineInstr &, Value *);

@@ -2130,9 +2130,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
   bool Success = false;
-  unsigned DstIndex = 0;
-  unsigned Src1Index = 1;
-  unsigned Src2Index = 2;
+  unsigned DstIndex = 0, Src1Index = 1, Src2Index = 2;
   assert(
       (MI.getNumExplicitOperands() == 2 || MI.getNumExplicitOperands() == 4) &&
       MI.getOperand(DstIndex).isReg() &&
@@ -2588,6 +2586,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::AND64rr:
   case X86::OR32rr:
   case X86::OR64rr:
+  case X86::XOR8rr:
+  case X86::XOR16rr:
   case X86::XOR32rr:
   case X86::XOR64rr: {
     // Verify the def operand is a register.
@@ -2625,6 +2625,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       case X86::OR64rr:
         dstValue = BinaryOperator::CreateOr(Uses.at(0), Uses.at(1));
         break;
+      case X86::XOR8rr:
+      case X86::XOR16rr:
       case X86::XOR32rr:
       case X86::XOR64rr:
         dstValue = BinaryOperator::CreateXor(Uses.at(0), Uses.at(1));
@@ -2821,7 +2823,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
   } break;
   case X86::OR32rm: {
-    // Create add instruction
+    // Create or instruction
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
   } break;
   case X86::IMUL32rm: {
@@ -3910,225 +3912,321 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
   unsigned NumOperands = MI.getNumExplicitOperands() +
                          MIDesc.getNumImplicitUses() +
                          MIDesc.getNumImplicitDefs();
+  assert(((NumOperands == 3) || (NumOperands == 4)) &&
+         "Unexpected number of operands of BinOp instruction with RI/I "
+         "operand format");
 
-  if (NumOperands == 4) {
-    // Create a stack alloc slot corresponding to the adjusted sp value.
-    if ((MIDesc.getNumDefs() == 1) &&
-        (find64BitSuperReg(MI.getOperand(DstIndex).getReg()) == X86::RSP) &&
-        (find64BitSuperReg(MI.getOperand(SrcOp1Index).getReg()) == X86::RSP) &&
-        MI.getOperand(SrcOp2Index).isImm() &&
-        MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS)) {
+  // Create a stack alloc slot corresponding to the adjusted sp value, if the
+  // operands reference SP.
+  if ((MIDesc.getNumDefs() == 1) &&
+      (find64BitSuperReg(MI.getOperand(DstIndex).getReg()) == X86::RSP) &&
+      (find64BitSuperReg(MI.getOperand(SrcOp1Index).getReg()) == X86::RSP) &&
+      MI.getOperand(SrcOp2Index).isImm() &&
+      MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS)) {
 
-      // Find the stack allocation, if any, associated with the stack index
-      // being changed to.
-      X86AddressMode AdjSPRef;
-      AdjSPRef.Base.Reg = X86::RSP;
-      uint64_t Imm = MI.getOperand(SrcOp2Index).getImm();
+    // Find the stack allocation, if any, associated with the stack index
+    // being changed to.
+    X86AddressMode AdjSPRef;
+    AdjSPRef.Base.Reg = X86::RSP;
+    uint64_t Imm = MI.getOperand(SrcOp2Index).getImm();
 
-      switch (MI.getOpcode()) {
-      case X86::ADD8i8:
-      case X86::ADD16i16:
-      case X86::ADD32i32:
-      case X86::ADD64i32:
-      case X86::ADD16ri:
-      case X86::ADD16ri8:
-      case X86::ADD32ri:
-      case X86::ADD32ri8:
-      case X86::ADD64ri8:
-      case X86::ADD64ri32:
-        AdjSPRef.Disp = Imm;
-        break;
-      case X86::SUB32ri:
-      case X86::SUB32ri8:
-      case X86::SUB64ri8:
-      case X86::SUB64ri32:
-      case X86::SUB64i32:
-        AdjSPRef.Disp = -Imm;
-        break;
-      default:
-        assert(false && "SP computation - unhandled binary opcode instruction");
-      }
+    switch (MI.getOpcode()) {
+    case X86::ADD8i8:
+    case X86::ADD16i16:
+    case X86::ADD32i32:
+    case X86::ADD64i32:
+    case X86::ADD16ri:
+    case X86::ADD16ri8:
+    case X86::ADD32ri:
+    case X86::ADD32ri8:
+    case X86::ADD64ri8:
+    case X86::ADD64ri32:
+      AdjSPRef.Disp = Imm;
+      break;
+    case X86::SUB32ri:
+    case X86::SUB32ri8:
+    case X86::SUB64ri8:
+    case X86::SUB64ri32:
+    case X86::SUB64i32:
+      AdjSPRef.Disp = -Imm;
+      break;
+    default:
+      assert(false && "SP computation - unhandled binary opcode instruction");
+    }
 
-      Value *StackRefVal = getStackAllocatedValue(MI, AdjSPRef, true);
-      assert((StackRefVal != nullptr) && "Reference to unallocated stack slot");
-      raisedValues->setPhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
-                                       StackRefVal);
-    } else {
-      Value *SrcOp1Value = nullptr;
-      Value *SrcOp2Value = nullptr;
-      unsigned int DstPReg = X86::NoRegister;
+    Value *StackRefVal = getStackAllocatedValue(MI, AdjSPRef, true);
+    assert((StackRefVal != nullptr) && "Reference to unallocated stack slot");
+    raisedValues->setPhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
+                                     StackRefVal);
+  } else {
+    // Values that need to be discovered to form the appropriate
+    // instruction.
+    Value *SrcOp1Value = nullptr;
+    Value *SrcOp2Value = nullptr;
+    unsigned int DstPReg = X86::NoRegister;
 
-      assert(MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
-             "Expected implicit def operand EFLAGS not found");
+    // Ensure that the instruction defines EFLAGS as implicit define register.
+    assert(MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+           "Expected implicit def operand EFLAGS not found");
 
-      if (MIDesc.getNumDefs() == 1) {
-        const MachineOperand &DstOp = MI.getOperand(DstIndex);
-        const MachineOperand &SrcOp1 = MI.getOperand(SrcOp1Index);
-        const MachineOperand &SrcOp2 = MI.getOperand(SrcOp2Index);
-        assert(DstOp.isReg() && "Not found expected register to be the "
-                                "destination operand of BinOp instruction with "
-                                "RI/I operand format");
-        assert(SrcOp1.isReg() &&
+    // A vector holding source operand values.
+    SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
+    unsigned NumImplicitDefs = MIDesc.getNumImplicitDefs();
+    assert(((NumImplicitDefs == 1) || (NumImplicitDefs == 2)) &&
+           "Encountered instruction unexpected number of implicit defs");
+    // Index of the instruction operand being read.
+    unsigned CurExplicitOpIndex = 0;
+    // Keep a count of the number of instruction operands evaluated. A count of
+    // NumOperands need to be evaluated. The value is 1 because we have already
+    // checked that EFLAGS is an implicit def.
+    unsigned NumOperandsEval = 1;
+    // Find destination register of the instruction
+    // If the instruction has an explicit dest operand, get the DstPreg from
+    // dest operand.
+    if (MIDesc.getNumDefs() != 0) {
+      // Get destination reg
+      const MachineOperand &DstOp = MI.getOperand(CurExplicitOpIndex);
+      assert(DstOp.isReg() && "Not found expected register to be the "
+                              "destination operand of BinOp instruction with "
+                              "RI/I operand format");
+      DstPReg = DstOp.getReg();
+      // Go to next explicit operand index
+      CurExplicitOpIndex++;
+      // Increment the number of operands evaluated
+      NumOperandsEval++;
+    }
+    // If there is no explicit dst register in the instruction, find if there is
+    // an implicit physical register defined by the instruction.
+    if ((NumImplicitDefs == 2) && (DstPReg == X86::NoRegister)) {
+      // Find the implicit dest reg. Register at index 0 is the implicit def
+      // physical register. That at index 1 is EFLAGS.
+      DstPReg = MIDesc.ImplicitDefs[0];
+      assert(((DstPReg == X86::AL) || (DstPReg == X86::AX) ||
+              (DstPReg == X86::EAX) || (DstPReg == X86::RAX)) &&
+             "Expected implicit use of operand AL/AX/EAX/RAX not found");
+      // Increment the number of operands evaluated
+      NumOperandsEval++;
+    }
+
+    // Now, find source operand values.
+    // First check if there are any implicit use operands of the instruction.
+    unsigned NumImplicitUses = MIDesc.getNumImplicitUses();
+    assert((NumImplicitUses < 3) &&
+           "More than two implicit use operands found in BinOp instruction "
+           "with RI/I format operands");
+    unsigned SrcValIdx = 0;
+    for (; SrcValIdx < NumImplicitUses; SrcValIdx++) {
+      OpValues[SrcValIdx] = getRegOrArgValue(MIDesc.ImplicitUses[SrcValIdx],
+                                             MI.getParent()->getNumber());
+      NumOperandsEval++;
+    }
+
+    // Get the explicit source operand values.
+    while (NumOperandsEval < NumOperands) {
+      assert((SrcValIdx < 2) && "Unexpected operand index while raising BinOp "
+                                "instruction with RI/I operand format");
+      const MachineOperand &SrcOp = MI.getOperand(CurExplicitOpIndex);
+      if (SrcValIdx == 0) {
+        assert(SrcOp.isReg() &&
                "Not found expected register to be the first "
                "operand of BinOp instruction with RI/I operand format");
 
-        // Get value of SrcOp1
-        unsigned int SrcOp1PReg = SrcOp1.getReg();
-        SrcOp1Value = getRegOrArgValue(SrcOp1PReg, MI.getParent()->getNumber());
+        // Get value of SrcOp appropriately sized.
+        OpValues[0] = matchSSAValueToSrcRegSize(MI, CurExplicitOpIndex);
+        CurExplicitOpIndex++;
+        NumOperandsEval++;
+      }
 
-        // Get value of SrcOp2
-        assert(SrcOp2.isImm() && "Expect immediate operand in a BinOp "
-                                 "instruction with RI/I operand format");
-        // Create constant of type that matches that of the dest operand
-        Type *Ty = getPhysRegOperandType(MI, DstIndex);
-        SrcOp2Value = ConstantInt::get(Ty, SrcOp2.getImm());
-        assert(SrcOp1Value != nullptr && SrcOp2Value != nullptr &&
-               "Undefined source values encountered in BinOp instruction with "
-               "RI/I operand format");
-
-        // Get destination reg
-        DstPReg = DstOp.getReg();
-
-        // Generate any necessary trunc or sext instrs to match the sizes
-        // of source and dest operands, as needed.
-        SrcOp1Value = matchSSAValueToSrcRegSize(MI, SrcOp1Index);
-      } else if (MIDesc.getNumDefs() == 0) {
-        SrcOp1Index = 0;
-        // Uses implicit register AL/AX/EAX/RAX as source and dest
-        assert(MIDesc.getNumImplicitUses() == 1 &&
-               "Expected one implicit use operand of BinOp instruction with "
-               "RI/I operand format");
-        assert(MIDesc.getNumImplicitDefs() == 2 &&
-               "Expected one implicit use operand of BinOp instruction with "
-               "RI/I operand format");
-
-        // Get the first (and only) operand
-        const MachineOperand &SrcOp = MI.getOperand(SrcOp1Index);
-
-        // Get dest reg
-        DstPReg = MIDesc.ImplicitDefs[0];
-
-        assert(((DstPReg == X86::AL) || (DstPReg == X86::AX) ||
-                (DstPReg == X86::EAX) || (DstPReg == X86::RAX)) &&
-               "Expected implicit use of operand AL/AX/EAX/RAX not found");
-
-        assert(MIDesc.hasImplicitUseOfPhysReg(DstPReg) &&
-               "Expected implicit use of operand AL/AX/EAX/RAX not found");
-
-        // Get value of SrcOp1
-        SrcOp1Value = getRegOrArgValue(DstPReg, MI.getParent()->getNumber());
-
-        // Get value of SrcOp2
+      // Get the second source operand value if the instruction has at least two
+      // operands.
+      if (SrcValIdx == 1) {
+        // If the instruction has an explicit second operand
+        // Get value of SrcOp
         assert(SrcOp.isImm() && "Expect immediate operand in a BinOp "
                                 "instruction with RI/I operand format");
-        // Create constant of type that matches that of the dest operand
-        Type *Ty = getPhysRegType(DstPReg);
-        SrcOp2Value = ConstantInt::get(Ty, SrcOp.getImm());
-      } else {
-        MI.dump();
-        assert(false && "Unhandled binary operation instruction with RI/I "
-                        "operand format");
+        assert(OpValues[0] != nullptr &&
+               "Undefined first source value encountered in BinOp instruction "
+               "with RI/I operand format");
+        // Create constant of type that matches that of the dest register
+        // If the instruction has no dest operand (such as TEST) set the type of
+        // immediate value to be that of first operand value.
+        Type *Ty = (DstPReg == X86::NoRegister) ? OpValues[0]->getType()
+                                                : getPhysRegType(DstPReg);
+        OpValues[1] = ConstantInt::get(Ty, SrcOp.getImm());
+        CurExplicitOpIndex++;
+        NumOperandsEval++;
       }
+      SrcValIdx++;
+    }
 
-      assert(DstPReg != X86::NoRegister &&
-             "Failed to determine destination register of BinOp instruction "
-             "with RI/I operand format");
+    assert((NumOperandsEval == NumOperands) &&
+           "Failed to evaluate operands of BinOp instruction correctly");
 
-      assert(SrcOp1Value != nullptr && SrcOp2Value != nullptr &&
-             "Undefined source values encountered in BinOp instruction with "
-             "RI/I operand format");
+    // Set up the source values to be used by BinOp instruction.
 
-      Instruction *BinOpInstr = nullptr;
-      switch (MI.getOpcode()) {
-      case X86::ADD8i8:
-      case X86::ADD16i16:
-      case X86::ADD16ri:
-      case X86::ADD16ri8:
-      case X86::ADD32ri:
-      case X86::ADD32ri8:
-      case X86::ADD32i32:
-      case X86::ADD64ri8:
-      case X86::ADD64ri32:
-      case X86::ADD64i32: {
-        // Generate add instruction
-        BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
-        // Clear OF and CF
-        raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-        raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
-      } break;
-      case X86::SUB32ri:
-      case X86::SUB32ri8:
-      case X86::SUB64ri8:
-      case X86::SUB64ri32:
-      case X86::SUB64i32:
-        // Generate sub instruction
-        BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
-        break;
-      case X86::AND8i8:
-      case X86::AND8ri:
-      case X86::AND16i16:
-      case X86::AND16ri:
-      case X86::AND16ri8:
-      case X86::AND32i32:
-      case X86::AND32ri:
-      case X86::AND32ri8:
-      case X86::AND64i32:
-      case X86::AND64ri8:
-      case X86::AND64ri32:
-        // Generate and instruction
-        BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
-        break;
-      case X86::OR32ri:
-      case X86::OR32ri8:
-        // Generate or instruction
-        BinOpInstr = BinaryOperator::CreateOr(SrcOp1Value, SrcOp2Value);
-        break;
-      case X86::XOR8ri:
-        // Generate xor instruction
-        BinOpInstr = BinaryOperator::CreateXor(SrcOp1Value, SrcOp2Value);
-        break;
-      case X86::IMUL32rri8:
-      case X86::IMUL64rri8:
-      case X86::IMUL64rri32:
-        BinOpInstr = BinaryOperator::CreateMul(SrcOp1Value, SrcOp2Value);
-        break;
-      case X86::SHR8ri:
-      case X86::SHR16ri:
-      case X86::SHR32ri:
-      case X86::SHR64ri:
-        // Generate shr instruction
-        BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
-        break;
-      case X86::SHL8ri:
-      case X86::SHL16ri:
-      case X86::SHL32ri:
-      case X86::SHL64ri:
-        // Generate shl instruction
-        BinOpInstr = BinaryOperator::CreateShl(SrcOp1Value, SrcOp2Value);
-        break;
-      case X86::SAR8ri:
-      case X86::SAR16ri:
-      case X86::SAR32ri:
-      case X86::SAR64ri:
-        // Generate shr instruction
-        BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
-        break;
-      default:
-        assert(false && "Unhandled reg to imm binary operator instruction");
-        break;
-      }
+    SrcOp1Value = OpValues[0];
+    SrcOp2Value = OpValues[1];
 
-      RaisedBB->getInstList().push_back(BinOpInstr);
-      raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MBBNo, BinOpInstr);
-      raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, BinOpInstr);
+    // Check validity of source operand values. Both source operands need to be
+    // non null values. The only exception is when the instruction has 3
+    // operands indicating that there is an implicit constant value encoded by
+    // the instruction such as SHR81. Such operands are constructed in an
+    // instruction-specific way before the generating the appropriate IR
+    // instruction.
+    assert((SrcOp1Value != nullptr) &&
+           ((SrcOp2Value != nullptr) ||
+            ((NumOperands == 3) && (SrcOp2Value == nullptr))) &&
+           "Unexpected source values encountered in BinOp instruction with "
+           "RI/I operand format");
 
-      // Update PhysReg to Value map
+    Instruction *BinOpInstr = nullptr;
+    // EFLAGS that are affected by the result of the binary operation
+    std::vector<unsigned> AffectedEFlags;
+
+    switch (MI.getOpcode()) {
+    case X86::ADD8i8:
+    case X86::ADD16i16:
+    case X86::ADD16ri:
+    case X86::ADD16ri8:
+    case X86::ADD32ri:
+    case X86::ADD32ri8:
+    case X86::ADD32i32:
+    case X86::ADD64ri8:
+    case X86::ADD64ri32:
+    case X86::ADD64i32: {
+      // Generate add instruction
+      BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
+      // Clear OF and CF
+      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      AffectedEFlags.push_back(EFLAGS::CF);
+      // Test and set of OF not yet supported
+    } break;
+    case X86::SUB32ri:
+    case X86::SUB32ri8:
+    case X86::SUB64ri8:
+    case X86::SUB64ri32:
+    case X86::SUB64i32:
+      // Generate sub instruction
+      BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.push_back(EFLAGS::CF);
+      break;
+    case X86::AND8i8:
+    case X86::AND8ri:
+    case X86::AND16i16:
+    case X86::AND16ri:
+    case X86::AND16ri8:
+    case X86::AND32i32:
+    case X86::AND32ri:
+    case X86::AND32ri8:
+    case X86::AND64i32:
+    case X86::AND64ri8:
+    case X86::AND64ri32:
+      // Generate and instruction
+      BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
+      // Clear OF and CF
+      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      // Test an set EFLAGs
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      // Test and set of PF not yet supported
+      break;
+    case X86::OR32ri:
+    case X86::OR32ri8:
+      // Generate or instruction
+      BinOpInstr = BinaryOperator::CreateOr(SrcOp1Value, SrcOp2Value);
+      // Clear OF and CF
+      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      // Test an set EFLAGs
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      // Test and set of PF not yet supported
+      break;
+    case X86::XOR8ri:
+    case X86::XOR16ri:
+    case X86::XOR32ri:
+    case X86::XOR8i8:
+    case X86::XOR16i16:
+    case X86::XOR32i32:
+      // Generate xor instruction
+      BinOpInstr = BinaryOperator::CreateXor(SrcOp1Value, SrcOp2Value);
+      // Clear OF and CF
+      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      // Test an set EFLAGs
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      // Test and set of PF not yet supported
+      break;
+    case X86::IMUL32rri8:
+    case X86::IMUL64rri8:
+    case X86::IMUL64rri32:
+      BinOpInstr = BinaryOperator::CreateMul(SrcOp1Value, SrcOp2Value);
+      // TODO: Set affected EFLAGS information appropriately
+      break;
+    case X86::SHR8r1:
+    case X86::SHR16r1:
+    case X86::SHR32r1:
+    case X86::SHR64r1:
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      /* fall through */
+      // no break
+    case X86::SHR8ri:
+    case X86::SHR16ri:
+    case X86::SHR32ri:
+    case X86::SHR64ri:
+      // Generate shr instruction
+      BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      break;
+    case X86::SHL8ri:
+    case X86::SHL16ri:
+    case X86::SHL32ri:
+    case X86::SHL64ri:
+      // Generate shl instruction
+      BinOpInstr = BinaryOperator::CreateShl(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      break;
+    case X86::SAR8ri:
+    case X86::SAR16ri:
+    case X86::SAR32ri:
+    case X86::SAR64ri:
+      // Generate shr instruction
+      BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      break;
+    case X86::TEST8i8:
+    case X86::TEST8ri:
+    case X86::TEST16ri:
+    case X86::TEST32ri:
+      BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      break;
+    default:
+      MI.dump();
+      assert(false && "Unhandled reg to imm binary operator instruction");
+      break;
+    }
+
+    // Insert the binary operation instruction
+    RaisedBB->getInstList().push_back(BinOpInstr);
+    // Test and set affected flags
+    for (auto Flag : AffectedEFlags) {
+      raisedValues->testAndSetEflagSSAValue(Flag, MBBNo, BinOpInstr);
+    }
+
+    // Update PhysReg to Value map
+    if (DstPReg != X86::NoRegister)
       raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                        BinOpInstr);
-    }
-  } else {
-    MI.dump();
-    assert(false && "Unhandled add imeediate instruction");
   }
   return true;
 }
@@ -4329,7 +4427,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Instruction *CFCond = new ICmpInst(Pred, CFValue, FalseValue, "CFCmp_JA");
       CandBB->getInstList().push_back(CFCond);
       // Test ZF == 0
-      Instruction *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "CFCmp_JA");
+      Instruction *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_JA");
       CandBB->getInstList().push_back(ZFCond);
       BranchCond = BinaryOperator::CreateAnd(ZFCond, CFCond, "CFAndZF_JA");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));

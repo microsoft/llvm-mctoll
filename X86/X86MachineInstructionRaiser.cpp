@@ -3288,12 +3288,13 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     MemRefVal = convIntToPtr;
   }
 
+  LoadInst *LdInst = nullptr;
   if (loadEffAddr) {
     // Load the value from memory location
-    LoadInst *loadInst = new LoadInst(MemRefVal);
-    loadInst->setAlignment(
+    LdInst = new LoadInst(MemRefVal);
+    LdInst->setAlignment(
         MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout()));
-    RaisedBB->getInstList().push_back(loadInst);
+    RaisedBB->getInstList().push_back(LdInst);
   }
 
   // This instruction moves a source value to memory. So, if the types of
@@ -3312,10 +3313,37 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     }
   }
 
-  StoreInst *storeInst = new StoreInst(SrcValue, MemRefVal);
+  // Is this a mov instruction?
+  bool isMovInst =
+      x86InstrInfo->getName(MI.getDesc().getOpcode()).startswith("MOV");
+  StoreInst *StInst = nullptr;
+  if (!isMovInst) {
+    // If this is not an instruction that just moves SrcValue, generate the
+    // instruction that performs the appropriate operation and then store the
+    // result in MemRefVal.
+    assert((LdInst != nullptr) && "Memory value expected to be loaded while "
+                                  "raising binary mem op instruction");
+    assert((SrcValue != nullptr) && "Source value expected to be loaded while "
+                                    "raising binary mem op instruction");
+    switch (MI.getOpcode()) {
+    case X86::ADD64mi8: {
+      // Generate Add instruction
+      Instruction *BinOpInst = BinaryOperator::CreateAdd(LdInst, SrcValue);
+      RaisedBB->getInstList().push_back(BinOpInst);
+      SrcValue = BinOpInst;
+    } break;
+    default:
+      assert(false && "Unhandled non-move mem op instruction");
+    }
+  }
 
-  storeInst->setAlignment(memAlignment);
-  RaisedBB->getInstList().push_back(storeInst);
+  assert((SrcValue != nullptr) && "Unexpected null value to be stored while "
+                                  "raising binary mem op instruction");
+  StInst = new StoreInst(SrcValue, MemRefVal);
+  // Push the store instruction.
+  StInst->setAlignment(memAlignment);
+  RaisedBB->getInstList().push_back(StInst);
+
   return true;
 }
 

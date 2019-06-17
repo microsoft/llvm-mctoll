@@ -133,7 +133,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::ADD32rr_REV, {0, Unknown}},
     {X86::ADD64i32, {8, BINARY_OP_WITH_IMM}},
     {X86::ADD64mi32, {8, Unknown}},
-    {X86::ADD64mi8, {8, Unknown}},
+    {X86::ADD64mi8, {8, MOV_TO_MEM}},
     {X86::ADD64mr, {8, Unknown}},
     {X86::ADD64ri32, {0, BINARY_OP_WITH_IMM}},
     {X86::ADD64ri32_DB, {0, Unknown}},

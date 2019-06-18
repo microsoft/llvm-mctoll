@@ -2342,6 +2342,16 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
       break;
     }
     RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CMOVCond));
+
+    // Ensure that the types of SrcValue and DstValue match.
+    if (SrcValue->getType() != DstValue->getType()) {
+      CastInst *CInst = CastInst::Create(
+          CastInst::getCastOpcode(DstValue, false, SrcValue->getType(), false),
+          DstValue, SrcValue->getType());
+      RaisedBB->getInstList().push_back(CInst);
+      DstValue = CInst;
+    }
+
     // Generate SelectInst for CMOV instruction
     SelectInst *SI = SelectInst::Create(CMOVCond, SrcValue, DstValue, "CMOV");
     RaisedBB->getInstList().push_back(SI);
@@ -3857,6 +3867,10 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
 bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     const MachineInstr &MI) {
   const MCInstrDesc &MIDesc = MI.getDesc();
+  int MBBNo = MI.getParent()->getNumber();
+  LLVMContext &Ctx(MF.getFunction().getContext());
+  Value *FalseValue = ConstantInt::getFalse(Ctx);
+  Value *TrueValue = ConstantInt::getTrue(Ctx);
   bool Success = false;
 
   assert(MIDesc.getNumDefs() == 1 &&
@@ -3868,25 +3882,53 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-
   const MachineOperand &DestOp = MI.getOperand(0);
-  CmpInst::Predicate pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
-  uint64_t EflagBit = EFLAGS::UNDEFINED;
 
-  int cmpConst = 0;
-
+  CmpInst::Predicate Pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
   switch (X86::getCondFromSETCC(MI)) {
   case X86::COND_NE: {
     // Check if ZF == 0
-    pred = CmpInst::Predicate::ICMP_EQ;
-    cmpConst = 0;
-    EflagBit = EFLAGS::ZF;
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+    CmpInst *CMP = new ICmpInst(Pred, ZFValue, FalseValue);
+    RaisedBB->getInstList().push_back(CMP);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMP);
+    Success = true;
   } break;
   case X86::COND_E: {
     // Check if ZF == 1
-    pred = CmpInst::Predicate::ICMP_EQ;
-    cmpConst = 1;
-    EflagBit = EFLAGS::ZF;
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+    CmpInst *CMP = new ICmpInst(Pred, ZFValue, TrueValue);
+    RaisedBB->getInstList().push_back(CMP);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMP);
+    Success = true;
+  } break;
+  case X86::COND_G: {
+    // Check ZF == 0 and SF == OF
+    Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+    Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+    Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+    assert((ZFValue != nullptr) && (SFValue != nullptr) &&
+           (OFValue != nullptr) &&
+           "Failed to get EFLAGS value while raising CMOVG!");
+    Pred = CmpInst::Predicate::ICMP_EQ;
+
+    // Compare ZF and 0
+    CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_CMOVG");
+    RaisedBB->getInstList().push_back(ZFCond);
+
+    // Test SF == OF
+    CmpInst *SFOFCond = new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_CMOVG");
+    RaisedBB->getInstList().push_back(SFOFCond);
+    Instruction *CMOVCond =
+        BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG");
+    RaisedBB->getInstList().push_back(CMOVCond);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMOVCond);
+    Success = true;
   } break;
   case X86::COND_INVALID:
     assert(false && "Set instruction with invalid condition found");
@@ -3896,29 +3938,13 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     break;
   }
 
-  assert(EflagBit != EFLAGS::UNDEFINED && "Unhandled EFLAGS");
-
-  if (pred == CmpInst::Predicate::BAD_ICMP_PREDICATE) {
+  if (Pred == CmpInst::Predicate::BAD_ICMP_PREDICATE) {
     MI.dump();
     assert(false && "Unhandled set instruction");
   }
-
-  if (DestOp.isReg()) {
-    Value *EflagVal = raisedValues->getEflagReachingDef(
-        EflagBit, MI.getParent()->getNumber());
-    Value *cmpConstVal =
-        ConstantInt::get(EflagVal->getType(), cmpConst, false /* isSigned */);
-    CmpInst *cmp = new ICmpInst(pred, EflagVal, cmpConstVal);
-    RaisedBB->getInstList().push_back(cmp);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), cmp);
-    Success = true;
-  } else {
-    outs() << "Unhandled set instruction with memory destination\n";
-    Success = false;
-  }
   return Success;
 }
+
 // Raise a binary operation instruction with operand encoding I or RI
 bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     const MachineInstr &MI) {

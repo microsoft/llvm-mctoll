@@ -88,6 +88,8 @@ X86RaisedValueTracker::X86RaisedValueTracker(
 // corresponding to MBBNo.
 bool X86RaisedValueTracker::setPhysRegSSAValue(unsigned int PhysReg, int MBBNo,
                                                Value *Val) {
+  assert((PhysReg != X86::NoRegister) &&
+         "Attempt to set value of an invalid register");
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
   physRegDefsInMBB[SuperReg][MBBNo].second = Val;
@@ -366,7 +368,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
 }
 
 // Set the value of FlagBit to BitVal based on the value of Result.
-// If the test corresponding to FlagBit is true it is set, else it is cleared.
+// If the test corresponding to FlagBit is true, it is set, else it is cleared.
 // MBBNo is the MachineBasicBlock number in which the translation is being done
 // that affects this flag change.
 bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,

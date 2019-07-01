@@ -5081,9 +5081,6 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
   Function *CurFunction = getRaisedFunction();
   LLVMContext &Ctx(CurFunction->getContext());
 
-  // Raise the jumptable
-  raiseMachineJumpTable();
-
   // Initialize the raised value tracking mechanism.
   raisedValues = new X86RaisedValueTracker(this);
 

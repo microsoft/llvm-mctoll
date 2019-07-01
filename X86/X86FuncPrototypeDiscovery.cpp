@@ -77,10 +77,52 @@ int X86MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
   return pos;
 }
 
+// Add Reg to LiveInSet. This function adds the actual register Reg - not its
+// 64-bit super register variant because we'll need the actual register to
+// determine the argument type.
+bool X86MachineInstructionRaiser::AddRegisterToFunctionLiveInSet(
+    MCPhysRegSet &LiveInSet, unsigned Reg) {
+
+  // Nothing to do if Reg is already in the set.
+  if (LiveInSet.find(Reg) != LiveInSet.end())
+    return true;
+
+  // Find if LiveInSet already has a sub-register of Reg
+  const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
+  unsigned PrevLiveInReg = X86::NoRegister;
+  for (MCSubRegIterator SubRegs(Reg, TRI, /*IncludeSelf=*/false);
+       (SubRegs.isValid() && (PrevLiveInReg == X86::NoRegister)); ++SubRegs) {
+    if (LiveInSet.find(*SubRegs) != LiveInSet.end())
+      PrevLiveInReg = *SubRegs;
+  }
+  // If a sub-register of Reg is already in LiveInSet, replace it with Reg
+  if (PrevLiveInReg != X86::NoRegister) {
+    // Delete the sub-register and add the Reg
+    LiveInSet.erase(PrevLiveInReg);
+    // Insert UseReg
+    LiveInSet.insert(Reg);
+  } else {
+    // No sub-register is in the current livein set.
+    // Check if LiveInSet already has a super-register of Reg
+    for (MCSuperRegIterator SuperRegs(Reg, TRI, /*IncludeSelf=*/false);
+         (SuperRegs.isValid() && (PrevLiveInReg == X86::NoRegister));
+         ++SuperRegs) {
+      if (LiveInSet.find(*SuperRegs) != LiveInSet.end())
+        PrevLiveInReg = *SuperRegs;
+    }
+    // If no super register of Reg is in current liveins, add Reg to set
+    if (PrevLiveInReg == X86::NoRegister) {
+      LiveInSet.insert(Reg);
+    }
+    // If a super-register of Reg is in LiveInSet, there is nothing to be done.
+    // The fact that Reg is livein, is already noted by the presence of its
+    // super register.
+  }
+  return true;
+}
+
 Type *X86MachineInstructionRaiser::getFunctionReturnType() {
   Type *returnType = nullptr;
-  SmallVector<MachineBasicBlock *, 8> WorkList;
-  BitVector BlockVisited(MF.getNumBlockIDs(), false);
 
   assert(x86TargetInfo.is64Bit() && "Only x86_64 binaries supported for now");
 
@@ -109,6 +151,8 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
 
 // Construct prototype of the Function for the MachineFunction being raised.
 FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
+  // Raise the jumptable
+  raiseMachineJumpTable();
 
   if (raisedFunction == nullptr) {
     // Cleanup NOOP instructions from all MachineBasicBlocks
@@ -121,28 +165,57 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     std::vector<Type *> argTypeVector;
 
     // 1. Discover function arguments.
-    // Build live-ins for all blocks
-    LivePhysRegs liveInPhysRegs;
-    for (MachineBasicBlock &MBB : MF) {
-      computeAndAddLiveIns(liveInPhysRegs, MBB);
-    }
+    // Function livein set will contain the actual registers that are livein
+    // - not sub or super registers
+    MCPhysRegSet FunctionLiveInRegs;
+    // Set of registers defined in a block. These will be the 64-bit
+    // super-registers only
+    MCPhysRegSet MBBDefRegs;
+    // A map of MBB number to known defined registers at the exit of the MBB
+    std::map<int, MCPhysRegSet> PerMBBDefinedPhysRegMap;
+
+    // Initialize function livein regs
+    FunctionLiveInRegs.clear();
+    MBBDefRegs.clear();
 
     // Walk the CFG DFS to discover first register usage
-    std::set<MCPhysReg> LiveInRegs;
-    MachineBasicBlock *Entry = &(MF.front());
-    df_iterator_default_set<MachineBasicBlock *, 16> Visited;
-    // List of registers used in a block
-    LivePhysRegs MBBUseRegs;
-    // List of registers that are cleared by an xor instruction prior to its
-    // first use.
-    LivePhysRegs PseudoUseRegs;
-    const MachineRegisterInfo &MRI = MF.getRegInfo();
-    const TargetRegisterInfo *TRI = MRI.getTargetRegisterInfo();
-    MBBUseRegs.init(*TRI);
-    PseudoUseRegs.init(*TRI);
+    LoopTraversal Traversal;
+    LoopTraversal::TraversalOrder TraversedMBBOrder = Traversal.traverse(MF);
+    for (LoopTraversal::TraversedMBBInfo TraversedMBB : TraversedMBBOrder) {
+      MachineBasicBlock *MBB = TraversedMBB.MBB;
+      int MBBNo = MBB->getNumber();
+      MBBDefRegs.clear();
+      // TODO: LoopTraversal assumes fully-connected CFG. However, need to
+      // handle blocks with terminator instruction that could potentially result
+      // in a disconnected CFG - such as branch with register target.
+      MachineInstr &TermInst = MBB->instr_back();
+      if (TermInst.isBranch()) {
+        auto OpType = TermInst.getOperand(0).getType();
+        assert(((OpType == MachineOperand::MachineOperandType::MO_Immediate) ||
+                (OpType ==
+                 MachineOperand::MachineOperandType::MO_JumpTableIndex)) &&
+               "Unexpected block terminator found during function prototype "
+               "discovery");
+      }
+      // Union of defined registers of all predecessors
+      for (auto PredMBB : MBB->predecessors()) {
+        auto MapIter = PerMBBDefinedPhysRegMap.find(PredMBB->getNumber());
+        // Register defs of all predecessors may not be available if MBB is not
+        // ready for final round of processing.
+        if (MapIter != PerMBBDefinedPhysRegMap.end()) {
+          for (auto V : MapIter->second) {
+            MBBDefRegs.insert(V);
+          }
+        } else {
+          // Check to make sure that traversed MBB is not done if register defs
+          // of one of the predecessors is not available.
+          // assert(!TraversedMBB.IsDone && "Unexpected register definition
+          // state "
+          //                               "during function prototype
+          //                               discovery");
+        }
+      }
 
-    for (MachineBasicBlock *MBB : depth_first_ext(Entry, Visited)) {
-      MBBUseRegs.clear();
       for (MachineBasicBlock::iterator Iter = MBB->instr_begin(),
                                        End = MBB->instr_end();
            Iter != End; Iter++) {
@@ -163,44 +236,71 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
                  (MI.findTiedOperandIdx(SrcOp1Indx) == DestOpIndx) &&
                  "Expecting register operands of xor instruction");
 
-          if (Use1Op.getReg() == Use2Op.getReg())
+          // If the source regs are not the same
+          if (Use1Op.getReg() != Use2Op.getReg()) {
             // If the source register has not been used before, add it to the
-            // list of registers that should not be considered as first use
-            if (!MBBUseRegs.contains(Use1Op.getReg()))
-              // Record the 64-bit version of the register. Note that addReg()
-              // adds the register and all its sub-registers to the set. The
-              // corresponding set-membership test contains(), tests for the
-              // register and all its sub-registers.
-              PseudoUseRegs.addReg(find64BitSuperReg(DestOp.getReg()));
+            // list of first use registers.
+            unsigned UseReg = Use1Op.getReg();
+            if (MBBDefRegs.find(find64BitSuperReg(UseReg)) ==
+                MBBDefRegs.end()) {
+              AddRegisterToFunctionLiveInSet(FunctionLiveInRegs, UseReg);
+            }
+            UseReg = Use2Op.getReg();
+            if (MBBDefRegs.find(find64BitSuperReg(UseReg)) ==
+                MBBDefRegs.end()) {
+              AddRegisterToFunctionLiveInSet(FunctionLiveInRegs, UseReg);
+            }
+          }
+          // Add def reg to MBBDefRegs set
+          MBBDefRegs.insert(find64BitSuperReg(DestOp.getReg()));
         } else {
-          MBBUseRegs.addUses(MI);
-        }
-      }
+          for (MachineOperand MO : MI.operands()) {
+            if (!MO.isReg())
+              continue;
+            unsigned Reg = MO.getReg();
+            if (!TargetRegisterInfo::isPhysicalRegister(Reg) ||
+                (Reg == X86::EFLAGS) || (Reg == X86::SSP) ||
+                X86MCRegisterClasses[X86::RSTRegClassID].contains(Reg))
+              continue;
 
-      for (const auto &LI : MBB->liveins()) {
-        MCPhysReg PhysReg = LI.PhysReg;
-        // Is PhysReg in pseudo-use register list?
-        bool found = PseudoUseRegs.contains(PhysReg);
-        // Check if any of the sub-registers of PhysReg is in LiveRegs
-        for (MCSubRegIterator SubRegs(PhysReg, TRI, /*IncludeSelf=*/true);
-             (SubRegs.isValid() && !found); ++SubRegs) {
-          found = (LiveInRegs.find(*SubRegs) != LiveInRegs.end());
+            if (MO.isUse()) {
+              // If Reg use has no previous def
+              if (MBBDefRegs.find(find64BitSuperReg(Reg)) == MBBDefRegs.end())
+                AddRegisterToFunctionLiveInSet(FunctionLiveInRegs, Reg);
+              else {
+                // Reg has a previous definition. Make sure that
+                // FunctionLiveInRegs does not gave Reg.
+                // NOTE : This situation may be seen during non-primary pass of
+                // the loop traversal of the CFG. Nonetheless, it is correct in
+                // all passes.
+                // if (FunctionLiveInRegs.find(Reg) != FunctionLiveInRegs.end())
+                //  FunctionLiveInRegs.erase(Reg);
+              }
+            } else if (MO.isDef()) {
+              MBBDefRegs.insert(find64BitSuperReg(Reg));
+            }
+          }
         }
-        // Check if any of the super-registers of PhysReg is in LiveRegs
-        for (MCSuperRegIterator SupRegs(PhysReg, TRI, /*IncludeSelf=*/true);
-             (SupRegs.isValid() && !found); ++SupRegs) {
-          found = (LiveInRegs.find(*SupRegs) != LiveInRegs.end());
-        }
-        // If neither sub or super registers of PhysReg is in LiveRegs set and
-        // PhysReg is not in pseudo-usage list, then add it to the list of
-        // liveins.
-        if (!found)
-          LiveInRegs.emplace(LI.PhysReg);
       }
+      // Per-MBB reg def info is expected to exist only if this is not the
+      // primary pass of the MBB.
+      assert(((PerMBBDefinedPhysRegMap.find(MBBNo) ==
+               PerMBBDefinedPhysRegMap.end()) ||
+              ((PerMBBDefinedPhysRegMap.find(MBBNo) !=
+                PerMBBDefinedPhysRegMap.end()) &&
+               (!TraversedMBB.PrimaryPass))) &&
+             "Unexpected state of register definition information during "
+             "function prototype discovery");
+      MCPhysRegSet MBBDefRegSet;
+      for (auto R : MBBDefRegs) {
+        MBBDefRegSet.insert(R);
+      }
+      PerMBBDefinedPhysRegMap[MBBNo] = MBBDefRegSet;
     }
+
     // Use the first register usage list to form argument vector using first
     // argument register usage.
-    buildFuncArgTypeVector(LiveInRegs, argTypeVector);
+    buildFuncArgTypeVector(FunctionLiveInRegs, argTypeVector);
     // 2. Discover function return type
     returnType = getFunctionReturnType();
 
@@ -390,6 +490,7 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
   // A map of argument number and type as discovered
   std::map<unsigned int, Type *> argNumTypeMap;
   llvm::LLVMContext &funcLLVMContext = MF.getFunction().getContext();
+  int MaxArgNum = 0;
 
   for (MCPhysReg PReg : PhysRegs) {
     // If Reg is an argument register per C standard calling convention
@@ -397,6 +498,9 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
     int argNum = getArgumentNumber(PReg);
 
     if (argNum > 0) {
+      if (argNum > MaxArgNum)
+        MaxArgNum = argNum;
+
       // Make sure each argument position is discovered only once
       assert(argNumTypeMap.find(argNum) == argNumTypeMap.end());
       if (is8BitPhysReg(PReg)) {
@@ -420,16 +524,15 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
 
   // Build argument type vector that will be used to build FunctionType
   // while sanity checking arguments discovered
-  for (unsigned int i = 1; i <= argNumTypeMap.size(); i++) {
-    // If the function has arguments, we assume that the conventional
-    // argument registers are used in order. If the arg register
-    // corresponding to position i is not a live in, it implies that the
-    // function has i-1 arguments.
-    if (argNumTypeMap.find(i) == argNumTypeMap.end()) {
-      break;
+  for (int i = 1; i <= MaxArgNum; i++) {
+    auto argIter = argNumTypeMap.find(i);
+    if (argIter == argNumTypeMap.end()) {
+      // Argument register not used. It is most likely optimized.
+      // The argument is not used. Safe to consider it to be of 64-bit type.
+      ArgTyVec.push_back(Type::getInt64Ty(funcLLVMContext));
+    } else {
+      ArgTyVec.push_back(argNumTypeMap.find(i)->second);
     }
-    auto Ty = argNumTypeMap.find(i)->second;
-    ArgTyVec.push_back(Ty);
   }
   return true;
 }

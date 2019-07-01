@@ -31,6 +31,9 @@ using MBBNumToBBMap = std::map<unsigned int, BasicBlock *>;
 // raised.
 using PhysRegMBBValTuple = std::tuple<unsigned int, unsigned int, Value *>;
 
+// MCPhysReg set
+using MCPhysRegSet = std::set<MCPhysReg>;
+
 // Forward declaration of X86RaisedValueTracker
 class X86RaisedValueTracker;
 
@@ -161,7 +164,6 @@ private:
   int getArgumentNumber(unsigned PReg);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
-
   Value *getRegOrArgValue(unsigned PReg, int MBBNo);
   Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex);
 
@@ -170,6 +172,8 @@ private:
   bool hasPhysRegDefInBlock(int PhysReg, const MachineInstr *StartMI,
                             const MachineBasicBlock *MBB,
                             unsigned StopAtInstProp, bool &HasStopInst);
+
+  bool AddRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
 
   // Return the Type of the physical register.
   Type *getPhysRegType(unsigned int PhysReg);

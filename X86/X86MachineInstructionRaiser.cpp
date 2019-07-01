@@ -2570,6 +2570,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
     break;
+  case X86::IMUL16rr:
   case X86::IMUL32rr:
   case X86::IMUL64rr:
     // Verify the def operand is a register.
@@ -2777,6 +2778,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an LoadInst that loads an address in memory..
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
+          isa<GetElementPtrInst>(MemRefValue) ||
           isa<GlobalValue>(MemRefValue)) &&
          "Unexpected type of memory reference in binary mem op instruction");
   bool IsMemRefGlobalVal = false;
@@ -2836,6 +2838,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     // Create or instruction
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
   } break;
+  case X86::IMUL16rm:
   case X86::IMUL32rm: {
     // One-operand form of IMUL
     // Create mul instruction

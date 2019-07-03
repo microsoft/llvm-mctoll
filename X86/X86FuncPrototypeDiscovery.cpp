@@ -183,6 +183,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     LoopTraversal::TraversalOrder TraversedMBBOrder = Traversal.traverse(MF);
     for (LoopTraversal::TraversedMBBInfo TraversedMBB : TraversedMBBOrder) {
       MachineBasicBlock *MBB = TraversedMBB.MBB;
+      if (MBB->empty())
+        continue;
       int MBBNo = MBB->getNumber();
       MBBDefRegs.clear();
       // TODO: LoopTraversal assumes fully-connected CFG. However, need to

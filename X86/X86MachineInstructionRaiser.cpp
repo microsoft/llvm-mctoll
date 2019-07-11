@@ -2840,6 +2840,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     // Create add instruction
     BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
   } break;
+  case X86::AND64rm:
+  case X86::AND32rm:
+  case X86::AND16rm:
+  case X86::AND8rm: {
+    // Create and instruction
+    BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
+  } break;
   case X86::OR32rm: {
     // Create or instruction
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
@@ -4266,6 +4273,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.push_back(EFLAGS::ZF);
       break;
     case X86::TEST8i8:
+    case X86::TEST16i16:
+    case X86::TEST32i32:
+    case X86::TEST64i32:
     case X86::TEST8ri:
     case X86::TEST16ri:
     case X86::TEST32ri:

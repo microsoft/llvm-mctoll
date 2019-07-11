@@ -35,20 +35,19 @@ public:
 
   static void InitializeAllModuleRaisers();
 
-  void setModuleRaiserInfo(Module *m, const TargetMachine *tm,
-                           MachineModuleInfo *mmi, const MCInstrAnalysis *mia,
-                           const MCInstrInfo *mii, const ObjectFile *o,
-                           MCDisassembler *dis) {
+  void setModuleRaiserInfo(Module *M, const TargetMachine *TM,
+                           MachineModuleInfo *MMI, const MCInstrAnalysis *MIA,
+                           const MCInstrInfo *MII, const ObjectFile *Obj,
+                           MCDisassembler *DisAsm) {
     assert((InfoSet == false) &&
            "Module Raiser information can be set only once");
-    M = m;
-    TM = tm;
-    MMI = mmi;
-    MIA = mia;
-    MII = mii;
-    Obj = o;
-    DisAsm = dis;
-    TextSectionIndex = -1;
+    this->M = M;
+    this->TM = TM;
+    this->MMI = MMI;
+    this->MIA = MIA;
+    this->MII = MII;
+    this->Obj = Obj;
+    this->DisAsm = DisAsm;
     InfoSet = true;
   }
 
@@ -58,13 +57,12 @@ public:
   // of MachineFunction is accessible by calling getRaisedFunction()
   // on the MachineFunctionRaiser object.
   virtual MachineFunctionRaiser *
-  CreateAndAddMachineFunctionRaiser(Function *f, const ModuleRaiser *,
-                                    uint64_t start, uint64_t end) = 0;
+  CreateAndAddMachineFunctionRaiser(Function *F, const ModuleRaiser *,
+                                    uint64_t Start, uint64_t End) = 0;
 
   MachineFunctionRaiser *getCurrentMachineFunctionRaiser() {
-    if (mfRaiserVector.size() > 0) {
+    if (mfRaiserVector.size() > 0)
       return mfRaiserVector.back();
-    }
     return nullptr;
   }
 
@@ -103,13 +101,16 @@ public:
 
   // Get dynamic relocation with offset 'O'
   const RelocationRef *getDynRelocAtOffset(uint64_t O) const;
+
   // Return text relocation of instruction at index 'I'. 'S' is the size of the
   // instruction at index 'I'.
   const RelocationRef *getTextRelocAtOffset(uint64_t I, uint64_t S) const;
+
   int64_t getTextSectionAddress() const;
 
-  const Value *getRODataValueAt(uint64_t) const;
-  void addRODataValueAt(Value *, uint64_t) const;
+  const Value *getRODataValueAt(uint64_t Offset) const;
+
+  void addRODataValueAt(Value *V, uint64_t Offset) const;
 
   virtual ~ModuleRaiser() {}
 

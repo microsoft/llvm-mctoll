@@ -18,8 +18,8 @@
 #include "X86Subtarget.h"
 
 namespace mctoll {
-// Instruction Kinds
 
+// Instruction Kinds
 typedef enum {
   Unknown = 0,
   BINARY_OP_RM,
@@ -14194,20 +14194,20 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::XSTORE, {0, Unknown}},
     {X86::XTEST, {0, Unknown}}};
 
-static inline InstructionKind getInstructionKind(unsigned int opc) {
-  auto iter = mctoll::X86AddlInstrInfo.find(opc);
-  assert(iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode ");
-  return iter->second.InstKind;
+static inline InstructionKind getInstructionKind(unsigned int Opcode) {
+  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
+  assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
+  return Iter->second.InstKind;
 }
 
-static inline unsigned short getInstructionMemOpSize(unsigned int opc) {
-  auto iter = mctoll::X86AddlInstrInfo.find(opc);
-  assert(iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode ");
-  return iter->second.MemOpSize;
+static inline unsigned short getInstructionMemOpSize(unsigned int Opcode) {
+  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
+  assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
+  return Iter->second.MemOpSize;
 }
 
-static inline bool isNoop(unsigned int opc) {
-  return (getInstructionKind(opc) == mctoll::InstructionKind::NOOP);
+static inline bool isNoop(unsigned int Opcode) {
+  return (getInstructionKind(Opcode) == mctoll::InstructionKind::NOOP);
 }
 
 } // namespace mctoll

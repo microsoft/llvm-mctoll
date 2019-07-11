@@ -1,4 +1,4 @@
-//==-- X86RaiserUtils.cpp - Binary raiser utility llvm-mctoll ===//
+//==-- X86RaiserUtils.cpp - Binary raiser utility llvm-mctoll -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //

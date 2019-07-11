@@ -43,8 +43,8 @@ class X86RaisedValueTracker;
 class X86MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
   X86MachineInstructionRaiser() = delete;
-  X86MachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
-                              MCInstRaiser *mcir);
+  X86MachineInstructionRaiser(MachineFunction &MF, const ModuleRaiser *MR,
+                              MCInstRaiser *MIR);
   bool raise();
 
   // Return the 64-bit super-register of PhysReg.
@@ -184,9 +184,7 @@ private:
                             const MachineBasicBlock *MBB,
                             unsigned StopAtInstProp, bool &HasStopInst);
 
-  bool AddRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
-
-  bool appendInstToBB(BasicBlock *, Instruction *);
+  void AddRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
 
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
@@ -204,4 +202,5 @@ private:
 
   std::vector<JumpTableInfo> jtList;
 };
+
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ELIMINATEPROLOGEPILOG_H

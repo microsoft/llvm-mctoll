@@ -43,23 +43,23 @@ using namespace X86RegisterUtils;
 // Constructor
 
 X86MachineInstructionRaiser::X86MachineInstructionRaiser(
-    MachineFunction &machFunc, const ModuleRaiser *mr, MCInstRaiser *mcir)
-    : MachineInstructionRaiser(machFunc, mr, mcir),
+    MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MIR)
+    : MachineInstructionRaiser(MF, MR, MIR),
       machineRegInfo(MF.getRegInfo()),
       x86TargetInfo(MF.getSubtarget<X86Subtarget>()) {
   x86InstrInfo = x86TargetInfo.getInstrInfo();
   x86RegisterInfo = x86TargetInfo.getRegisterInfo();
   PrintPass =
       (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
+  
   FPUStack.TOP = 0;
-  for (int i = 0; i < FPUSTACK_SZ; i++) {
+  for (int i = 0; i < FPUSTACK_SZ; i++)
     FPUStack.Regs[i] = nullptr;
-  }
+
   raisedValues = nullptr;
 }
 
-/* Delete noop instructions */
-
+// Delete noop instructions
 bool X86MachineInstructionRaiser::deleteNOOPInstrMI(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) {
   MachineInstr &MI = *MBBI;
@@ -134,100 +134,82 @@ Type *X86MachineInstructionRaiser::getPhysRegType(unsigned int PReg) {
   return nullptr;
 }
 
-static inline Type *getImmOperandType(const MachineInstr &mi,
+static inline Type *getImmOperandType(const MachineInstr &MI,
                                       unsigned int OpIndex) {
-  LLVMContext &llvmContext(mi.getMF()->getFunction().getContext());
-  MachineOperand Op = mi.getOperand(OpIndex);
+  LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
+  MachineOperand Op = MI.getOperand(OpIndex);
   assert(Op.isImm() && "Attempt to get size of non-immediate operand");
-  // Initialize to nullptr - unknown
-  Type *ImmType = nullptr;
-  uint8_t ImmSize = X86II::getSizeOfImm(mi.getDesc().TSFlags);
 
+  uint8_t ImmSize = X86II::getSizeOfImm(MI.getDesc().TSFlags);
   switch (ImmSize) {
   case 8:
-    ImmType = Type::getInt64Ty(llvmContext);
-    break;
+    return Type::getInt64Ty(Ctx);
   case 4:
-    ImmType = Type::getInt32Ty(llvmContext);
-    break;
+    return Type::getInt32Ty(Ctx);
   case 2:
-    ImmType = Type::getInt16Ty(llvmContext);
-    break;
+    return Type::getInt16Ty(Ctx);
   case 1:
-    ImmType = Type::getInt8Ty(llvmContext);
-    break;
+    return Type::getInt8Ty(Ctx);
   default:
-    assert(false && "Immediate operand of unknown size");
-    break;
+    llvm_unreachable("Immediate operand of unknown size");
   }
-  return ImmType;
 }
 
-static inline uint8_t getPhysRegOperandSize(const MachineInstr &mi,
+static inline uint8_t getPhysRegOperandSize(const MachineInstr &MI,
                                             unsigned int OpIndex) {
-  MachineOperand Op = mi.getOperand(OpIndex);
-  // Initialize to 0 - unknown
-  uint8_t RegSize = 0;
+  MachineOperand Op = MI.getOperand(OpIndex);
   assert(Op.isReg() && "Attempt to get size of non-register operand");
+
   unsigned int RegNo = Op.getReg();
   if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
     if (is64BitPhysReg(RegNo))
-      RegSize = 8;
-    else if (is32BitPhysReg(RegNo))
-      RegSize = 4;
-    else if (is16BitPhysReg(RegNo))
-      RegSize = 2;
-    else if (is8BitPhysReg(RegNo))
-      RegSize = 1;
-    else
-      assert(false && "Register operand of unknown register class");
-  } else {
-    assert(
-        false &&
-        "Failed to get operand type for unknown physical register specified");
+      return 8;
+    if (is32BitPhysReg(RegNo))
+      return 4;
+    if (is16BitPhysReg(RegNo))
+      return 2;
+    if (is8BitPhysReg(RegNo))
+      return 1;
+
+    llvm_unreachable("Failed to get operand size for physical register");
   }
-  return RegSize;
+
+  llvm_unreachable("Register operand of unknown register class");
 }
 
-static inline Type *getPhysRegOperandType(const MachineInstr &mi,
+static inline Type *getPhysRegOperandType(const MachineInstr &MI,
                                           unsigned int OpIndex) {
-  MachineOperand Op = mi.getOperand(OpIndex);
-  // Initialize to nullptr - unknown
-  Type *RegTy = nullptr;
-
+  MachineOperand Op = MI.getOperand(OpIndex);
   assert(Op.isReg() && "Attempt to get type of non-register operand");
+
   unsigned int RegNo = Op.getReg();
-  LLVMContext &Ctx(mi.getMF()->getFunction().getContext());
   if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
+    LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
     if (is64BitPhysReg(RegNo))
-      RegTy = Type::getInt64Ty(Ctx);
-    else if (is32BitPhysReg(RegNo))
-      RegTy = Type::getInt32Ty(Ctx);
-    else if (is16BitPhysReg(RegNo))
-      RegTy = Type::getInt16Ty(Ctx);
-    else if (is8BitPhysReg(RegNo))
-      RegTy = Type::getInt8Ty(Ctx);
-    else
-      assert(false && "Register operand of unknown register class");
-  } else {
-    assert(
-        false &&
-        "Failed to get operand type for unknown physical register specified");
+      return Type::getInt64Ty(Ctx);
+    if (is32BitPhysReg(RegNo))
+      return Type::getInt32Ty(Ctx);
+    if (is16BitPhysReg(RegNo))
+      return Type::getInt16Ty(Ctx);
+    if (is8BitPhysReg(RegNo))
+      return Type::getInt8Ty(Ctx);
+    
+    llvm_unreachable("Failed to get operand type for physical register");
   }
 
-  return RegTy;
+  llvm_unreachable("Register operand of unknown register class");
 }
 
-static inline bool isPushToStack(const MachineInstr &mi) {
-  unsigned char BaseOpcode = X86II::getBaseOpcodeFor(mi.getDesc().TSFlags);
+static inline bool isPushToStack(const MachineInstr &MI) {
+  unsigned char BaseOpcode = X86II::getBaseOpcodeFor(MI.getDesc().TSFlags);
   // Note : Encoding of PUSH [CS | DS | ES | SS | FS | GS] not checked.
   return ((BaseOpcode == 0x50) || (BaseOpcode == 0x6A) ||
           (BaseOpcode == 0x68) || (BaseOpcode == 0xFF) ||
           (BaseOpcode == 0x60) || (BaseOpcode == 0x9c));
 }
 
-static inline bool isPopFromStack(const MachineInstr &mi) {
-  unsigned char BaseOpcode = X86II::getBaseOpcodeFor(mi.getDesc().TSFlags);
+static inline bool isPopFromStack(const MachineInstr &MI) {
+  unsigned char BaseOpcode = X86II::getBaseOpcodeFor(MI.getDesc().TSFlags);
   // Note : Encoding of POP [DS | ES | SS | FS | GS] not checked.
   return ((BaseOpcode == 0x58) || (BaseOpcode == 0x8F) ||
           (BaseOpcode == 0x9D) || (BaseOpcode == 0x61) ||
@@ -235,30 +217,27 @@ static inline bool isPopFromStack(const MachineInstr &mi) {
           (BaseOpcode == 0xC9));
 }
 
-static inline bool isEffectiveAddrValue(Value *val) {
-  if (isa<LoadInst>(val)) {
+static inline bool isEffectiveAddrValue(Value *Val) {
+  if (isa<LoadInst>(Val))
     return true;
-  } else if (isa<CallInst>(val)) {
-    // A call may return a pointer that can be considered an effective
-    // address.
+
+  // A call may return a pointer that can be considered an effective address.
+  if (isa<CallInst>(Val))
     return true;
-  } else if (isa<BinaryOperator>(val)) {
-    BinaryOperator *binOpVal = dyn_cast<BinaryOperator>(val);
-    if (binOpVal->isBinaryOp(BinaryOperator::Add) ||
-        binOpVal->isBinaryOp(BinaryOperator::Mul)) {
+  
+  if (isa<BinaryOperator>(Val)) {
+    BinaryOperator *BinOpVal = dyn_cast<BinaryOperator>(Val);
+    if (BinOpVal->isBinaryOp(BinaryOperator::Add) ||
+        BinOpVal->isBinaryOp(BinaryOperator::Mul)) {
       return true;
     }
-  } else if (val->getType()->isIntegerTy() &&
-             (val->getName().startswith("arg"))) {
-    // Consider an argument of integer type to be an address value type.
+  } 
+  
+  // Consider an argument of integer type to be an address value type.
+  if (Val->getType()->isIntegerTy() && (Val->getName().startswith("arg")))
     return true;
-  }
-  return false;
-}
 
-bool X86MachineInstructionRaiser::appendInstToBB(BasicBlock *RaisedBB,
-                                                 Instruction *Inst) {
-  return true;
+  return false;
 }
 
 bool X86MachineInstructionRaiser::recordDefsToPromote(unsigned PhysReg,
@@ -275,27 +254,23 @@ bool X86MachineInstructionRaiser::recordDefsToPromote(unsigned PhysReg,
 // [LCI, StartInst) where LCI is the last call instruction in MBB.
 //
 // If StartMI is nullptr, the range searched in [StopInst, BlockEndInst].
-//
 bool X86MachineInstructionRaiser::hasPhysRegDefInBlock(
     int PhysReg, const MachineInstr *StartMI, const MachineBasicBlock *MBB,
     unsigned StopAtInstProp, bool &HasStopInst) {
   // Walk backwards starting from the instruction before StartMI
   MachineBasicBlock::const_reverse_iterator InstIter;
   HasStopInst = false; // default value
-  if (StartMI == nullptr)
-    InstIter = MBB->rend();
-  else
-    InstIter = StartMI->getReverseIterator();
+  InstIter = (StartMI == nullptr) ? MBB->rend() : StartMI->getReverseIterator();
 
   unsigned SuperReg = find64BitSuperReg(PhysReg);
 
   for (const MachineInstr &MI : make_range(++InstIter, MBB->rend())) {
-    // Stop walking past the instruction with the specified property in the
-    // block.
+    // Stop after the instruction with the specified property in the block
     if (MI.hasProperty(StopAtInstProp)) {
       HasStopInst = true;
       break;
     }
+
     // If the instruction has a define
     if (MI.getNumDefs() > 0) {
       for (auto MO : MI.defs()) {
@@ -5234,21 +5209,21 @@ bool X86MachineInstructionRaiser::adjustStackAllocatedObjects() {
   }
   return true;
 }
+
 bool X86MachineInstructionRaiser::raise() { return raiseMachineFunction(); }
 
-/* NOTE : The following X86ModuleRaiser class function is defined here as
- * they reference MachineFunctionRaiser class that has a forward declaration
- * in ModuleRaiser.h.
- */
+// NOTE : The following X86ModuleRaiser class function is defined here as
+// they reference MachineFunctionRaiser class that has a forward declaration
+// in ModuleRaiser.h.
+ 
 // Create a new MachineFunctionRaiser object and add it to the list of
 // MachineFunction raiser objects of this module.
 MachineFunctionRaiser *X86ModuleRaiser::CreateAndAddMachineFunctionRaiser(
-    Function *f, const ModuleRaiser *mr, uint64_t start, uint64_t end) {
-  MachineFunctionRaiser *mfRaiser = new MachineFunctionRaiser(
-      *M, mr->getMachineModuleInfo()->getOrCreateMachineFunction(*f), mr, start,
-      end);
-  mfRaiser->setMachineInstrRaiser(new X86MachineInstructionRaiser(
-      mfRaiser->getMachineFunction(), mr, mfRaiser->getMCInstRaiser()));
-  mfRaiserVector.push_back(mfRaiser);
-  return mfRaiser;
+    Function *F, const ModuleRaiser *MR, uint64_t Start, uint64_t End) {
+  MachineFunctionRaiser *MFR = new MachineFunctionRaiser(*M, 
+    MR->getMachineModuleInfo()->getOrCreateMachineFunction(*F), MR, Start, End);
+  MFR->setMachineInstrRaiser(new X86MachineInstructionRaiser(
+    MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
+  mfRaiserVector.push_back(MFR);
+  return MFR;
 }

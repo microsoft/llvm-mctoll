@@ -1,4 +1,4 @@
-//===-- X86FuncPrototypeDiscovery.cpp -------------------------*- C++ -*-===//
+//===-- X86FuncPrototypeDiscovery.cpp ---------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -80,12 +80,12 @@ int X86MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
 // Add Reg to LiveInSet. This function adds the actual register Reg - not its
 // 64-bit super register variant because we'll need the actual register to
 // determine the argument type.
-bool X86MachineInstructionRaiser::AddRegisterToFunctionLiveInSet(
+void X86MachineInstructionRaiser::AddRegisterToFunctionLiveInSet(
     MCPhysRegSet &LiveInSet, unsigned Reg) {
 
   // Nothing to do if Reg is already in the set.
   if (LiveInSet.find(Reg) != LiveInSet.end())
-    return true;
+    return;
 
   // Find if LiveInSet already has a sub-register of Reg
   const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
@@ -95,30 +95,32 @@ bool X86MachineInstructionRaiser::AddRegisterToFunctionLiveInSet(
     if (LiveInSet.find(*SubRegs) != LiveInSet.end())
       PrevLiveInReg = *SubRegs;
   }
+  
   // If a sub-register of Reg is already in LiveInSet, replace it with Reg
   if (PrevLiveInReg != X86::NoRegister) {
     // Delete the sub-register and add the Reg
     LiveInSet.erase(PrevLiveInReg);
     // Insert UseReg
     LiveInSet.insert(Reg);
-  } else {
-    // No sub-register is in the current livein set.
-    // Check if LiveInSet already has a super-register of Reg
-    for (MCSuperRegIterator SuperRegs(Reg, TRI, /*IncludeSelf=*/false);
-         (SuperRegs.isValid() && (PrevLiveInReg == X86::NoRegister));
-         ++SuperRegs) {
-      if (LiveInSet.find(*SuperRegs) != LiveInSet.end())
-        PrevLiveInReg = *SuperRegs;
-    }
-    // If no super register of Reg is in current liveins, add Reg to set
-    if (PrevLiveInReg == X86::NoRegister) {
-      LiveInSet.insert(Reg);
-    }
-    // If a super-register of Reg is in LiveInSet, there is nothing to be done.
-    // The fact that Reg is livein, is already noted by the presence of its
-    // super register.
+    return;
   }
-  return true;
+
+  // No sub-register is in the current livein set.
+  // Check if LiveInSet already has a super-register of Reg
+  for (MCSuperRegIterator SuperRegs(Reg, TRI, /*IncludeSelf=*/false);
+       (SuperRegs.isValid() && (PrevLiveInReg == X86::NoRegister));
+        ++SuperRegs) {
+    if (LiveInSet.find(*SuperRegs) != LiveInSet.end())
+      PrevLiveInReg = *SuperRegs;
+  }
+
+  // If no super register of Reg is in current liveins, add Reg to set
+  if (PrevLiveInReg == X86::NoRegister)
+    LiveInSet.insert(Reg);
+
+  // If a super-register of Reg is in LiveInSet, there is nothing to be done.
+  // The fact that Reg is livein, is already noted by the presence of its
+  // super register.
 }
 
 Type *X86MachineInstructionRaiser::getFunctionReturnType() {
@@ -509,7 +511,7 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
             std::make_pair(argNum, Type::getInt64Ty(funcLLVMContext)));
       } else {
         outs() << x86RegisterInfo->getRegAsmName(PReg) << "\n";
-        assert(false && "Unhandled register type encountered in binary");
+        llvm_unreachable("Unhandled register type encountered in binary");
       }
     }
   }
@@ -522,9 +524,8 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
       // Argument register not used. It is most likely optimized.
       // The argument is not used. Safe to consider it to be of 64-bit type.
       ArgTyVec.push_back(Type::getInt64Ty(funcLLVMContext));
-    } else {
+    } else
       ArgTyVec.push_back(argNumTypeMap.find(i)->second);
-    }
   }
   return true;
 }

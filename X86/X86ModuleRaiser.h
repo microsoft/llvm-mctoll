@@ -23,8 +23,8 @@ public:
   X86ModuleRaiser() : ModuleRaiser() { Arch = Triple::x86_64; };
 
   MachineFunctionRaiser *
-  CreateAndAddMachineFunctionRaiser(Function *f, const ModuleRaiser *mr,
-                                    uint64_t start, uint64_t end);
+  CreateAndAddMachineFunctionRaiser(Function *F, const ModuleRaiser *MR,
+                                    uint64_t Start, uint64_t End);
   bool collectDynamicRelocations();
 };
 

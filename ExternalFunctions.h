@@ -19,8 +19,8 @@
 using namespace llvm;
 
 class ExternalFunctions {
-  ExternalFunctions(){};
-  ~ExternalFunctions(){};
+  ExternalFunctions() {};
+  ~ExternalFunctions() {};
 
   typedef struct {
     StringRef ReturnType;
@@ -29,10 +29,11 @@ class ExternalFunctions {
   } RetAndArgs;
 
 public:
-  static Function *Create(StringRef &, Module &);
-  static Type *getPrimitiveType(const StringRef &, LLVMContext &);
+  static Function *Create(StringRef &CFuncName, Module &M);
+  static Type *getPrimitiveType(const StringRef &TypeStr, LLVMContext &Context); 
   // Table of known glibc function prototypes
   static const std::map<StringRef, ExternalFunctions::RetAndArgs>
       GlibcFunctions;
 };
+
 #endif // LLVM_TOOLS_LLVM_MCTOLL_EXTERNALFUNCTIONS_H

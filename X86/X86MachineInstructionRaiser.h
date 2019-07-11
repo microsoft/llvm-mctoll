@@ -34,6 +34,9 @@ using PhysRegMBBValTuple = std::tuple<unsigned int, unsigned int, Value *>;
 // MCPhysReg set
 using MCPhysRegSet = std::set<MCPhysReg>;
 
+// Map of 64-bit super register -> size of register access
+using MCPhysRegSizeMap = std::map<MCPhysReg, uint16_t>;
+
 // Forward declaration of X86RaisedValueTracker
 class X86RaisedValueTracker;
 
@@ -44,7 +47,11 @@ public:
                               MCInstRaiser *mcir);
   bool raise();
 
-  unsigned int find64BitSuperReg(unsigned int);
+  // Return the 64-bit super-register of PhysReg.
+  unsigned int find64BitSuperReg(unsigned int PhysReg);
+  // Return the Type of the physical register.
+  Type *getPhysRegType(unsigned int PhysReg);
+
   bool insertAllocaInEntryBlock(Instruction *alloca);
   BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
@@ -69,6 +76,10 @@ private:
   // Set of reaching definitions that were not promoted during since defining
   // block is not yet raised and need to be promoted upon raising all blocks.
   std::set<PhysRegMBBValTuple> reachingDefsToPromote;
+
+  // A map of MBB number to known defined registers along with the access size
+  // at the exit of the MBB.
+  std::map<int, MCPhysRegSizeMap> PerMBBDefinedPhysRegMap;
 
   static const uint8_t FPUSTACK_SZ = 8;
   struct {
@@ -158,7 +169,7 @@ private:
   Value *matchSSAValueToSrcRegSize(const MachineInstr &mi, unsigned SrcOpIndex);
 
   Type *getFunctionReturnType();
-  Type *getReturnTypeFromMBB(MachineBasicBlock &MBB);
+  Type *getReturnTypeFromMBB(MachineBasicBlock &MBB, bool &HasCall);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
   Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);
   int getArgumentNumber(unsigned PReg);
@@ -174,9 +185,6 @@ private:
                             unsigned StopAtInstProp, bool &HasStopInst);
 
   bool AddRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
-
-  // Return the Type of the physical register.
-  Type *getPhysRegType(unsigned int PhysReg);
 
   bool appendInstToBB(BasicBlock *, Instruction *);
 

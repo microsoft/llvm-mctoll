@@ -1,8 +1,14 @@
 // RUN: clang -o %t.so %S/Inputs/fibfunc.c -shared -fPIC
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll
-// RUN: %t1 2>&1 | FileCheck %s
-// CHECK: Fibonacci of 42 433494437
+// RUN: %t1 2>&1 | FileCheck %s -check-prefix=CLANG
+// CLANG: Fibonacci of 42 433494437
+
+// RUN: gcc -o %t-gcc %s %S/Inputs/fibfunc.c
+// RUN: llvm-mctoll -d %t-gcc -o %t-gcc-dis.ll
+// RUN: clang -o %t-gcc-dis %t-gcc-dis.ll
+// RUN: %t-gcc-dis 2>&1 | FileCheck %s -check-prefix=GCC
+// GCC: Fibonacci of 42 433494437
 
 #include <stdio.h>
 

@@ -1903,12 +1903,18 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
       const MachineFrameInfo &MFI = MF.getFrameInfo();
       // Size of currently allocated object size
       int64_t ObjectSize = MFI.getObjectSize(StackFrameIndex);
-      // Size of object at previous index; 0 if this is the first object on
-      // stack.
-      int64_t PrevObjectSize =
-          (StackFrameIndex != 0) ? MFI.getObjectOffset(StackFrameIndex - 1) : 0;
-      int64_t Offset = PrevObjectSize - ObjectSize;
 
+      // Get the offset of the top of stack. Note that stack objects in MFI are
+      // not sorted by offset. So we need to walk the stack objects to find the
+      // offset of the top stack object.
+      int64_t StackTopOffset = 0;
+      for (int StackIndex = MFI.getObjectIndexBegin();
+           StackIndex < MFI.getObjectIndexEnd(); StackIndex++) {
+        int64_t ObjOffset = MFI.getObjectOffset(StackIndex);
+        if (ObjOffset < StackTopOffset)
+          StackTopOffset = ObjOffset;
+      }
+      int64_t Offset = StackTopOffset - ObjectSize;
       // Set object size.
       MF.getFrameInfo().setObjectOffset(StackFrameIndex, Offset);
 

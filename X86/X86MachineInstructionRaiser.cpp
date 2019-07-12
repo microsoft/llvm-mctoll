@@ -42,16 +42,16 @@ using namespace X86RegisterUtils;
 
 // Constructor
 
-X86MachineInstructionRaiser::X86MachineInstructionRaiser(
-    MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MIR)
-    : MachineInstructionRaiser(MF, MR, MIR),
-      machineRegInfo(MF.getRegInfo()),
+X86MachineInstructionRaiser::X86MachineInstructionRaiser(MachineFunction &MF,
+                                                         const ModuleRaiser *MR,
+                                                         MCInstRaiser *MIR)
+    : MachineInstructionRaiser(MF, MR, MIR), machineRegInfo(MF.getRegInfo()),
       x86TargetInfo(MF.getSubtarget<X86Subtarget>()) {
   x86InstrInfo = x86TargetInfo.getInstrInfo();
   x86RegisterInfo = x86TargetInfo.getRegisterInfo();
   PrintPass =
       (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
-  
+
   FPUStack.TOP = 0;
   for (int i = 0; i < FPUSTACK_SZ; i++)
     FPUStack.Regs[i] = nullptr;
@@ -193,7 +193,7 @@ static inline Type *getPhysRegOperandType(const MachineInstr &MI,
       return Type::getInt16Ty(Ctx);
     if (is8BitPhysReg(RegNo))
       return Type::getInt8Ty(Ctx);
-    
+
     llvm_unreachable("Failed to get operand type for physical register");
   }
 
@@ -224,15 +224,15 @@ static inline bool isEffectiveAddrValue(Value *Val) {
   // A call may return a pointer that can be considered an effective address.
   if (isa<CallInst>(Val))
     return true;
-  
+
   if (isa<BinaryOperator>(Val)) {
     BinaryOperator *BinOpVal = dyn_cast<BinaryOperator>(Val);
     if (BinOpVal->isBinaryOp(BinaryOperator::Add) ||
         BinOpVal->isBinaryOp(BinaryOperator::Mul)) {
       return true;
     }
-  } 
-  
+  }
+
   // Consider an argument of integer type to be an address value type.
   if (Val->getType()->isIntegerTy() && (Val->getName().startswith("arg")))
     return true;
@@ -2576,6 +2576,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::AND16rr:
   case X86::AND32rr:
   case X86::AND64rr:
+  case X86::OR8rr:
+  case X86::OR16rr:
   case X86::OR32rr:
   case X86::OR64rr:
   case X86::XOR8rr:
@@ -2613,6 +2615,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       case X86::AND64rr:
         dstValue = BinaryOperator::CreateAnd(Uses.at(0), Uses.at(1));
         break;
+      case X86::OR8rr:
+      case X86::OR16rr:
       case X86::OR32rr:
       case X86::OR64rr:
         dstValue = BinaryOperator::CreateOr(Uses.at(0), Uses.at(1));
@@ -5215,15 +5219,16 @@ bool X86MachineInstructionRaiser::raise() { return raiseMachineFunction(); }
 // NOTE : The following X86ModuleRaiser class function is defined here as
 // they reference MachineFunctionRaiser class that has a forward declaration
 // in ModuleRaiser.h.
- 
+
 // Create a new MachineFunctionRaiser object and add it to the list of
 // MachineFunction raiser objects of this module.
 MachineFunctionRaiser *X86ModuleRaiser::CreateAndAddMachineFunctionRaiser(
     Function *F, const ModuleRaiser *MR, uint64_t Start, uint64_t End) {
-  MachineFunctionRaiser *MFR = new MachineFunctionRaiser(*M, 
-    MR->getMachineModuleInfo()->getOrCreateMachineFunction(*F), MR, Start, End);
+  MachineFunctionRaiser *MFR = new MachineFunctionRaiser(
+      *M, MR->getMachineModuleInfo()->getOrCreateMachineFunction(*F), MR, Start,
+      End);
   MFR->setMachineInstrRaiser(new X86MachineInstructionRaiser(
-    MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
+      MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
   mfRaiserVector.push_back(MFR);
   return MFR;
 }

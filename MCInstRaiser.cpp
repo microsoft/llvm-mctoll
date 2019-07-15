@@ -143,8 +143,7 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
         outs() << "**** Warning : Index ";
         outs().write_hex(mbbMCInstTgt);
         outs() << " not found\n";
-        // assert(0);
-      } else {
+      } else if (!MF.getBlockNumbered(mbbIndex)->isReturnBlock()) {
         MachineBasicBlock *succ = MF.getBlockNumbered(tgtIter->second);
         currentMBB->addSuccessorWithoutProb(succ);
       }
@@ -235,7 +234,7 @@ bool MCInstRaiser::adjustFuncEnd(uint64_t n) {
   // end index.
   if (FuncEnd > n)
     return false;
-  
+
   FuncEnd = n;
   return true;
 }

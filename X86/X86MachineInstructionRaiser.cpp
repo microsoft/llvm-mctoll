@@ -694,11 +694,9 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   StoreInst *StInst = nullptr;
   LLVMContext &Ctxt(MF.getFunction().getContext());
 
-  // Make sure PhysReg is converted to SuperReg
-  int SuperReg = find64BitSuperReg(PhysReg);
   assert((ReachingValue != nullptr) &&
          "Null incoming value of reaching definition found");
-  assert(raisedValues->getInBlockPhysRegDefVal(SuperReg, DefiningMBB) ==
+  assert(raisedValues->getInBlockPhysRegDefVal(PhysReg, DefiningMBB) ==
              ReachingValue &&
          "Inconsistent reaching defined value found");
   assert(ReachingValue->getType()->isIntegerTy() &&
@@ -706,7 +704,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   // Prepare to store this value in stack location.
   // Get the size of defined physical register
   int DefinedPhysRegSzInBits =
-      raisedValues->getInBlockPhysRegSize(SuperReg, DefiningMBB);
+      raisedValues->getInBlockPhysRegSize(PhysReg, DefiningMBB);
   assert(((DefinedPhysRegSzInBits == 64) || (DefinedPhysRegSzInBits == 32) ||
           (DefinedPhysRegSzInBits == 16) || (DefinedPhysRegSzInBits == 8) ||
           (DefinedPhysRegSzInBits == 1)) &&
@@ -722,7 +720,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   // get terminating instruction. Add new instructions before
   // terminator instruction if one exists.
   Instruction *TermInst = ReachingBB->getTerminator();
-  if (DefinedPhysRegSzInBits != StackLocSzInBits) {
+  if (StackLocTy != ReachingValue->getType()) {
     CastInst *CInst = CastInst::Create(
         CastInst::getCastOpcode(ReachingValue, false, StackLocTy, false),
         ReachingValue, StackLocTy);

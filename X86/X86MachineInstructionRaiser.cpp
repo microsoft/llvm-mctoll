@@ -4563,10 +4563,24 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       BranchCond = new ICmpInst(Pred, CFValue, FalseValue, "CFCmp_JAE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
-#if 0
-    case X86::COND_BE:
-      break;
-#endif
+    case X86::COND_BE: {
+      // CF == 1 or ZF == 1
+      int CFIndex = getEflagBitIndex(EFLAGS::CF);
+      int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
+      Value *CFValue = CTRec->RegValues[CFIndex];
+      Value *ZFValue = CTRec->RegValues[ZFIndex];
+      assert((CFValue != nullptr) && (ZFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising JBE");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Compare CF = 1
+      Instruction *CFCond = new ICmpInst(Pred, CFValue, TrueValue, "CFCmp_JBE");
+      CandBB->getInstList().push_back(CFCond);
+      // Compare ZF = 1
+      Instruction *ZFCond = new ICmpInst(Pred, ZFValue, TrueValue, "ZFCmp_JBE");
+      CandBB->getInstList().push_back(ZFCond);
+      BranchCond = BinaryOperator::CreateOr(ZFCond, CFCond, "CFAndZF_JBE");
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
     case X86::COND_G: {
       // ZF == 0 and (SF == OF)
       int ZFIndex = getEflagBitIndex(EFLAGS::ZF);

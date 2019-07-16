@@ -3535,11 +3535,13 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   // Get index of memory reference in the instruction.
   int memoryRefOpIndex = getMemoryRefOpIndex(MI);
   int MBBNo = MI.getParent()->getNumber();
+  unsigned int DestReg = X86::NoRegister;
   assert((((memoryRefOpIndex != -1) && isMemCompare) ||
           ((memoryRefOpIndex == -1) && !isMemCompare)) &&
          "Inconsistent memory reference operand information specified for "
          "compare instruction");
   MCInstrDesc MCIDesc = MI.getDesc();
+  unsigned NumImplicitUses = MCIDesc.getNumImplicitUses();
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
@@ -3592,8 +3594,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     // Get value for non-memory operand of compare.
     Value *NonMemRefVal = nullptr;
     if (NonMemRefOp->isReg()) {
-      NonMemRefVal =
-          getRegOrArgValue(NonMemRefOp->getReg(), MI.getParent()->getNumber());
+      NonMemRefVal = getRegOrArgValue(NonMemRefOp->getReg(), MBBNo);
     } else if (NonMemRefOp->isImm()) {
       NonMemRefVal =
           ConstantInt::get(MemRefValue->getType()->getPointerElementType(),
@@ -3612,9 +3613,17 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   } else {
     // The instruction operands do not reference memory
     unsigned Op1Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
+    unsigned Op2Index = 0;
+
+    if (NumImplicitUses == 1) {
+      MCPhysReg UseReg = MCIDesc.ImplicitUses[0];
+      Op2Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
+    } else {
+      Op2Index = Op1Index + 1;
+    }
 
     MachineOperand CmpOp1 = MI.getOperand(Op1Index);
-    MachineOperand CmpOp2 = MI.getOperand(Op1Index + 1);
+    MachineOperand CmpOp2 = MI.getOperand(Op2Index);
 
     assert((CmpOp1.isReg() || CmpOp1.isImm()) &&
            "Unhandled first operand type in compare instruction");
@@ -3648,26 +3657,41 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   assert(OpValues[0] != nullptr && OpValues[1] != nullptr &&
          "Unable to materialize compare operand values");
 
-  assert(MI.getOperand(0).isReg() && "Unexpected non-register def operand");
-  // Make sure the source operand value types are the same as destination
-  // register type.
-  unsigned int DestReg = MI.getOperand(0).getReg();
-  if (DestReg != X86::NoRegister) {
-    Type *DestTy = getPhysRegOperandType(MI, 0);
-    for (int i = 0; i < 2; i++) {
-      if (OpValues[i]->getType() != DestTy) {
-        CastInst *CInst = CastInst::Create(
-            CastInst::getCastOpcode(OpValues[i], false, DestTy, false),
-            OpValues[i], DestTy);
-        RaisedBB->getInstList().push_back(CInst);
-        OpValues[i] = CInst;
+  // If the first operand is register, make sure the source operand value types
+  // are the same as destination register type.
+  if (MI.getOperand(0).isReg()) {
+    DestReg = MI.getOperand(0).getReg();
+    if (DestReg != X86::NoRegister) {
+      Type *DestTy = getPhysRegOperandType(MI, 0);
+      for (int i = 0; i < 2; i++) {
+        if (OpValues[i]->getType() != DestTy) {
+          CastInst *CInst = CastInst::Create(
+              CastInst::getCastOpcode(OpValues[i], false, DestTy, false),
+              OpValues[i], DestTy);
+          RaisedBB->getInstList().push_back(CInst);
+          OpValues[i] = CInst;
+        }
       }
     }
-  } else {
-    assert(OpValues[0]->getType() == OpValues[1]->getType() &&
-           "Mis-matched operand types encountered while raising compare "
-           "instruction");
   }
+
+  // If the number of implicit use operand is one, make sure the source operand
+  // value type is the same as the implicit use operand value type.
+  if (NumImplicitUses == 1) {
+    if (OpValues[0]->getType() != OpValues[1]->getType()) {
+      CastInst *CInst = CastInst::Create(
+          CastInst::getCastOpcode(OpValues[0], false, OpValues[1]->getType(),
+                                  false),
+          OpValues[0], OpValues[1]->getType());
+      RaisedBB->getInstList().push_back(CInst);
+      OpValues[0] = CInst;
+    }
+  }
+
+  assert((OpValues[0]->getType() == OpValues[1]->getType()) &&
+         "Mis-matched operand types encountered while raising compare "
+         "instruction");
+
   raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
   raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
   Instruction *SubInst = BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
@@ -3676,20 +3700,43 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   if (isSUBInst) {
     switch (MI.getOpcode()) {
     case X86::SUB8mi:
+    case X86::SUB8mi8:
     case X86::SUB8mr:
-    case X86::SUB8rm:
     case X86::SUB16mi:
+    case X86::SUB16mi8:
     case X86::SUB16mr:
-    case X86::SUB16rm:
     case X86::SUB32mi:
+    case X86::SUB32mi8:
     case X86::SUB32mr:
-    case X86::SUB32rm:
     case X86::SUB64mi8:
     case X86::SUB64mi32:
-    case X86::SUB64mr:
-    case X86::SUB64rm:
+    case X86::SUB64mr: {
+      // This instruction moves a source value to memory. So, if the types of
+      // the source value and that of the memory pointer content are not the
+      // same, it is the source value that needs to be cast to match the type of
+      // destination (i.e., memory). It needs to be sign extended as needed.
+      Type *MatchTy = MemRefValue->getType()->getPointerElementType();
+      if (!MatchTy->isArrayTy()) {
+        if (SubInst->getType() != MatchTy) {
+          Type *CastTy = MatchTy;
+          CastInst *CInst = CastInst::Create(
+              CastInst::getCastOpcode(SubInst, false, CastTy, false), SubInst,
+              CastTy);
+          RaisedBB->getInstList().push_back(CInst);
+          SubInst = CInst;
+        }
+      }
+
+      // Store SubInst to MemRefValue only if this is a sub MI or MR
+      // instruction. Do not update if this is a cmp instruction.
+      StoreInst *StInst = new StoreInst(SubInst, MemRefValue);
+      RaisedBB->getInstList().push_back(StInst);
+    } break;
     case X86::SUB32rr:
-    case X86::SUB64rr: {
+    case X86::SUB64rr:
+    case X86::SUB8rm:
+    case X86::SUB32rm:
+    case X86::SUB64rm: {
       assert(MCIDesc.getNumDefs() == 1 &&
              "Unexpected number of def operands of sub instruction");
       // Update the DestReg only if this is a sub instruction. Do not update

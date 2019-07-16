@@ -4307,6 +4307,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.push_back(EFLAGS::SF);
       AffectedEFlags.push_back(EFLAGS::ZF);
       break;
+    case X86::INC32r:
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      break;
+    case X86::DEC32r:
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.push_back(EFLAGS::SF);
+      AffectedEFlags.push_back(EFLAGS::ZF);
+      break;
     default:
       MI.dump();
       assert(false && "Unhandled reg to imm binary operator instruction");
@@ -4464,6 +4476,17 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     }
 
     switch (CC) {
+    case X86::COND_B: {
+      // Test CF == 1
+      int CFIndex = getEflagBitIndex(EFLAGS::CF);
+      Value *CFValue = CTRec->RegValues[CFIndex];
+      assert(CFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JB");
+      Pred = CmpInst::Predicate::ICMP_EQ;
+      // Construct a compare instruction
+      BranchCond = new ICmpInst(Pred, CFValue, TrueValue);
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
     case X86::COND_E: {
       // Test ZF == 1
       int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
@@ -4541,8 +4564,6 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
 #if 0
-    case X86::COND_B:
-      break;
     case X86::COND_BE:
       break;
 #endif

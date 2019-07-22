@@ -5,10 +5,13 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 5abf80cdfa347c8b6306157011e7f85212994428 (HEAD -> master, origin/master, origin/HEAD)
-Author: Krzysztof Parzyszek <kparzysz@quicinc.com>
-Date:   Mon Jul 1 15:50:09 2019 +0000
+commit 542720b2bc48d243d2eec93157feebc37af0e202
+Author: Matt Arsenault <Matthew.Arsenault@amd.com>
+Date:   Mon Jul 22 15:02:34 2019 +0000
 
-    [Hexagon] Custom-lower UADDO(x, 1) and USUBO(x, 1)
-    
-    llvm-svn: 364790
+    TableGen: Support physical register inputs > 255
+
+    This was truncating register value that didn't fit in unsigned char.
+    Switch AMDGPU sendmsg intrinsics to using a tablegen pattern.
+
+    llvm-svn: 366695

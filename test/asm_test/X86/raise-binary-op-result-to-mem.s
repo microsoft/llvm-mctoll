@@ -2,7 +2,7 @@
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
-// CHECK: ret val: 10
+// CHECK: ret val: 15
 
 	.text
 	.file	"test-add.c"
@@ -29,6 +29,7 @@ main:                                   # @main
 	pushq	%rax
 	.cfi_def_cfa_offset 16
 	movl	$5, 4(%rsp)
+	addq	$5, 4(%rsp)
 	leaq	4(%rsp), %rdi
 	callq	call_me
 	movl	$.L.str, %edi

@@ -3279,7 +3279,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   assert((isa<AllocaInst>(MemRefVal) || isEffectiveAddrValue(MemRefVal) ||
           isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal)) &&
          "Unexpected type of memory reference in mem-to-reg instruction");
-  bool loadEffAddr = isEffectiveAddrValue(MemRefVal);
 
   // If memory reference is not a pointer type, cast it to a pointer
   Type *DstMemTy = MemRefVal->getType();
@@ -3291,8 +3290,12 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     MemRefVal = convIntToPtr;
   }
 
+  // Is this a mov instruction?
+  bool isMovInst =
+      x86InstrInfo->getName(MI.getDesc().getOpcode()).startswith("MOV");
+
   LoadInst *LdInst = nullptr;
-  if (loadEffAddr) {
+  if (!isMovInst) {
     // Load the value from memory location
     LdInst = new LoadInst(MemRefVal);
     LdInst->setAlignment(
@@ -3316,9 +3319,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     }
   }
 
-  // Is this a mov instruction?
-  bool isMovInst =
-      x86InstrInfo->getName(MI.getDesc().getOpcode()).startswith("MOV");
   StoreInst *StInst = nullptr;
   if (!isMovInst) {
     // If this is not an instruction that just moves SrcValue, generate the
@@ -3329,7 +3329,18 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     assert((SrcValue != nullptr) && "Source value expected to be loaded while "
                                     "raising binary mem op instruction");
     switch (MI.getOpcode()) {
-    case X86::ADD64mi8: {
+    case X86::ADD8mi:
+    case X86::ADD8mi8:
+    case X86::ADD8mr:
+    case X86::ADD16mi:
+    case X86::ADD16mi8:
+    case X86::ADD16mr:
+    case X86::ADD32mi:
+    case X86::ADD32mi8:
+    case X86::ADD32mr:
+    case X86::ADD64mi8:
+    case X86::ADD64i32:
+    case X86::ADD64mr: {
       // Generate Add instruction
       Instruction *BinOpInst = BinaryOperator::CreateAdd(LdInst, SrcValue);
       RaisedBB->getInstList().push_back(BinOpInst);

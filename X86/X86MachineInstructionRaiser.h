@@ -57,6 +57,7 @@ public:
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
                                        int MBBNo, AllocaInst *Alloca);
+  int getArgumentNumber(unsigned PReg);
 
 private:
   // Bit positions used for individual status flags of EFLAGS register.
@@ -172,7 +173,6 @@ private:
   Type *getReturnTypeFromMBB(MachineBasicBlock &MBB, bool &HasCall);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
   Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);
-  int getArgumentNumber(unsigned PReg);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
   Value *getRegOrArgValue(unsigned PReg, int MBBNo);

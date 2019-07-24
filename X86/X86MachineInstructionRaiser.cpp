@@ -743,7 +743,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
 bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
   if (reachingDefsToPromote.size() > 0) {
     for (auto RDToFix : reachingDefsToPromote) {
-      unsigned int SuperReg = find64BitSuperReg(std::get<0>(RDToFix));
+      unsigned PReg = std::get<0>(RDToFix);
+      unsigned int SuperReg = find64BitSuperReg(PReg);
       unsigned int DefiningMBBNo = std::get<1>(RDToFix);
       Value *Val = std::get<2>(RDToFix);
       assert((isa<AllocaInst>(Val)) &&
@@ -751,7 +752,7 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
              "during reaching definition fixup");
       AllocaInst *Alloca = dyn_cast<AllocaInst>(Val);
       Value *ReachingDef =
-          raisedValues->getInBlockPhysRegDefVal(SuperReg, DefiningMBBNo);
+          raisedValues->getInBlockPhysRegDefVal(PReg, DefiningMBBNo);
       assert((ReachingDef != nullptr) &&
              "Null reaching definition found during reaching definition fixup");
       StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,

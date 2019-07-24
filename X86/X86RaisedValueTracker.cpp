@@ -205,6 +205,8 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
 
+  Value *RetValue = nullptr;
+
   // TODO : Support outside of GPRs need to be implemented.
   // Find the per-block definitions SuperReg
   PhysRegMBBValueDefMap::iterator PhysRegBBValDefIter =
@@ -217,11 +219,29 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
     if (mbbToValMapIter != mbbToValMap.end()) {
       assert((mbbToValMapIter->second.first != 0) &&
              "Found incorrect size of physical register");
-      return mbbToValMapIter->second.second;
+      RetValue = mbbToValMapIter->second.second;
     }
   }
+  // If MBBNo is entry and ReachingDef was not found, check to see
+  // if this is an argument value.
+  if (MBBNo == 0) {
+    int pos = x86MIRaiser->getArgumentNumber(PhysReg);
+
+    // If PReg is an argument register, get its value from function
+    // argument list.
+    if (pos > 0) {
+      // Get the value only if the function has an argument at
+      // pos.
+      Function *RaisedFunction = x86MIRaiser->getRaisedFunction();
+      if (pos <= (int)(RaisedFunction->arg_size())) {
+        Function::arg_iterator argIter = RaisedFunction->arg_begin() + pos - 1;
+        RetValue = argIter;
+      }
+    }
+  }
+
   // MachineBasicBlock with MBBNo does not define SuperReg.
-  return nullptr;
+  return RetValue;
 }
 
 // Get size of PhysReg last defined in MBBNo.

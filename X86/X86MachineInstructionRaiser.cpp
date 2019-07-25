@@ -1071,6 +1071,9 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
             uint64_t symbSize = symb->st_size;
             GlobalValue::LinkageTypes linkage;
             switch (symb->getBinding()) {
+            case ELF::STB_LOCAL:
+              linkage = GlobalValue::InternalLinkage;
+              break;
             case ELF::STB_GLOBAL:
               // Note that this is a symbol in BSS
               linkage = GlobalValue::CommonLinkage;
@@ -1096,7 +1099,8 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
               GlobDataSymSectionAlignment = symbSize;
             }
             // symbSize is in number of bytes
-            Type *GlobalValTy = Type::getInt8Ty(llvmContext);
+            Type *GlobalValTy =
+                Type::getIntNTy(llvmContext, GlobDataSymSectionAlignment * 8);
             Constant *GlobalInit = nullptr;
             if (symbSize > GlobDataSymSectionAlignment) {
               GlobalValTy = ArrayType::get(GlobalValTy, symbSize);

@@ -13,18 +13,19 @@
 #include "ExternalFunctions.h"
 
 const std::map<StringRef, ExternalFunctions::RetAndArgs>
-  ExternalFunctions::GlibcFunctions = {
-    {"printf", {"i32", {"i8*"}, true}},
-    {"__printf_chk", {"i32", {"i8*"}, true}},
-    {"malloc", {"i8*", {"i64"}, false}},
-    {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
-    {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
-    {"__isoc99_scanf", {"i32", {"i8*"}, true}},
-    {"time", {"i64", {"i64*"}, false}},
-    {"puts", {"i32", {"i8*"}, false}},
-    {"free", {"void", {"i8*"}, false}},
-    {"atoi", {"i32", {"i8*"}, false}}
-  };
+    ExternalFunctions::GlibcFunctions = {
+        {"printf", {"i32", {"i8*"}, true}},
+        {"__printf_chk", {"i32", {"i8*"}, true}},
+        {"malloc", {"i8*", {"i64"}, false}},
+        {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
+        {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
+        {"__isoc99_scanf", {"i32", {"i8*"}, true}},
+        {"clock_gettime", {"i32", {"i64", "i64*"}, false}},
+        {"time", {"i64", {"i64*"}, false}},
+        {"sleep", {"i32", {"i32"}, false}},
+        {"puts", {"i32", {"i8*"}, false}},
+        {"free", {"void", {"i8*"}, false}},
+        {"atoi", {"i32", {"i8*"}, false}}};
 
 // Return the Type* corresponding to a primitive type's string representation
 Type *ExternalFunctions::getPrimitiveType(const StringRef &TypeStr,
@@ -47,7 +48,7 @@ Type *ExternalFunctions::getPrimitiveType(const StringRef &TypeStr,
     return Type::getInt32PtrTy(Context);
   if (TypeStr.equals("i64*"))
     return Type::getInt64PtrTy(Context);
-  
+
   llvm_unreachable("Unsupported primitive type in known function prototype");
 }
 
@@ -62,7 +63,7 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, Module &M) {
   }
 
   Function *Func = M.getFunction(CFuncName);
-  if (Func != nullptr) 
+  if (Func != nullptr)
     return Func;
 
   const ExternalFunctions::RetAndArgs &retAndArgs = iter->second;
@@ -75,8 +76,8 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, Module &M) {
   }
 
   ArrayRef<Type *> Args(ArgVec);
-  if (FunctionType *FuncType = 
-      FunctionType::get(RetType, Args, retAndArgs.isVariadic)) {
+  if (FunctionType *FuncType =
+          FunctionType::get(RetType, Args, retAndArgs.isVariadic)) {
     FunctionCallee FunCallee = M.getOrInsertFunction(CFuncName, FuncType);
     assert(isa<Function>(FunCallee.getCallee()) && "Expect Function");
     Func = reinterpret_cast<Function *>(FunCallee.getCallee());

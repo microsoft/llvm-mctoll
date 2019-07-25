@@ -224,7 +224,7 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
   }
   // If MBBNo is entry and ReachingDef was not found, check to see
   // if this is an argument value.
-  if (MBBNo == 0) {
+  if ((RetValue == nullptr) && (MBBNo == 0)) {
     int pos = x86MIRaiser->getArgumentNumber(PhysReg);
 
     // If PReg is an argument register, get its value from function

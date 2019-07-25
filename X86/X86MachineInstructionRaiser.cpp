@@ -2314,6 +2314,27 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
       RaisedBB->getInstList().push_back(SFOFCond);
       CMOVCond = BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG");
     } break;
+    case X86::COND_LE: {
+      // Check ZF == 1 or SF != OF
+      Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+      Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+      Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+      assert((ZFValue != nullptr) && (SFValue != nullptr) &&
+             (OFValue != nullptr) &&
+             "Failed to get EFLAGS value while raising CMOVLE!");
+
+      // Check ZF == 1
+      CmpInst *ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
+                                     TrueValue, "ZFCmp_CMOVLE");
+      RaisedBB->getInstList().push_back(ZFCond);
+
+      // Test SF != OF
+      CmpInst *SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue,
+                                       OFValue, "SFOFCmp_CMOVLE");
+      RaisedBB->getInstList().push_back(SFOFCond);
+
+      CMOVCond = BinaryOperator::CreateOr(ZFCond, SFOFCond, "Cond_CMOVLE");
+    } break;
     case X86::COND_INVALID:
       assert(false && "CMOV instruction with invalid condition found");
       break;

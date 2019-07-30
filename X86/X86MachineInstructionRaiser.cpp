@@ -763,33 +763,36 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
   return true;
 }
 Value *X86MachineInstructionRaiser::getStackAllocatedValue(
-    const MachineInstr &mi, X86AddressMode &memRef, bool isStackPointerAdjust) {
+    const MachineInstr &MI, X86AddressMode &MemRef, bool IsStackPointerAdjust) {
   unsigned int stackFrameIndex;
 
-  assert((memRef.BaseType == X86AddressMode::RegBase) &&
+  assert((MemRef.BaseType == X86AddressMode::RegBase) &&
          "Register type operand expected for stack allocated value lookup");
-  unsigned PReg = find64BitSuperReg(memRef.Base.Reg);
+  unsigned PReg = find64BitSuperReg(MemRef.Base.Reg);
   assert(((PReg == X86::RSP) || (PReg == X86::RBP)) &&
          "Stack or base pointer expected for stack allocated value lookup");
-  Value *CurSPVal = getRegOrArgValue(PReg, mi.getParent()->getNumber());
+  Value *CurSPVal = getRegOrArgValue(PReg, MI.getParent()->getNumber());
 
   // If the memory reference offset is 0 i.e., not different from the current
   // sp reference and there is already a stack allocation, just return that
   // value
-  if ((memRef.Disp == 0) && (CurSPVal != nullptr)) {
+  if ((MemRef.Disp == 0) && (CurSPVal != nullptr)) {
     return CurSPVal;
   }
   // At this point, the stack offset specified in the memory opernad is
-  // different from that if the alloca corresponding to sp or there is no
+  // different from that of the alloca corresponding to sp or there is no
   // stack allocation corresponding to sp.
   int NewDisp;
   MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
   // If there is no allocation corresponding to sp, set the offset of new
   // allocation to be that specified in memory operand.
   if (CurSPVal == nullptr) {
-    NewDisp = memRef.Disp;
+    NewDisp = MemRef.Disp;
   } else {
-    assert((memRef.Disp != 0) && "Unexpected 0 offset value");
+    // If the sp/bp do not reference a stack allocation, return nullptr
+    if (!isa<AllocaInst>(CurSPVal))
+      return nullptr;
+    assert((MemRef.Disp != 0) && "Unexpected 0 offset value");
     // Find the stack offset of the allocation corresponding to current sp
     bool IndexFound = false;
     unsigned ObjCount = MFrameInfo.getNumObjects();
@@ -801,7 +804,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
     // Get stack offset of the stack object at StackIndex-1 and add the
     // specified offset to get the displacement of the referenced stack
     // object.
-    NewDisp = MFrameInfo.getObjectOffset(StackIndex - 1) + memRef.Disp;
+    NewDisp = MFrameInfo.getObjectOffset(StackIndex - 1) + MemRef.Disp;
   }
   // Look for alloc with offset NewDisp
   bool StackIndexFound = false;
@@ -824,7 +827,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   LLVMContext &llvmContext(MF.getFunction().getContext());
   const DataLayout &dataLayout = MR->getModule()->getDataLayout();
   unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
-  unsigned stackObjectSize = getInstructionMemOpSize(mi.getOpcode());
+  unsigned stackObjectSize = getInstructionMemOpSize(MI.getOpcode());
   switch (stackObjectSize) {
   default:
     Ty = Type::getInt64Ty(llvmContext);
@@ -847,7 +850,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
 
   // Create alloca instruction to allocate stack slot
   AllocaInst *alloca = new AllocaInst(Ty, allocaAddrSpace, 0, typeAlignment,
-                                      isStackPointerAdjust ? "StackAdj" : "");
+                                      IsStackPointerAdjust ? "StackAdj" : "");
 
   // Create a stack slot associated with the alloca instruction
   stackFrameIndex = MF.getFrameInfo().CreateStackObject(
@@ -1455,12 +1458,6 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
          "Unhandled memory reference instruction with non-zero segment "
          "register");
 
-  // Non-stack memory address is supported by this function.
-  uint64_t BaseSupReg = find64BitSuperReg(BaseReg);
-  assert((BaseSupReg != x86RegisterInfo->getStackRegister()) &&
-         (BaseSupReg != x86RegisterInfo->getFramePtr()) &&
-         "Not yet supported: Abstraction of value representing stack-based "
-         "address expression");
   // IndexReg * ScaleAmt
   // Generate mul scaleAmt, IndexRegVal, if IndexReg is not 0.
   if (IndexReg != X86::NoRegister) {
@@ -3882,8 +3879,10 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     // not expected to be encountered.
     else if (BaseSupReg == X86::RIP) {
       MemoryRefValue = createPCRelativeAccesssValue(MI);
-    } else {
-      // Get load/store operand
+    }
+    // If this is neither a stack reference nor a pc-relative access, get the
+    // associated memory address expression value.
+    if (MemoryRefValue == nullptr) {
       Value *memrefValue = getMemoryAddressExprValue(MI);
       MemoryRefValue = memrefValue;
     }
@@ -4490,7 +4489,6 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     // Branch condition value
     Value *BranchCond = nullptr;
     // Predicate operation to be performed
-    CmpInst::Predicate Pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
     Value *TrueValue = ConstantInt::getTrue(Ctx);
     Value *FalseValue = ConstantInt::getFalse(Ctx);
     auto Opcode = MI->getOpcode();
@@ -4519,9 +4517,9 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *CFValue = CTRec->RegValues[CFIndex];
       assert(CFValue != nullptr &&
              "Failed to get EFLAGS value while raising JB");
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Construct a compare instruction
-      BranchCond = new ICmpInst(Pred, CFValue, TrueValue);
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue, TrueValue,
+                                "CmpCF_JB");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_E: {
@@ -4530,9 +4528,9 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *ZFValue = CTRec->RegValues[ZFIndex];
       assert(ZFValue != nullptr &&
              "Failed to get EFLAGS value while raising JE");
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Construct a compare instruction
-      BranchCond = new ICmpInst(Pred, ZFValue, TrueValue);
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue, TrueValue,
+                                "CmpZF_JE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_NE: {
@@ -4541,9 +4539,9 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *ZFValue = CTRec->RegValues[ZFIndex];
       assert(ZFValue != nullptr &&
              "Failed to get EFLAGS value while raising JNE");
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Construct a compare instruction
-      BranchCond = new ICmpInst(Pred, ZFValue, FalseValue);
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
+                                FalseValue, "CmpZF_JNE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_S: {
@@ -4552,10 +4550,9 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *SFValue = CTRec->RegValues[SFIndex];
       assert(SFValue != nullptr &&
              "Failed to get EFLAGS value while raising JS");
-
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Construct a compare instruction
-      BranchCond = new ICmpInst(Pred, SFValue, TrueValue);
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue, TrueValue,
+                                "CmpSF_JS");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_NS: {
@@ -4564,14 +4561,13 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *SFValue = CTRec->RegValues[SFIndex];
       assert(SFValue != nullptr &&
              "Failed to get EFLAGS value while raising JNS");
-
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Construct a compare instruction
-      BranchCond = new ICmpInst(Pred, SFValue, FalseValue);
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue,
+                                FalseValue, "CmpSF_JNS");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_A: {
-      // CF==0 and ZF==0
+      // CF == 0 and ZF == 0
       int CFIndex = getEflagBitIndex(EFLAGS::CF);
       int ZFIndex = getEflagBitIndex(EFLAGS::ZF);
       Value *CFValue = CTRec->RegValues[CFIndex];
@@ -4579,25 +4575,26 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
 
       assert((CFValue != nullptr) && (ZFValue != nullptr) &&
              "Failed to get EFLAGS value while raising JA");
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Test CF == 0
-      Instruction *CFCond = new ICmpInst(Pred, CFValue, FalseValue, "CFCmp_JA");
+      Instruction *CFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
+                                         FalseValue, "CFCmp_JA");
       CandBB->getInstList().push_back(CFCond);
       // Test ZF == 0
-      Instruction *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_JA");
+      Instruction *ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
+                                         FalseValue, "ZFCmp_JA");
       CandBB->getInstList().push_back(ZFCond);
       BranchCond = BinaryOperator::CreateAnd(ZFCond, CFCond, "CFAndZF_JA");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_AE: {
-      // CF = 0
+      // CF == 0
       int CFIndex = getEflagBitIndex(EFLAGS::CF);
       Value *CFValue = CTRec->RegValues[CFIndex];
       assert(CFValue != nullptr &&
              "Failed to get EFLAGS value while raising JAE");
-      Pred = CmpInst::Predicate::ICMP_EQ;
-      // Compare CF = 0
-      BranchCond = new ICmpInst(Pred, CFValue, FalseValue, "CFCmp_JAE");
+      // Compare CF == 0
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
+                                FalseValue, "CFCmp_JAE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_BE: {
@@ -4608,12 +4605,13 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *ZFValue = CTRec->RegValues[ZFIndex];
       assert((CFValue != nullptr) && (ZFValue != nullptr) &&
              "Failed to get EFLAGS value while raising JBE");
-      Pred = CmpInst::Predicate::ICMP_EQ;
-      // Compare CF = 1
-      Instruction *CFCond = new ICmpInst(Pred, CFValue, TrueValue, "CFCmp_JBE");
+      // Compare CF == 1
+      Instruction *CFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
+                                         TrueValue, "CFCmp_JBE");
       CandBB->getInstList().push_back(CFCond);
-      // Compare ZF = 1
-      Instruction *ZFCond = new ICmpInst(Pred, ZFValue, TrueValue, "ZFCmp_JBE");
+      // Compare ZF == 1
+      Instruction *ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
+                                         TrueValue, "ZFCmp_JBE");
       CandBB->getInstList().push_back(ZFCond);
       BranchCond = BinaryOperator::CreateOr(ZFCond, CFCond, "CFAndZF_JBE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
@@ -4631,12 +4629,13 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       assert(((ZFValue != nullptr) && (SFValue != nullptr) &&
               (OFValue != nullptr)) &&
              "Failed to get EFLAGS value while raising JG");
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Compare ZF and 0
-      ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_JG");
+      ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue, FalseValue,
+                            "ZFCmp_JG");
       CandBB->getInstList().push_back(ZFCond);
       // Test SF == OF
-      SFOFCond = new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_JG");
+      SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue, OFValue,
+                              "SFOFCmp_JG");
       CandBB->getInstList().push_back(SFOFCond);
       BranchCond = BinaryOperator::CreateAnd(ZFCond, SFOFCond, "ZFAndSFOF_JG");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
@@ -4649,9 +4648,9 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       Value *OFValue = CTRec->RegValues[OFIndex];
       assert(SFValue != nullptr && OFValue != nullptr &&
              "Failed to get EFLAGS value while raising JGE");
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Compare SF and OF
-      BranchCond = new ICmpInst(Pred, SFValue, OFValue);
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue, OFValue,
+                                "CmpSFOF_JGE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_L: {
@@ -4663,9 +4662,8 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       assert(((SFValue != nullptr) && (OFValue != nullptr)) &&
              "Failed to get EFLAGS value while raising JL");
       // Test SF != OF
-      Pred = CmpInst::Predicate::ICMP_NE;
-      // Compare SF and OF
-      BranchCond = new ICmpInst(Pred, SFValue, OFValue);
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue, OFValue,
+                                "SFAndOF_JL");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_LE: {
@@ -4681,16 +4679,15 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       assert(((ZFValue != nullptr) && (SFValue != nullptr) &&
               (OFValue != nullptr)) &&
              "Failed to get EFLAGS value while raising JLE");
-      Pred = CmpInst::Predicate::ICMP_EQ;
       // Compare ZF and 1
-      ZFCond = new ICmpInst(Pred, ZFValue, TrueValue);
+      ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue, TrueValue,
+                            "CmpZF_JLE");
       CandBB->getInstList().push_back(ZFCond);
       // Test SF != OF
-      Pred = CmpInst::Predicate::ICMP_NE;
-      // Compare SF and OF
-      SFOFCond = new ICmpInst(Pred, SFValue, OFValue);
+      SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue, OFValue,
+                              "CmpOF_JLE");
       CandBB->getInstList().push_back(SFOFCond);
-      BranchCond = BinaryOperator::CreateOr(ZFCond, SFOFCond);
+      BranchCond = BinaryOperator::CreateOr(ZFCond, SFOFCond, "ZFOrSF_JLE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_INVALID:

@@ -9,7 +9,7 @@
 // This file contains the implementation of ARMEliminatePrologEpilog class
 // for use by llvm-mctoll.
 //
-//===----------------------------------------------------------------------===/
+//===----------------------------------------------------------------------===//
 
 #include "ARMEliminatePrologEpilog.h"
 #include "ARMSubtarget.h"

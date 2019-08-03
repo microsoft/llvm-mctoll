@@ -2,10 +2,10 @@
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
-// CHECK: ret val: 15
+// CHECK: ret val: 0
 
 	.text
-	.file	"test-add.c"
+	.file	"test-and.c"
 	.globl	call_me                 # -- Begin function call_me
 	.p2align	4, 0x90
 	.type	call_me,@function
@@ -13,6 +13,9 @@ call_me:                                # @call_me
 	.cfi_startproc
 # %bb.0:                                # %entry
 	addq	$5, (%rdi)
+	movl	$4, %esi
+	andl	(%rdi), %esi
+	movl	%esi, (%rdi)
 	movzwl	(%rdi), %eax
                                         # kill: def $eax killed $eax killed $rax
 	retq
@@ -29,7 +32,6 @@ main:                                   # @main
 	pushq	%rax
 	.cfi_def_cfa_offset 16
 	movl	$5, 4(%rsp)
-	addq	$5, 4(%rsp)
 	leaq	4(%rsp), %rdi
 	callq	call_me
 	movl	$.L.str, %edi

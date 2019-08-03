@@ -5,12 +5,13 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit ab4f2ea79318a158d3ab7d395ad6102dc085fada (HEAD -> master, origin/master, origin/HEAD)
-Author: Stanislav Mekhanoshin <Stanislav.Mekhanoshin@amd.com>
-Date:   Tue Jun 18 19:10:59 2019 +0000
+commit 542720b2bc48d243d2eec93157feebc37af0e202
+Author: Matt Arsenault <Matthew.Arsenault@amd.com>
+Date:   Mon Jul 22 15:02:34 2019 +0000
 
-    [AMDGPU] gfx1010 disassembler changes for wave32
-    
-    Differential Revision: https://reviews.llvm.org/D63506
-    
-    llvm-svn: 363721
+    TableGen: Support physical register inputs > 255
+
+    This was truncating register value that didn't fit in unsigned char.
+    Switch AMDGPU sendmsg intrinsics to using a tablegen pattern.
+
+    llvm-svn: 366695

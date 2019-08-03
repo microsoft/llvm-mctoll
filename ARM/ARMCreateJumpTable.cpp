@@ -140,8 +140,8 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
         for (iter_in = mcInstMapData.begin(); iter_in != mcInstMapData.end();
              iter_in++) {
           MCInstOrData mcInstorData = iter_in->second;
-          if (mcInstorData.is_data() && mcInstorData.get_data() > 0) {
-            uint64_t Offset = mcInstorData.get_data() - TSAddr;
+          if (mcInstorData.isData() && mcInstorData.getData() > 0) {
+            uint64_t Offset = mcInstorData.getData() - TSAddr;
             auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(Offset);
             if (MBBNo != -1) {
               MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);

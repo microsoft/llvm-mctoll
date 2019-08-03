@@ -260,7 +260,7 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
   if (Symbol == nullptr) {
     auto Iter =
         MCIR->getMCInstAt(MCInstOffset + static_cast<uint64_t>(Imm) + 8);
-    uint64_t OffVal = static_cast<uint64_t>((*Iter).second.get_data());
+    uint64_t OffVal = static_cast<uint64_t>((*Iter).second.getData());
 
     for (auto &Sym : ObjFile->symbols()) {
       if (Sym.getELFType() == ELF::STT_OBJECT) {
@@ -378,7 +378,7 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
         GlobVal = M->getGlobalVariable(LocalNameRef);
         if (GlobVal == nullptr) {
           MCInstOrData MD = MCIR->getMCInstAt(Index)->second;
-          uint32_t Data = MD.get_data();
+          uint32_t Data = MD.getData();
           uint64_t DataAddr = (uint64_t)Data;
           // Check if this is an address in .rodata
           for (section_iterator SecIter : ObjFile->sections()) {

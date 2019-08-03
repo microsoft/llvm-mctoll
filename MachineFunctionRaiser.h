@@ -27,39 +27,47 @@ using IndexedData32 = std::pair<uint64_t, uint32_t>;
 
 class MachineFunctionRaiser {
 public:
-  MachineFunctionRaiser(Module &m, MachineFunction &mf, const ModuleRaiser *mr,
-                        uint64_t start, uint64_t end)
-      : MF(mf), module(m), MR(mr) {
-    init(start, end);
+  MachineFunctionRaiser(Module &M, MachineFunction &MF, const ModuleRaiser *MR,
+                        uint64_t Start, uint64_t End)
+      : MF(MF), M(M), machineInstRaiser(nullptr), MR(MR) {
+    
+    mcInstRaiser = new MCInstRaiser(Start, End);
+
     // The new MachineFunction is not in SSA form, yet
     MF.getProperties().reset(MachineFunctionProperties::Property::IsSSA);
   };
 
+  virtual ~MachineFunctionRaiser() { delete mcInstRaiser; }
+
   bool runRaiserPasses();
+
   MachineFunction &getMachineFunction() const { return MF; }
 
   // Getters
   MCInstRaiser *getMCInstRaiser() { return mcInstRaiser; }
-  Module &getModule() { return module; }
+
+  Module &getModule() { return M; }
+
   MachineInstructionRaiser *getMachineInstrRaiser() {
     return machineInstRaiser;
   }
-  void setMachineInstrRaiser(MachineInstructionRaiser *r) {
-    machineInstRaiser = r;
+
+  void setMachineInstrRaiser(MachineInstructionRaiser *MIR) {
+    machineInstRaiser = MIR;
   }
+
   Function *getRaisedFunction() {
     return machineInstRaiser->getRaisedFunction();
   }
+
   const ModuleRaiser *getModuleRaiser() { return MR; }
 
   // Cleanup orphaned empty basic blocks from raised function
   void cleanupRaisedFunction();
 
-  virtual ~MachineFunctionRaiser() { delete mcInstRaiser; }
-
 private:
   MachineFunction &MF;
-  Module &module;
+  Module &M;
 
   // Data members built and used by this class
   MCInstRaiser *mcInstRaiser;
@@ -70,9 +78,6 @@ private:
   // the instruction stream of a function symbol.
   std::vector<IndexedData32> dataBlobVector;
   const ModuleRaiser *MR;
-
-  // Functions
-  void init(uint64_t funcStart, uint64_t funcEnd);
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_FUNCTIONRAISER_H

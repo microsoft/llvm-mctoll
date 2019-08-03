@@ -20,14 +20,14 @@ using namespace llvm;
 
 class X86ModuleRaiser : public ModuleRaiser {
 public:
-  static bool classof(const ModuleRaiser *mr) {
-    return mr->getArch() == Triple::x86_64;
+  static bool classof(const ModuleRaiser *MR) {
+    return MR->getArch() == Triple::x86_64;
   }
   X86ModuleRaiser() : ModuleRaiser() { Arch = Triple::x86_64; };
 
   MachineFunctionRaiser *
-  CreateAndAddMachineFunctionRaiser(Function *f, const ModuleRaiser *mr,
-                                    uint64_t start, uint64_t end);
+  CreateAndAddMachineFunctionRaiser(Function *F, const ModuleRaiser *MR,
+                                    uint64_t Start, uint64_t End);
   bool collectDynamicRelocations();
 };
 

@@ -2,19 +2,22 @@
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
-// CHECK: ret val: 15
+// CHECK: ret val: 0
 
 	.text
-	.file	"test-add.c"
+	.file	"func_test.c"
 	.globl	call_me                 # -- Begin function call_me
 	.p2align	4, 0x90
 	.type	call_me,@function
 call_me:                                # @call_me
 	.cfi_startproc
 # %bb.0:                                # %entry
-	addq	$5, (%rdi)
-	movzwl	(%rdi), %eax
-                                        # kill: def $eax killed $eax killed $rax
+	movl	%edi, %eax
+	testl	$65535, %eax
+	cwtl
+	cmpl	$2, %eax
+	cmovnel	%esi, %eax
+	subl	%esi, %eax
 	retq
 .Lfunc_end0:
 	.size	call_me, .Lfunc_end0-call_me
@@ -28,9 +31,8 @@ main:                                   # @main
 # %bb.0:                                # %entry
 	pushq	%rax
 	.cfi_def_cfa_offset 16
-	movl	$5, 4(%rsp)
-	addq	$5, 4(%rsp)
-	leaq	4(%rsp), %rdi
+	movl	$1, %edi
+	movl	$-1, %esi
 	callq	call_me
 	movl	$.L.str, %edi
 	movl	%eax, %esi
@@ -51,5 +53,7 @@ main:                                   # @main
 	.size	.L.str, 13
 
 
+	.ident	"clang version 9.0.0 (https://github.com/llvm-mirror/clang.git 884b0b4b1912d272bdf140a63b7d779c785ce7c1) (https://github.com/llvm-mirror/llvm.git dabd4d53f4e2ae51e4ff71501075f0896863178b)"
 	.section	".note.GNU-stack","",@progbits
 	.addrsig
+	

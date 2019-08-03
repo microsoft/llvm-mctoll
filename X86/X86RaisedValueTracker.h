@@ -37,7 +37,7 @@ using MBBNoToValueMap = std::map<unsigned int, DefRegSzValuePair>;
 //                      MBBNo_2 -> { <PhysReg_2_Sz, Val_Y> } },
 //       ......
 //      }
-// Each entry of this map has the following sematics:
+// Each entry of this map has the following semantics:
 // SuperReg is defined in MBBNo using Val as a sub-register of size
 // PhysReg_Sz. E.g., SuperReg RAX may be actually defined as register of size 16
 // (i.e. AX).

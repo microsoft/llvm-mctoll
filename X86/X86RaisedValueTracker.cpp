@@ -205,6 +205,8 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
 
+  Value *RetValue = nullptr;
+
   // TODO : Support outside of GPRs need to be implemented.
   // Find the per-block definitions SuperReg
   PhysRegMBBValueDefMap::iterator PhysRegBBValDefIter =
@@ -217,11 +219,29 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
     if (mbbToValMapIter != mbbToValMap.end()) {
       assert((mbbToValMapIter->second.first != 0) &&
              "Found incorrect size of physical register");
-      return mbbToValMapIter->second.second;
+      RetValue = mbbToValMapIter->second.second;
     }
   }
+  // If MBBNo is entry and ReachingDef was not found, check to see
+  // if this is an argument value.
+  if ((RetValue == nullptr) && (MBBNo == 0)) {
+    int pos = x86MIRaiser->getArgumentNumber(PhysReg);
+
+    // If PReg is an argument register, get its value from function
+    // argument list.
+    if (pos > 0) {
+      // Get the value only if the function has an argument at
+      // pos.
+      Function *RaisedFunction = x86MIRaiser->getRaisedFunction();
+      if (pos <= (int)(RaisedFunction->arg_size())) {
+        Function::arg_iterator argIter = RaisedFunction->arg_begin() + pos - 1;
+        RetValue = argIter;
+      }
+    }
+  }
+
   // MachineBasicBlock with MBBNo does not define SuperReg.
-  return nullptr;
+  return RetValue;
 }
 
 // Get size of PhysReg last defined in MBBNo.
@@ -262,6 +282,8 @@ unsigned X86RaisedValueTracker::getInBlockPhysRegSize(unsigned int PhysReg,
 // define them. In the current basic block, use of this register is raised
 // as load from the the stack slot.
 Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
+  MachineFunction &MF = x86MIRaiser->getMF();
+  LLVMContext &Ctxt(MF.getFunction().getContext());
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
   Value *RetValue = nullptr;
@@ -275,7 +297,6 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
     assert((LocalDef.first == MBBNo) && "Inconsistent local def info found");
     RetValue = LocalDef.second;
   } else {
-    MachineFunction &MF = x86MIRaiser->getMF();
     const ModuleRaiser *MR = x86MIRaiser->getModuleRaiser();
     ReachingDefs = getGlobalReachingDefs(PhysReg, MBBNo);
     // If there are more than one distinct incoming reaching defs
@@ -287,7 +308,6 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       // 4. Return loaded value - RetValue
 
       // 1. Allocate 64-bit stack slot
-      LLVMContext &Ctxt(MF.getFunction().getContext());
       const DataLayout &DL = MR->getModule()->getDataLayout();
       unsigned allocaAddrSpace = DL.getAllocaAddrSpace();
       Type *AllocTy = Type::getInt64Ty(Ctxt);
@@ -306,11 +326,17 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       const MachineFrameInfo &MFI = MF.getFrameInfo();
       // Size of currently allocated object size
       int64_t ObjectSize = MFI.getObjectSize(StackFrameIndex);
-      // Size of object at previous index; 0 if this is the first object on
-      // stack.
-      int64_t PrevObjectSize =
-          (StackFrameIndex != 0) ? MFI.getObjectOffset(StackFrameIndex - 1) : 0;
-      int64_t Offset = PrevObjectSize - ObjectSize;
+      // Get the offset of the top of stack. Note that stack objects in MFI are
+      // not sorted by offset. So we need to walk the stack objects to find the
+      // offset of the top stack object.
+      int64_t StackTopOffset = 0;
+      for (int StackIndex = MFI.getObjectIndexBegin();
+           StackIndex < MFI.getObjectIndexEnd(); StackIndex++) {
+        int64_t ObjOffset = MFI.getObjectOffset(StackIndex);
+        if (ObjOffset < StackTopOffset)
+          StackTopOffset = ObjOffset;
+      }
+      int64_t Offset = StackTopOffset - ObjectSize;
 
       // Set object size.
       MF.getFrameInfo().setObjectOffset(StackFrameIndex, Offset);
@@ -342,20 +368,39 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
           // This is an incoming edge from a block that is not yet
           // raised. Record this in the set of incomplete promotions that will
           // be handled after all blocks are raised.
-          x86MIRaiser->recordDefsToPromote(SuperReg, MBBVal.first, Alloca);
+          x86MIRaiser->recordDefsToPromote(PhysReg, MBBVal.first, Alloca);
         } else {
           StoreInst *StInst = x86MIRaiser->promotePhysregToStackSlot(
-              SuperReg, MBBVal.second, MBBVal.first, Alloca);
+              PhysReg, MBBVal.second, MBBVal.first, Alloca);
           assert(StInst != nullptr &&
                  "Failed to promote reaching definition to stack slot");
         }
       }
       // 3. load from the stack slot for use in current block
-      LoadInst *LdReachingVal = new LoadInst(Alloca);
+      Instruction *LdReachingVal = new LoadInst(Alloca);
       // Insert load instruction
       x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo))
           ->getInstList()
           .push_back(LdReachingVal);
+      // Stack slots are always 64-bit. So, make sure that the loaded value has
+      // the type that can be represented by PhysReg.
+      Type *RegType = (isEflagBit(PhysReg))
+                          ? Type::getInt1Ty(Ctxt)
+                          : x86MIRaiser->getPhysRegType(PhysReg);
+      Type *LdReachingValType = LdReachingVal->getType();
+      assert(LdReachingValType->isIntegerTy() &&
+             "Unhandled type mismatch of reaching register definition");
+      if (RegType != LdReachingValType) {
+        // Create cast instruction
+        Instruction *CInst = CastInst::Create(
+            CastInst::getCastOpcode(LdReachingVal, false, RegType, false),
+            LdReachingVal, RegType);
+        // Insert the cast instruction
+        x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo))
+            ->getInstList()
+            .push_back(CInst);
+        LdReachingVal = CInst;
+      }
       RetValue = LdReachingVal;
       // Record that PhysReg is now defined as load from stack location in
       // current MBB with MBBNo.
@@ -364,6 +409,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       // Just return the value of the single reaching definition
       RetValue = ReachingDefs[0].second;
   }
+
   return RetValue;
 }
 

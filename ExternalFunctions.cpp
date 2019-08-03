@@ -20,74 +20,72 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
         {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
         {"__isoc99_scanf", {"i32", {"i8*"}, true}},
+        {"clock_gettime", {"i32", {"i64", "i64*"}, false}},
         {"time", {"i64", {"i64*"}, false}},
+        {"sleep", {"i32", {"i32"}, false}},
         {"puts", {"i32", {"i8*"}, false}},
         {"free", {"void", {"i8*"}, false}},
         {"atoi", {"i32", {"i8*"}, false}}};
 
-// Given the primitive type's string representation, return the Type*
-// corresponding to it.
+// Return the Type* corresponding to a primitive type's string representation
 Type *ExternalFunctions::getPrimitiveType(const StringRef &TypeStr,
-                                          LLVMContext &llvmCtx) {
-  Type *retType = nullptr;
-  if (TypeStr.equals("void")) {
-    retType = Type::getVoidTy(llvmCtx);
-  } else if (TypeStr.equals("i8")) {
-    retType = Type::getInt8Ty(llvmCtx);
-  } else if (TypeStr.equals("i16")) {
-    retType = Type::getInt16Ty(llvmCtx);
-  } else if (TypeStr.equals("i32")) {
-    retType = Type::getInt32Ty(llvmCtx);
-  } else if (TypeStr.equals("i64")) {
-    retType = Type::getInt64Ty(llvmCtx);
-  } else if (TypeStr.equals("i8*")) {
-    retType = Type::getInt8PtrTy(llvmCtx);
-  } else if (TypeStr.equals("i16*")) {
-    retType = Type::getInt16PtrTy(llvmCtx);
-  } else if (TypeStr.equals("i32*")) {
-    retType = Type::getInt32PtrTy(llvmCtx);
-  } else if (TypeStr.equals("i64*")) {
-    retType = Type::getInt64PtrTy(llvmCtx);
-  }
-  assert((retType != nullptr) &&
-         "Unsupported primitive type specified in known function prototype");
-  return retType;
+                                          LLVMContext &Context) {
+  if (TypeStr.equals("void"))
+    return Type::getVoidTy(Context);
+  if (TypeStr.equals("i8"))
+    return Type::getInt8Ty(Context);
+  if (TypeStr.equals("i16"))
+    return Type::getInt16Ty(Context);
+  if (TypeStr.equals("i32"))
+    return Type::getInt32Ty(Context);
+  if (TypeStr.equals("i64"))
+    return Type::getInt64Ty(Context);
+  if (TypeStr.equals("i8*"))
+    return Type::getInt8PtrTy(Context);
+  if (TypeStr.equals("i16*"))
+    return Type::getInt16PtrTy(Context);
+  if (TypeStr.equals("i32*"))
+    return Type::getInt32PtrTy(Context);
+  if (TypeStr.equals("i64*"))
+    return Type::getInt64PtrTy(Context);
+
+  llvm_unreachable("Unsupported primitive type in known function prototype");
 }
 
-// Construct and return a Function* corresponding to a known glibc function.
-Function *ExternalFunctions::Create(StringRef &CFuncName, Module &module) {
-  Function *Func = nullptr;
-  llvm::LLVMContext &llvmContext(module.getContext());
-  FunctionType *FuncType = nullptr;
+// Construct and return a Function* corresponding to a known external function
+Function *ExternalFunctions::Create(StringRef &CFuncName, Module &M) {
+  llvm::LLVMContext &Context(M.getContext());
+
   auto iter = ExternalFunctions::GlibcFunctions.find(CFuncName);
   if (iter == ExternalFunctions::GlibcFunctions.end()) {
     errs() << CFuncName.data() << "\n";
-    assert(false && "Unspported undefined function");
+    llvm_unreachable("Unsupported undefined function");
   }
-  Func = module.getFunction(CFuncName);
-  if (Func == nullptr) {
-    const ExternalFunctions::RetAndArgs &retAndArgs = iter->second;
-    Type *RetType =
-        ExternalFunctions::getPrimitiveType(retAndArgs.ReturnType, llvmContext);
-    std::vector<Type *> ArgVec;
-    for (StringRef arg : retAndArgs.Arguments) {
-      Type *argType = ExternalFunctions::getPrimitiveType(arg, llvmContext);
-      ArgVec.push_back(argType);
-    }
-    ArrayRef<Type *> Args(ArgVec);
-    FuncType = FunctionType::get(RetType, Args, retAndArgs.isVariadic);
-    if (FuncType == nullptr) {
-      errs() << CFuncName.data() << "\n";
-      assert(false &&
-             "Failed to construct function type for external function");
-    }
-    FunctionCallee FunCallee = module.getOrInsertFunction(CFuncName, FuncType);
-    assert(isa<Function>(FunCallee.getCallee()) && "Expect Function");
 
+  Function *Func = M.getFunction(CFuncName);
+  if (Func != nullptr)
+    return Func;
+
+  const ExternalFunctions::RetAndArgs &retAndArgs = iter->second;
+  Type *RetType =
+      ExternalFunctions::getPrimitiveType(retAndArgs.ReturnType, Context);
+  std::vector<Type *> ArgVec;
+  for (StringRef arg : retAndArgs.Arguments) {
+    Type *argType = ExternalFunctions::getPrimitiveType(arg, Context);
+    ArgVec.push_back(argType);
+  }
+
+  ArrayRef<Type *> Args(ArgVec);
+  if (FunctionType *FuncType =
+          FunctionType::get(RetType, Args, retAndArgs.isVariadic)) {
+    FunctionCallee FunCallee = M.getOrInsertFunction(CFuncName, FuncType);
+    assert(isa<Function>(FunCallee.getCallee()) && "Expect Function");
     Func = reinterpret_cast<Function *>(FunCallee.getCallee());
     Func->setCallingConv(CallingConv::C);
     Func->setDSOLocal(true);
+    return Func;
   }
 
-  return Func;
+  errs() << CFuncName.data() << "\n";
+  llvm_unreachable("Failed to construct external function's type");
 }

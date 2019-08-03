@@ -18,8 +18,8 @@
 #include "X86Subtarget.h"
 
 namespace mctoll {
-// Instruction Kinds
 
+// Instruction Kinds
 typedef enum {
   Unknown = 0,
   BINARY_OP_RM,
@@ -108,9 +108,9 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::ADCX64rm, {8, Unknown}},
     {X86::ADCX64rr, {0, Unknown}},
     {X86::ADD16i16, {2, BINARY_OP_WITH_IMM}},
-    {X86::ADD16mi, {2, Unknown}},
-    {X86::ADD16mi8, {2, Unknown}},
-    {X86::ADD16mr, {2, Unknown}},
+    {X86::ADD16mi, {2, MOV_TO_MEM}},
+    {X86::ADD16mi8, {2, MOV_TO_MEM}},
+    {X86::ADD16mr, {2, MOV_TO_MEM}},
     {X86::ADD16ri, {0, BINARY_OP_WITH_IMM}},
     {X86::ADD16ri8, {0, BINARY_OP_WITH_IMM}},
     {X86::ADD16ri8_DB, {0, Unknown}},
@@ -120,9 +120,9 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::ADD16rr_DB, {0, Unknown}},
     {X86::ADD16rr_REV, {0, Unknown}},
     {X86::ADD32i32, {4, BINARY_OP_WITH_IMM}},
-    {X86::ADD32mi, {4, Unknown}},
-    {X86::ADD32mi8, {4, Unknown}},
-    {X86::ADD32mr, {4, Unknown}},
+    {X86::ADD32mi, {4, MOV_TO_MEM}},
+    {X86::ADD32mi8, {4, MOV_TO_MEM}},
+    {X86::ADD32mr, {4, MOV_TO_MEM}},
     {X86::ADD32ri, {0, BINARY_OP_WITH_IMM}},
     {X86::ADD32ri8, {0, BINARY_OP_WITH_IMM}},
     {X86::ADD32ri8_DB, {0, Unknown}},
@@ -132,9 +132,9 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::ADD32rr_DB, {0, Unknown}},
     {X86::ADD32rr_REV, {0, Unknown}},
     {X86::ADD64i32, {8, BINARY_OP_WITH_IMM}},
-    {X86::ADD64mi32, {8, Unknown}},
+    {X86::ADD64mi32, {8, MOV_TO_MEM}},
     {X86::ADD64mi8, {8, MOV_TO_MEM}},
-    {X86::ADD64mr, {8, Unknown}},
+    {X86::ADD64mr, {8, MOV_TO_MEM}},
     {X86::ADD64ri32, {0, BINARY_OP_WITH_IMM}},
     {X86::ADD64ri32_DB, {0, Unknown}},
     {X86::ADD64ri8, {0, BINARY_OP_WITH_IMM}},
@@ -144,9 +144,9 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::ADD64rr_DB, {0, Unknown}},
     {X86::ADD64rr_REV, {0, Unknown}},
     {X86::ADD8i8, {0, BINARY_OP_WITH_IMM}},
-    {X86::ADD8mi, {1, Unknown}},
-    {X86::ADD8mi8, {1, Unknown}},
-    {X86::ADD8mr, {1, Unknown}},
+    {X86::ADD8mi, {1, MOV_TO_MEM}},
+    {X86::ADD8mi8, {1, MOV_TO_MEM}},
+    {X86::ADD8mr, {1, MOV_TO_MEM}},
     {X86::ADD8ri, {0, Unknown}},
     {X86::ADD8ri8, {0, Unknown}},
     {X86::ADD8rm, {1, Unknown}},
@@ -215,7 +215,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::AND16mr, {2, Unknown}},
     {X86::AND16ri, {0, BINARY_OP_WITH_IMM}},
     {X86::AND16ri8, {0, BINARY_OP_WITH_IMM}},
-    {X86::AND16rm, {2, Unknown}},
+    {X86::AND16rm, {2, BINARY_OP_RM}},
     {X86::AND16rr, {0, BINARY_OP_RR}},
     {X86::AND16rr_REV, {0, Unknown}},
     {X86::AND32i32, {4, BINARY_OP_WITH_IMM}},
@@ -224,7 +224,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::AND32mr, {4, Unknown}},
     {X86::AND32ri, {0, BINARY_OP_WITH_IMM}},
     {X86::AND32ri8, {0, BINARY_OP_WITH_IMM}},
-    {X86::AND32rm, {4, Unknown}},
+    {X86::AND32rm, {4, BINARY_OP_RM}},
     {X86::AND32rr, {0, BINARY_OP_RR}},
     {X86::AND32rr_REV, {0, Unknown}},
     {X86::AND64i32, {8, BINARY_OP_WITH_IMM}},
@@ -233,7 +233,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::AND64mr, {8, Unknown}},
     {X86::AND64ri32, {0, BINARY_OP_WITH_IMM}},
     {X86::AND64ri8, {0, BINARY_OP_WITH_IMM}},
-    {X86::AND64rm, {8, Unknown}},
+    {X86::AND64rm, {8, BINARY_OP_RM}},
     {X86::AND64rr, {0, BINARY_OP_RR}},
     {X86::AND64rr_REV, {0, Unknown}},
     {X86::AND8i8, {1, BINARY_OP_WITH_IMM}},
@@ -242,7 +242,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::AND8mr, {1, Unknown}},
     {X86::AND8ri, {0, BINARY_OP_WITH_IMM}},
     {X86::AND8ri8, {0, Unknown}},
-    {X86::AND8rm, {1, Unknown}},
+    {X86::AND8rm, {1, BINARY_OP_RM}},
     {X86::AND8rr, {0, BINARY_OP_RR}},
     {X86::AND8rr_REV, {0, Unknown}},
     {X86::ANDN32rm, {4, Unknown}},
@@ -507,7 +507,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::CMP16rm, {2, Unknown}},
     {X86::CMP16rr, {0, COMPARE}},
     {X86::CMP16rr_REV, {0, Unknown}},
-    {X86::CMP32i32, {0, Unknown}},
+    {X86::CMP32i32, {0, COMPARE}},
     {X86::CMP32mi, {4, Unknown}},
     {X86::CMP32mi8, {4, Unknown}},
     {X86::CMP32mr, {4, Unknown}},
@@ -665,7 +665,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::DEC16r, {0, Unknown}},
     {X86::DEC16r_alt, {0, Unknown}},
     {X86::DEC32m, {0, Unknown}},
-    {X86::DEC32r, {0, Unknown}},
+    {X86::DEC32r, {0, BINARY_OP_WITH_IMM}},
     {X86::DEC32r_alt, {0, Unknown}},
     {X86::DEC64m, {0, Unknown}},
     {X86::DEC64r, {0, Unknown}},
@@ -957,10 +957,10 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::IMPLICIT_DEF, {0, Unknown}},
     {X86::IMUL16m, {0, Unknown}},
     {X86::IMUL16r, {0, Unknown}},
-    {X86::IMUL16rm, {2, Unknown}},
+    {X86::IMUL16rm, {2, BINARY_OP_RM}},
     {X86::IMUL16rmi, {2, Unknown}},
     {X86::IMUL16rmi8, {2, Unknown}},
-    {X86::IMUL16rr, {0, Unknown}},
+    {X86::IMUL16rr, {0, BINARY_OP_RR}},
     {X86::IMUL16rri, {0, Unknown}},
     {X86::IMUL16rri8, {0, Unknown}},
     {X86::IMUL32m, {0, Unknown}},
@@ -991,7 +991,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::INC16r, {0, Unknown}},
     {X86::INC16r_alt, {0, Unknown}},
     {X86::INC32m, {0, Unknown}},
-    {X86::INC32r, {0, Unknown}},
+    {X86::INC32r, {0, BINARY_OP_WITH_IMM}},
     {X86::INC32r_alt, {0, Unknown}},
     {X86::INC64m, {0, Unknown}},
     {X86::INC64r, {0, Unknown}},
@@ -1715,7 +1715,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::MOVSX32rr16, {0, MOV_RR}},
     {X86::MOVSX32rr8, {0, MOV_RR}},
     {X86::MOVSX32rr8_NOREX, {0, Unknown}},
-    {X86::MOVSX64rm16, {2, Unknown}},
+    {X86::MOVSX64rm16, {2, MOV_FROM_MEM}},
     {X86::MOVSX64rm32, {4, MOV_FROM_MEM}},
     {X86::MOVSX64rm8, {1, Unknown}},
     {X86::MOVSX64rr16, {0, MOV_RR}},
@@ -1821,7 +1821,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::OR16ri, {0, Unknown}},
     {X86::OR16ri8, {0, Unknown}},
     {X86::OR16rm, {2, Unknown}},
-    {X86::OR16rr, {0, Unknown}},
+    {X86::OR16rr, {0, BINARY_OP_RR}},
     {X86::OR16rr_REV, {0, Unknown}},
     {X86::OR32i32, {0, Unknown}},
     {X86::OR32mi, {4, Unknown}},
@@ -1848,7 +1848,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::OR8ri, {0, Unknown}},
     {X86::OR8ri8, {0, Unknown}},
     {X86::OR8rm, {1, Unknown}},
-    {X86::OR8rr, {0, Unknown}},
+    {X86::OR8rr, {0, BINARY_OP_RR}},
     {X86::OR8rr_REV, {0, Unknown}},
     {X86::ORPDrm, {0, Unknown}},
     {X86::ORPDrr, {0, Unknown}},
@@ -2659,39 +2659,39 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::ST_FpP80m64, {0, Unknown}},
     {X86::ST_Frr, {0, Unknown}},
     {X86::SUB16i16, {0, Unknown}},
-    {X86::SUB16mi, {2, Unknown}},
-    {X86::SUB16mi8, {2, Unknown}},
-    {X86::SUB16mr, {2, Unknown}},
+    {X86::SUB16mi, {2, COMPARE}},
+    {X86::SUB16mi8, {2, COMPARE}},
+    {X86::SUB16mr, {2, COMPARE}},
     {X86::SUB16ri, {0, Unknown}},
     {X86::SUB16ri8, {0, Unknown}},
     {X86::SUB16rm, {2, Unknown}},
     {X86::SUB16rr, {0, Unknown}},
     {X86::SUB16rr_REV, {0, Unknown}},
     {X86::SUB32i32, {0, Unknown}},
-    {X86::SUB32mi, {4, Unknown}},
-    {X86::SUB32mi8, {4, Unknown}},
-    {X86::SUB32mr, {4, Unknown}},
+    {X86::SUB32mi, {4, COMPARE}},
+    {X86::SUB32mi8, {4, COMPARE}},
+    {X86::SUB32mr, {4, COMPARE}},
     {X86::SUB32ri, {0, BINARY_OP_WITH_IMM}},
     {X86::SUB32ri8, {0, BINARY_OP_WITH_IMM}},
-    {X86::SUB32rm, {4, Unknown}},
+    {X86::SUB32rm, {4, COMPARE}},
     {X86::SUB32rr, {0, COMPARE}},
     {X86::SUB32rr_REV, {0, Unknown}},
     {X86::SUB64i32, {0, BINARY_OP_WITH_IMM}},
-    {X86::SUB64mi32, {8, Unknown}},
-    {X86::SUB64mi8, {8, Unknown}},
-    {X86::SUB64mr, {8, Unknown}},
+    {X86::SUB64mi32, {8, COMPARE}},
+    {X86::SUB64mi8, {8, COMPARE}},
+    {X86::SUB64mr, {8, COMPARE}},
     {X86::SUB64ri32, {0, BINARY_OP_WITH_IMM}},
     {X86::SUB64ri8, {0, BINARY_OP_WITH_IMM}},
-    {X86::SUB64rm, {8, Unknown}},
+    {X86::SUB64rm, {8, COMPARE}},
     {X86::SUB64rr, {0, COMPARE}},
     {X86::SUB64rr_REV, {0, Unknown}},
     {X86::SUB8i8, {0, Unknown}},
-    {X86::SUB8mi, {1, Unknown}},
-    {X86::SUB8mi8, {1, Unknown}},
-    {X86::SUB8mr, {1, Unknown}},
+    {X86::SUB8mi, {1, COMPARE}},
+    {X86::SUB8mi8, {1, COMPARE}},
+    {X86::SUB8mr, {1, COMPARE}},
     {X86::SUB8ri, {0, Unknown}},
     {X86::SUB8ri8, {0, Unknown}},
-    {X86::SUB8rm, {1, Unknown}},
+    {X86::SUB8rm, {1, COMPARE}},
     {X86::SUB8rr, {0, Unknown}},
     {X86::SUB8rr_REV, {0, Unknown}},
     {X86::SUBPDrm, {0, Unknown}},
@@ -2775,17 +2775,17 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::TCRETURNmi64, {0, Unknown}},
     {X86::TCRETURNri, {0, Unknown}},
     {X86::TCRETURNri64, {0, Unknown}},
-    {X86::TEST16i16, {0, Unknown}},
+    {X86::TEST16i16, {0, BINARY_OP_WITH_IMM}},
     {X86::TEST16mi, {2, Unknown}},
     {X86::TEST16mr, {2, Unknown}},
     {X86::TEST16ri, {0, BINARY_OP_WITH_IMM}},
     {X86::TEST16rr, {0, BINARY_OP_RR}},
-    {X86::TEST32i32, {0, Unknown}},
+    {X86::TEST32i32, {0, BINARY_OP_WITH_IMM}},
     {X86::TEST32mi, {4, Unknown}},
     {X86::TEST32mr, {4, Unknown}},
     {X86::TEST32ri, {0, BINARY_OP_WITH_IMM}},
     {X86::TEST32rr, {0, BINARY_OP_RR}},
-    {X86::TEST64i32, {0, Unknown}},
+    {X86::TEST64i32, {0, BINARY_OP_WITH_IMM}},
     {X86::TEST64mi32, {8, Unknown}},
     {X86::TEST64mr, {8, Unknown}},
     {X86::TEST64ri32, {0, Unknown}},
@@ -14194,20 +14194,20 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::XSTORE, {0, Unknown}},
     {X86::XTEST, {0, Unknown}}};
 
-static inline InstructionKind getInstructionKind(unsigned int opc) {
-  auto iter = mctoll::X86AddlInstrInfo.find(opc);
-  assert(iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode ");
-  return iter->second.InstKind;
+static inline InstructionKind getInstructionKind(unsigned int Opcode) {
+  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
+  assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
+  return Iter->second.InstKind;
 }
 
-static inline unsigned short getInstructionMemOpSize(unsigned int opc) {
-  auto iter = mctoll::X86AddlInstrInfo.find(opc);
-  assert(iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode ");
-  return iter->second.MemOpSize;
+static inline unsigned short getInstructionMemOpSize(unsigned int Opcode) {
+  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
+  assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
+  return Iter->second.MemOpSize;
 }
 
-static inline bool isNoop(unsigned int opc) {
-  return (getInstructionKind(opc) == mctoll::InstructionKind::NOOP);
+static inline bool isNoop(unsigned int Opcode) {
+  return (getInstructionKind(Opcode) == mctoll::InstructionKind::NOOP);
 }
 
 } // namespace mctoll

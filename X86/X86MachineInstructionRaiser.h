@@ -31,22 +31,33 @@ using MBBNumToBBMap = std::map<unsigned int, BasicBlock *>;
 // raised.
 using PhysRegMBBValTuple = std::tuple<unsigned int, unsigned int, Value *>;
 
+// MCPhysReg set
+using MCPhysRegSet = std::set<MCPhysReg>;
+
+// Map of 64-bit super register -> size of register access
+using MCPhysRegSizeMap = std::map<MCPhysReg, uint16_t>;
+
 // Forward declaration of X86RaisedValueTracker
 class X86RaisedValueTracker;
 
 class X86MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
   X86MachineInstructionRaiser() = delete;
-  X86MachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
-                              MCInstRaiser *mcir);
+  X86MachineInstructionRaiser(MachineFunction &MF, const ModuleRaiser *MR,
+                              MCInstRaiser *MIR);
   bool raise();
 
-  unsigned int find64BitSuperReg(unsigned int);
+  // Return the 64-bit super-register of PhysReg.
+  unsigned int find64BitSuperReg(unsigned int PhysReg);
+  // Return the Type of the physical register.
+  Type *getPhysRegType(unsigned int PhysReg);
+
   bool insertAllocaInEntryBlock(Instruction *alloca);
   BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
                                        int MBBNo, AllocaInst *Alloca);
+  int getArgumentNumber(unsigned PReg);
 
 private:
   // Bit positions used for individual status flags of EFLAGS register.
@@ -66,6 +77,10 @@ private:
   // Set of reaching definitions that were not promoted during since defining
   // block is not yet raised and need to be promoted upon raising all blocks.
   std::set<PhysRegMBBValTuple> reachingDefsToPromote;
+
+  // A map of MBB number to known defined registers along with the access size
+  // at the exit of the MBB.
+  std::map<int, MCPhysRegSizeMap> PerMBBDefinedPhysRegMap;
 
   static const uint8_t FPUSTACK_SZ = 8;
   struct {
@@ -155,13 +170,11 @@ private:
   Value *matchSSAValueToSrcRegSize(const MachineInstr &mi, unsigned SrcOpIndex);
 
   Type *getFunctionReturnType();
-  Type *getReturnTypeFromMBB(MachineBasicBlock &MBB);
+  Type *getReturnTypeFromMBB(MachineBasicBlock &MBB, bool &HasCall);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
   Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);
-  int getArgumentNumber(unsigned PReg);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
-
   Value *getRegOrArgValue(unsigned PReg, int MBBNo);
   Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex);
 
@@ -171,11 +184,9 @@ private:
                             const MachineBasicBlock *MBB,
                             unsigned StopAtInstProp, bool &HasStopInst);
 
-  // Return the Type of the physical register.
-  Type *getPhysRegType(unsigned int PhysReg);
-
-  bool appendInstToBB(BasicBlock *, Instruction *);
+  void AddRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
 
   std::vector<JumpTableInfo> jtList;
 };
+
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ELIMINATEPROLOGEPILOG_H

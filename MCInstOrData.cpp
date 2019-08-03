@@ -10,69 +10,64 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
-MCInstOrData::MCInstOrData(const MCInstOrData &v) {
-  type = v.type;
-
-  switch (v.type) {
+MCInstOrData::MCInstOrData(const MCInstOrData &V) {
+  Type = V.Type;
+  switch (Type) {
   case Tag::DATA:
-    d = v.d;
+    Data = V.Data;
     break;
   case Tag::INSTRUCTION:
-    new (&i) MCInst(v.i);
+    new (&Inst) MCInst(V.Inst);
+    break;
   }
 }
 
-MCInstOrData::MCInstOrData(const MCInst &v) {
-  type = Tag::INSTRUCTION;
-  new (&i) MCInst(v); // placement new: explicitly construct MCInst
+MCInstOrData::MCInstOrData(const MCInst &V) {
+  Type = Tag::INSTRUCTION;
+  new (&Inst) MCInst(V); // placement new: explicitly construct MCInst
 }
 
-MCInstOrData::MCInstOrData(const uint32_t v) {
-  type = Tag::DATA;
-  d = v;
-}
-
-uint32_t MCInstOrData::get_data() const {
-  assert(type == Tag::DATA);
-  return d;
-}
-
-MCInst MCInstOrData::get_mcInst() const {
-  assert(type == Tag::INSTRUCTION);
-  return i;
+MCInstOrData::MCInstOrData(const uint32_t V) {
+  Type = Tag::DATA;
+  Data = V;
 }
 
 // This is needed because of user-defined variant MCInst being part of MCInst
-MCInstOrData &MCInstOrData::operator=(const MCInstOrData &e) {
-  if (type == Tag::INSTRUCTION && e.type == Tag::INSTRUCTION) {
-    i = e.i; // Usual MCInst assignment
-    return *this;
-  }
-  if (type == Tag::INSTRUCTION)
-    i.~MCInst(); // Explicit destroy
+MCInstOrData &MCInstOrData::operator=(const MCInstOrData &E) {
+  if (Type == Tag::INSTRUCTION) {
+    if (E.Type == Tag::INSTRUCTION) {
+      // Usual MCInst assignment
+      Inst = E.Inst; 
+      return *this;
+    }
+    // Explicit destroy
+    Inst.~MCInst(); 
+  }   
 
-  switch (e.type) {
+  switch (E.Type) {
   case Tag::DATA:
-    d = e.d;
+    Data = E.Data;
     break;
   case Tag::INSTRUCTION:
-    new (&i) MCInst(e.i);
-    type = e.type;
+    new (&Inst) MCInst(E.Inst);
+    Type = E.Type;
+    break;
   }
   return *this;
 }
 
 void MCInstOrData::dump() const {
-  switch (type) {
+  switch (Type) {
   case Tag::DATA:
-    outs() << "0x" << format("%04" PRIx16, d) << "\n";
+    outs() << "0x" << format("%04" PRIx16, Data) << "\n";
     break;
   case Tag::INSTRUCTION:
-    i.dump();
+    Inst.dump();
     break;
   }
 }
+
 MCInstOrData::~MCInstOrData() {
-  if (type == Tag::INSTRUCTION)
-    i.~MCInst(); // explicit destroy
+  if (Type == Tag::INSTRUCTION)
+    Inst.~MCInst(); // explicit destroy
 }

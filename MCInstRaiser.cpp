@@ -49,11 +49,11 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
         std::vector<uint64_t> prevMCInstTargets;
 
         // If handling a mcInst
-        if (mcInstorData.is_mcInst()) {
-          MCInst mcInst = mcInstorData.get_mcInst();
+        if (mcInstorData.isMCInst()) {
+          MCInst mcInst = mcInstorData.getMCInst();
           // If this instruction is preceeded by mcInst
-          if (prevTextSecBytes.is_mcInst()) {
-            MCInst prevMCInst = prevTextSecBytes.get_mcInst();
+          if (prevTextSecBytes.isMCInst()) {
+            MCInst prevMCInst = prevTextSecBytes.getMCInst();
             // If previous MCInst is a branch
             if (MIA->isBranch(prevMCInst)) {
               uint64_t Target;
@@ -82,9 +82,8 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
             }
             // Previous MCInst is not a branch. So, current instruction is a
             // target
-            else if ((mcInstIndex >= FuncStart) && (mcInstIndex <= FuncEnd)) {
+            else if ((mcInstIndex >= FuncStart) && (mcInstIndex <= FuncEnd))
               prevMCInstTargets.push_back(mcInstIndex);
-            }
 
             // Add to MBB -> targets map
             MBBNumToMCInstTargetsMap.insert(
@@ -104,15 +103,15 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
       }
 
       // Add the new MBB to MachineFunction
-      if (mcInstorData.is_mcInst()) {
+      if (mcInstorData.isMCInst()) {
         MF.push_back(MF.CreateMachineBasicBlock());
         curMBBEntryInstIndex = mcInstIndex;
       }
     }
-    if (mcInstorData.is_mcInst()) {
+    if (mcInstorData.isMCInst()) {
       // Add raised MachineInstr to current MBB.
       MF.back().push_back(
-          RaiseMCInst(*MII, MF, mcInstorData.get_mcInst(), mcInstIndex));
+          RaiseMCInst(*MII, MF, mcInstorData.getMCInst(), mcInstIndex));
     }
   }
 
@@ -144,8 +143,7 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
         outs() << "**** Warning : Index ";
         outs().write_hex(mbbMCInstTgt);
         outs() << " not found\n";
-        // assert(0);
-      } else {
+      } else if (!MF.getBlockNumbered(mbbIndex)->isReturnBlock()) {
         MachineBasicBlock *succ = MF.getBlockNumbered(tgtIter->second);
         currentMBB->addSuccessorWithoutProb(succ);
       }
@@ -163,8 +161,8 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
 static inline int64_t raiseSignedImm(int64_t val, const DataLayout &dl) {
   if (dl.getPointerSize() == 4)
     return static_cast<int32_t>(val);
-  else
-    return val;
+
+  return val;
 }
 
 MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
@@ -234,17 +232,17 @@ void MCInstRaiser::dump() const {
 bool MCInstRaiser::adjustFuncEnd(uint64_t n) {
   // NOTE: At present it appears that we only need it to increase the function
   // end index.
-  if (FuncEnd > n) {
+  if (FuncEnd > n)
     return false;
-  }
+
   FuncEnd = n;
   return true;
 }
 
 void MCInstRaiser::addMCInstOrData(uint64_t index, MCInstOrData mcInst) {
   // Set dataInCode flag as appropriate
-  if (mcInst.is_data() && !dataInCode) {
+  if (mcInst.isData() && !dataInCode)
     dataInCode = true;
-  }
+
   mcInstMap.insert(std::make_pair(index, mcInst));
 }

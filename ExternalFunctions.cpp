@@ -18,11 +18,13 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"__printf_chk", {"i32", {"i8*"}, true}},
         {"malloc", {"i8*", {"i64"}, false}},
         {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
+        {"memset", {"i8*", {"i8*", "i32", "i64"}, false}},
         {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
         {"__isoc99_scanf", {"i32", {"i8*"}, true}},
         {"clock_gettime", {"i32", {"i64", "i64*"}, false}},
         {"time", {"i64", {"i64*"}, false}},
         {"sleep", {"i32", {"i32"}, false}},
+        {"putchar", {"i32", {"i32"}, false}},
         {"puts", {"i32", {"i8*"}, false}},
         {"free", {"void", {"i8*"}, false}},
         {"atoi", {"i32", {"i8*"}, false}}};

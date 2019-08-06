@@ -26,6 +26,7 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
@@ -112,25 +113,40 @@ bool ARMCreateJumpTable::UpdatetheBranchInst(MachineBasicBlock &MBB) {
   return true;
 }
 
-/// Raise the machine jumptable accordint to the CFG.
+/// Raise the machine jumptable according to the CFG.
 bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
-  // A vector to record MBBS that need be erased upon jump table creation.
+  // A vector to record MBBs that need to be erased upon jump table creation.
   std::vector<MachineBasicBlock *> MBBsToBeErased;
 
   std::map<uint64_t, MCInstOrData> mcInstMapData;
   std::map<uint64_t, MCInstOrData>::iterator iter_in;
 
-  int64_t TSAddr = MR->getTextSectionAddress();
-
   // Save the ADDri and Calculate the start address of data.
   for (MachineBasicBlock &JmpTblBaseCalcMBB : MF) {
     for (MachineBasicBlock::iterator CurMBBIter = JmpTblBaseCalcMBB.begin();
          CurMBBIter != JmpTblBaseCalcMBB.end(); CurMBBIter++) {
-      MachineInstr &JmpTblOffsetCalcMI = (*CurMBBIter);
-      // Find the MI: %r0 = ADDri %pc
+      MachineInstr &JmpTblOffsetCalcMI = *CurMBBIter;
+      // Find the MI: %r0 = ADDri %pc, #8
+      // add     r0, pc, #8
+      // ldr     r1, [sp]
+      // ldr     r2, [r0, r1, lsl #2]
+      // add     pc, r0, r2
       if (JmpTblOffsetCalcMI.getOpcode() == ARM::ADDri &&
           JmpTblOffsetCalcMI.getOperand(1).getReg() == ARM::PC &&
           JmpTblOffsetCalcMI.getOperand(2).getImm() == 8) {
+        // If the fourth instruction in swith block is "add pc, rm, rn",
+        // this library should be built with "-fPIC".
+        bool IsFPIC = false;
+        MachineBasicBlock::iterator FourthInstr = CurMBBIter;
+        std::advance(FourthInstr, 3);
+        if (FourthInstr != JmpTblBaseCalcMBB.end()) {
+          MachineInstr &JGPC = *FourthInstr;
+          if (JGPC.getOpcode() == ARM::ADDrr &&
+              JGPC.getOperand(0).getReg() == ARM::PC) {
+            IsFPIC = true;
+          }
+        }
+
         // A vector of switch target MBBs
         std::vector<MachineBasicBlock *> JmpTgtMBBvec;
         assert(
@@ -141,7 +157,16 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
              iter_in++) {
           MCInstOrData mcInstorData = iter_in->second;
           if (mcInstorData.isData() && mcInstorData.getData() > 0) {
-            uint64_t Offset = mcInstorData.getData() - TSAddr;
+            // The 16 is 8 + 8. The first 8 is the PC offset, the second 8 is
+            // the immediate of current instruction.
+            // If the current library is position-independent, the offset should
+            // be CASE VALUE + PC + 8.
+            // If the current library is not position-independent, the offset
+            // should be CASE VALUE - text section address.
+            uint64_t Offset =
+                IsFPIC ? (mcInstorData.getData() +
+                          MCIR->getMCInstIndex(JmpTblOffsetCalcMI) + 16)
+                       : (mcInstorData.getData() - MR->getTextSectionAddress());
             auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(Offset);
             if (MBBNo != -1) {
               MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);

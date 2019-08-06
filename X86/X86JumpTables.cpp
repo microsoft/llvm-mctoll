@@ -128,7 +128,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
               JmpTblOffsetCalcMI.getOperand(LoadOpIndex);
           unsigned int LoadPReg = LoadOp.getReg();
           assert(
-              TargetRegisterInfo::isPhysicalRegister(LoadPReg) &&
+              Register::isPhysicalRegister(LoadPReg) &&
               "Expect destination to be a physical register in move from mem "
               "instruction");
           const TargetRegisterInfo *TRI =
@@ -278,7 +278,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
           // defines.
           if (MO.isReg()) {
             unsigned int DefReg = MO.getReg();
-            if (TargetRegisterInfo::isPhysicalRegister(DefReg)) {
+            if (Register::isPhysicalRegister(DefReg)) {
               EflagsDefRegs.insert(find64BitSuperReg(DefReg));
             }
           }
@@ -301,7 +301,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
             // Check if this use register is defined by EflagsModInstr
             if (MO.isReg()) {
               unsigned int UseReg = MO.getReg();
-              if (TargetRegisterInfo::isPhysicalRegister(UseReg)) {
+              if (Register::isPhysicalRegister(UseReg)) {
                 unsigned SReg = (UseReg == X86::EFLAGS)
                                     ? UseReg
                                     : find64BitSuperReg(UseReg);
@@ -320,7 +320,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
           for (auto MO : CurInstr.defs()) {
             if (MO.isReg()) {
               unsigned int DefReg = MO.getReg();
-              if (TargetRegisterInfo::isPhysicalRegister(DefReg)) {
+              if (Register::isPhysicalRegister(DefReg)) {
                 if (EflagsDefRegs.find(find64BitSuperReg(DefReg)) !=
                     EflagsDefRegs.end()) {
                   EflagsDefRegs.erase(DefReg);

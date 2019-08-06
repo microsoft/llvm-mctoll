@@ -5,13 +5,23 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 542720b2bc48d243d2eec93157feebc37af0e202
-Author: Matt Arsenault <Matthew.Arsenault@amd.com>
-Date:   Mon Jul 22 15:02:34 2019 +0000
+commit 78769ec403873ba243a5131150851f5ffaec6e9d
+Author: Michael Kruse <llvm@meinersbur.de>
+Date:   Mon Aug 5 19:12:10 2019 +0000
 
-    TableGen: Support physical register inputs > 255
+    [libomptarget] Harmonize emitting CUDA errors and general debug messages.
 
-    This was truncating register value that didn't fit in unsigned char.
-    Switch AMDGPU sendmsg intrinsics to using a tablegen pattern.
+    Ensures that CUDA fail reasons (such as "No CUDA-capable device detected")
+    are printed together with libomptarget's debug message
+    (e.g. "Error when setting CUDA context"). Previously, the former was
+    printed only in CMAKE_BUILD_TYPE=Debug builds while the latter was
+    enabled by LIBOMPTARGET_ENABLE_DEBUG.
 
-    llvm-svn: 366695
+    With this change, also only call cuGetErrorString when the error will be
+    printed.
+
+    Suggested-by: Ye Luo <xw111luoye@gmail.com>
+
+    Differential Revision: https://reviews.llvm.org/D65687
+
+    llvm-svn: 367910

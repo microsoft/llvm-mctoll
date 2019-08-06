@@ -161,7 +161,7 @@ static inline uint8_t getPhysRegOperandSize(const MachineInstr &MI,
   assert(Op.isReg() && "Attempt to get size of non-register operand");
 
   unsigned int RegNo = Op.getReg();
-  if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
+  if (Register::isPhysicalRegister(RegNo)) {
     if (is64BitPhysReg(RegNo))
       return 8;
     if (is32BitPhysReg(RegNo))
@@ -183,7 +183,7 @@ static inline Type *getPhysRegOperandType(const MachineInstr &MI,
   assert(Op.isReg() && "Attempt to get type of non-register operand");
 
   unsigned int RegNo = Op.getReg();
-  if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
+  if (Register::isPhysicalRegister(RegNo)) {
     LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
     if (is64BitPhysReg(RegNo))
       return Type::getInt64Ty(Ctx);
@@ -277,7 +277,7 @@ bool X86MachineInstructionRaiser::hasPhysRegDefInBlock(
         // If the define operand is a register
         if (MO.isReg()) {
           unsigned MOReg = MO.getReg();
-          if (TargetRegisterInfo::isPhysicalRegister(MOReg)) {
+          if (Register::isPhysicalRegister(MOReg)) {
             if (SuperReg == find64BitSuperReg(MOReg))
               return true;
           }
@@ -3139,7 +3139,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   bool IsPCRelMemRef = (BaseSupReg == X86::RIP);
   const MachineOperand &LoadOp = MI.getOperand(LoadOpIndex);
   unsigned int LoadPReg = LoadOp.getReg();
-  assert(TargetRegisterInfo::isPhysicalRegister(LoadPReg) &&
+  assert(Register::isPhysicalRegister(LoadPReg) &&
          "Expect destination to be a physical register in move from mem "
          "instruction");
 

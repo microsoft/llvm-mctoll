@@ -696,7 +696,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
 
   assert((ReachingValue != nullptr) &&
          "Null incoming value of reaching definition found");
-  assert(raisedValues->getInBlockPhysRegDefVal(PhysReg, DefiningMBB) ==
+  assert(raisedValues->getInBlockRegOrArgDefVal(PhysReg, DefiningMBB).second ==
              ReachingValue &&
          "Inconsistent reaching defined value found");
   assert(ReachingValue->getType()->isIntegerTy() &&
@@ -752,7 +752,7 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
              "during reaching definition fixup");
       AllocaInst *Alloca = dyn_cast<AllocaInst>(Val);
       Value *ReachingDef =
-          raisedValues->getInBlockPhysRegDefVal(PReg, DefiningMBBNo);
+          raisedValues->getInBlockRegOrArgDefVal(PReg, DefiningMBBNo).second;
       assert((ReachingDef != nullptr) &&
              "Null reaching definition found during reaching definition fixup");
       StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,

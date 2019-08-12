@@ -1,14 +1,13 @@
+// REQUIRES: x86_64-linux
 // RUN: clang -o %t %s
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
 // CHECK: ret val: 5
 
-	/**
-	   * Test for correct discovery of arguments of call_me in the absence of
-	   * a use of the arument register before the xor instruction that zeros
-	   * the argument register. Contrast this with func-xor-three-arg.s
-	*/
+// Test for correct discovery of arguments of call_me in the absence of
+// a use of the argument register before the xor instruction that zeros
+// the argument register. Contrast this with func-xor-three-arg.s
 
 	.text
 	.file	"argument.c"

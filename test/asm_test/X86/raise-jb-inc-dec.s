@@ -1,13 +1,12 @@
+# REQUIRES: x86_64-linux
 # RUN: clang -o %t %s
 # RUN: llvm-mctoll -d %t
 # RUN: clang -o %t-dis %t-dis.ll
 # RUN: %t-dis 2>&1 | FileCheck %s
 # CHECK: call funcion 19
 
-#
 # This test will produce the mi as follows:
 #   JCC_1 11, 7, <0x55da748a5948>, implicit $eflags
-#
 
         .text
         .file	"test-jcc-7.c"

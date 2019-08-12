@@ -1,3 +1,4 @@
+# REQUIRES: x86_64-linux
 # RUN: clang -o %t %s
 # RUN: llvm-mctoll -d %t
 # RUN: clang -o %t-dis %t-dis.ll
@@ -5,10 +6,8 @@
 # CHECK: data: 8877
 # CHECK: data after not: ffff7788
 
-#
 # This test will produce the mi as follows:
 #   $eax = NOT32r $eax(tied-def 0), <0x56331826a2e8>
-#
 
 	.text
 	.file	"test-not.c"

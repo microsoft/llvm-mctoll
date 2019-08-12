@@ -3182,47 +3182,45 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     Type *MemTy = nullptr;
     Type *ExtTy = nullptr;
     switch (Opcode) {
-    default: {
+    default:
       raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
                                        LdInst);
-    } break;
-    case X86::MOVSX64rm32: {
+      break;
+    case X86::MOVSX64rm32:
       ExtTy = Type::getInt64Ty(Ctx);
       MemTy = Type::getInt32Ty(Ctx);
-    } break;
-    case X86::MOVZX64rm16: {
+      break;
+    case X86::MOVZX64rm16:
     case X86::MOVSX64rm16:
       ExtTy = Type::getInt64Ty(Ctx);
       MemTy = Type::getInt16Ty(Ctx);
-    } break;
+      break;
     case X86::MOVZX64rm8:
-    case X86::MOVSX64rm8: {
+    case X86::MOVSX64rm8:
       ExtTy = Type::getInt64Ty(Ctx);
       MemTy = Type::getInt8Ty(Ctx);
-    } break;
-
+      break;
     case X86::MOVZX32rm8:
     case X86::MOVZX32rm8_NOREX:
-    case X86::MOVSX32rm8: {
+    case X86::MOVSX32rm8:
       ExtTy = Type::getInt32Ty(Ctx);
       MemTy = Type::getInt8Ty(Ctx);
-    } break;
+      break;
     case X86::MOVZX32rm16:
-    case X86::MOVSX32rm16: {
+    case X86::MOVSX32rm16:
       ExtTy = Type::getInt32Ty(Ctx);
       MemTy = Type::getInt16Ty(Ctx);
-    } break;
-
+      break;
     case X86::MOVZX16rm8:
-    case X86::MOVSX16rm8: {
+    case X86::MOVSX16rm8:
       ExtTy = Type::getInt16Ty(Ctx);
       MemTy = Type::getInt8Ty(Ctx);
-    } break;
+      break;
     case X86::MOVZX16rm16:
-    case X86::MOVSX16rm16: {
+    case X86::MOVSX16rm16:
       ExtTy = Type::getInt16Ty(Ctx);
       MemTy = Type::getInt16Ty(Ctx);
-    } break;
+      break;
     }
     // Decide based on opcode value and not opcode name??
     bool IsSextInst =
@@ -4303,8 +4301,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::SHR32r1:
     case X86::SHR64r1:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
-      /* fall through */
-      // no break
+      LLVM_FALLTHROUGH;
     case X86::SHR8ri:
     case X86::SHR16ri:
     case X86::SHR32ri:
@@ -4364,9 +4361,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     // Insert the binary operation instruction
     RaisedBB->getInstList().push_back(BinOpInstr);
     // Test and set affected flags
-    for (auto Flag : AffectedEFlags) {
+    for (auto Flag : AffectedEFlags)
       raisedValues->testAndSetEflagSSAValue(Flag, MBBNo, BinOpInstr);
-    }
 
     // Update PhysReg to Value map
     if (DstPReg != X86::NoRegister)

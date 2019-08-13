@@ -674,7 +674,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::DIV16m, {0, Unknown}},
     {X86::DIV16r, {0, Unknown}},
     {X86::DIV32m, {0, Unknown}},
-    {X86::DIV32r, {0, Unknown}},
+    {X86::DIV32r, {0, DIVIDE_REG_OP}},
     {X86::DIV64m, {0, Unknown}},
     {X86::DIV64r, {0, Unknown}},
     {X86::DIV8m, {0, Unknown}},

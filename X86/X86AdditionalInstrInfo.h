@@ -525,7 +525,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::CMP64rm, {8, Unknown}},
     {X86::CMP64rr, {0, COMPARE}},
     {X86::CMP64rr_REV, {0, Unknown}},
-    {X86::CMP8i8, {0, Unknown}},
+    {X86::CMP8i8, {0, COMPARE}},
     {X86::CMP8mi, {1, Unknown}},
     {X86::CMP8mi8, {1, Unknown}},
     {X86::CMP8mr, {1, Unknown}},

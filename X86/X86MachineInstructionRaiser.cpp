@@ -3644,13 +3644,19 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     }
   } else {
     // The instruction operands do not reference memory
-    unsigned Op1Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
-    unsigned Op2Index = 0;
+    unsigned Op1Index, Op2Index;
 
+    // Determine the appropriate operand indices of the instruction based on the
+    // usage of implicit registers. Note that a cmp instruction is translated as
+    // sub op1, op2 (i.e., op1 - op2).
     if (NumImplicitUses == 1) {
+      // If an implicit operand is used, that is op1.
       MCPhysReg UseReg = MCIDesc.ImplicitUses[0];
-      Op2Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
+      Op1Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
+      Op2Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
     } else {
+      // Explicit operands are used
+      Op1Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
       Op2Index = Op1Index + 1;
     }
 

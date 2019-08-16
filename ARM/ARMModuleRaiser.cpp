@@ -43,7 +43,13 @@ bool ARMModuleRaiser::collectDynamicRelocations() {
   SectionRef DotGotDotPltSec, DotRelaDotPltSec;
   for (const SectionRef Section : Obj->sections()) {
     StringRef SecName;
-    Section.getName(SecName);
+    if (auto NameOrErr = Section.getName())
+      SecName = *NameOrErr;
+    else {
+      consumeError(NameOrErr.takeError());
+      continue;
+    }
+
     if (SecName.equals(".rel.plt")) {
       DotRelaDotPltSec = Section;
     } else if (SecName.equals(".got")) {

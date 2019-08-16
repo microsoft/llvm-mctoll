@@ -283,9 +283,13 @@ SectionFilter ToolSectionFilter(llvm::object::ObjectFile const &O) {
         if (FilterSections.empty())
           return true;
         llvm::StringRef String;
-        std::error_code error = S.getName(String);
-        if (error)
+        if (auto NameOrErr = S.getName())
+          String = *NameOrErr;
+        else {
+          consumeError(NameOrErr.takeError());
           return false;
+        }
+
         return is_contained(FilterSections, String);
       },
       O);
@@ -979,7 +983,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       continue;
 
     StringRef SectionName;
-    Section.getName(SectionName);
+    if (auto NameOrErr = Section.getName())
+      SectionName = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
 
     uint64_t SectionAddr = Section.getAddress();
     uint64_t SectSize = Section.getSize();
@@ -1473,8 +1480,8 @@ void llvm::PrintSectionHeaders(const ObjectFile *Obj) {
             "Idx Name          Size      Address          Type\n";
   unsigned i = 0;
   for (const SectionRef &Section : ToolSectionFilter(*Obj)) {
-    StringRef Name;
-    error(Section.getName(Name));
+    StringRef Name = unwrapOrError(Section.getName(), Obj->getFileName());
+
     uint64_t Address = Section.getAddress();
     uint64_t Size = Section.getSize();
     bool Text = Section.isText();
@@ -1521,7 +1528,11 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
     section_iterator Section = *SectionOrErr;
     StringRef Name;
     if (Type == SymbolRef::ST_Debug && Section != o->section_end()) {
-      Section->getName(Name);
+      if (auto NameOrErr = Section->getName())
+        Name = *NameOrErr;
+      else
+        consumeError(NameOrErr.takeError());
+
     } else {
       Expected<StringRef> NameOrErr = Symbol.getName();
       if (!NameOrErr)
@@ -1570,8 +1581,9 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
         StringRef SegmentName = MachO->getSectionFinalSegmentName(DR);
         outs() << SegmentName << ",";
       }
-      StringRef SectionName;
-      error(Section->getName(SectionName));
+      StringRef SectionName =
+          unwrapOrError(Section->getName(), o->getFileName());
+
       outs() << SectionName;
     }
 
@@ -1663,7 +1675,11 @@ void llvm::printRawClangAST(const ObjectFile *Obj) {
   Optional<object::SectionRef> ClangASTSection;
   for (auto Sec : ToolSectionFilter(*Obj)) {
     StringRef Name;
-    Sec.getName(Name);
+    if (auto NameOrErr = Sec.getName())
+      Name = *NameOrErr;
+    else
+      consumeError(NameOrErr.takeError());
+
     if (Name == ClangASTSectionName) {
       ClangASTSection = Sec;
       break;

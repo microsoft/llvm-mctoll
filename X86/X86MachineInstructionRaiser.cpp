@@ -881,7 +881,10 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
     uint64_t SecEnd = SecStart + SecIter->getSize();
     if ((SecStart <= pltEntOff) && (SecEnd >= pltEntOff)) {
       StringRef SecName;
-      if (SecIter->getName(SecName)) {
+      if (auto NameOrErr = SecIter->getName())
+        SecName = *NameOrErr;
+      else {
+        consumeError(NameOrErr.takeError());
         assert(false && "Failed to get section name with PLT offset");
       }
       if (SecName.compare(".plt") != 0) {
@@ -889,8 +892,6 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       }
       StringRef SecData = unwrapOrError(SecIter->getContents(),
                                         MR->getObjectFile()->getFileName());
-      // StringRef BytesStr;
-      //    error(Section.getContents(BytesStr));
       ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(SecData.data()),
                               SecData.size());
       // Disassemble the first instruction at the offset

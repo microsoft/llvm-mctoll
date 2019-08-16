@@ -5,23 +5,17 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 78769ec403873ba243a5131150851f5ffaec6e9d
-Author: Michael Kruse <llvm@meinersbur.de>
-Date:   Mon Aug 5 19:12:10 2019 +0000
+commit ba3d595f93a45965adb4f47bfc57e28c00ba8942
+Author: Diego Astiazaran <diegoaat97@gmail.com>
+Date:   Fri Aug 16 00:10:49 2019 +0000
 
-    [libomptarget] Harmonize emitting CUDA errors and general debug messages.
+    [clang-doc] Serialize inherited attributes and methods
 
-    Ensures that CUDA fail reasons (such as "No CUDA-capable device detected")
-    are printed together with libomptarget's debug message
-    (e.g. "Error when setting CUDA context"). Previously, the former was
-    printed only in CMAKE_BUILD_TYPE=Debug builds while the latter was
-    enabled by LIBOMPTARGET_ENABLE_DEBUG.
+    clang-doc now serializes the inherited attributes and methods, not only the name of the base class.
+    All inherited are tracked, if B:A and C:B, info of A is included in C.
+    This data is stored in attribute Bases in a RecordInfo.
+    Previously tracked inheritance data, stored in Parents and VParents, hasn't been removed to reduce review load.
 
-    With this change, also only call cuGetErrorString when the error will be
-    printed.
+    Differential revision: https://reviews.llvm.org/D66238
 
-    Suggested-by: Ye Luo <xw111luoye@gmail.com>
-
-    Differential Revision: https://reviews.llvm.org/D65687
-
-    llvm-svn: 367910
+    llvm-svn: 369075

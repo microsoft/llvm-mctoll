@@ -474,7 +474,12 @@ static bool getPDataSection(const COFFObjectFile *Obj,
                             const RuntimeFunction *&RFStart, int &NumRFs) {
   for (const SectionRef &Section : Obj->sections()) {
     StringRef Name;
-    error(Section.getName(Name));
+    if (auto NameOrErr = Section.getName())
+      Name = *NameOrErr;
+    else {
+      consumeError(NameOrErr.takeError());
+      continue;
+    }
     if (Name != ".pdata")
       continue;
 

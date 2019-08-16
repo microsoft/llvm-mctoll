@@ -5,17 +5,37 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit ba3d595f93a45965adb4f47bfc57e28c00ba8942
-Author: Diego Astiazaran <diegoaat97@gmail.com>
-Date:   Fri Aug 16 00:10:49 2019 +0000
+commit 39eb2324f7ec48bd455c370dcb26ffcf9f8dfc48
+Author: Sanjay Patel <spatel@rotateright.com>
+Date:   Fri Aug 16 18:51:30 2019 +0000
 
-    [clang-doc] Serialize inherited attributes and methods
+    [InstCombine] canonicalize a scalar-select-of-vectors to vector select
 
-    clang-doc now serializes the inherited attributes and methods, not only the name of the base class.
-    All inherited are tracked, if B:A and C:B, info of A is included in C.
-    This data is stored in attribute Bases in a RecordInfo.
-    Previously tracked inheritance data, stored in Parents and VParents, hasn't been removed to reduce review load.
+    This pattern may arise more frequently with an enhancement to SLP vectorization suggested in PR42755:
+    https://bugs.llvm.org/show_bug.cgi?id=42755
+    ...but we should handle this pattern to make things easier for the backend either way.
 
-    Differential revision: https://reviews.llvm.org/D66238
+    For all in-tree targets that I looked at, codegen for typical vector sizes looks better when we change
+    to a vector select, so this is safe to do without a cost model (in other words, as a target-independent
+    canonicalization).
 
-    llvm-svn: 369075
+    For example, if the condition of the select is a scalar, we end up with something like this on x86:
+
+	    vpcmpgtd        %xmm0, %xmm1, %xmm0
+	    vpextrb $12, %xmm0, %eax
+	    testb   $1, %al
+	    jne     LBB0_2
+      ## %bb.1:
+	    vmovaps %xmm3, %xmm2
+      LBB0_2:
+	    vmovaps %xmm2, %xmm0
+
+    Rather than the splat-condition variant:
+
+	    vpcmpgtd        %xmm0, %xmm1, %xmm0
+	    vpshufd $255, %xmm0, %xmm0      ## xmm0 = xmm0[3,3,3,3]
+	    vblendvps       %xmm0, %xmm2, %xmm3, %xmm0
+
+    Differential Revision: https://reviews.llvm.org/D66095
+
+    llvm-svn: 369140

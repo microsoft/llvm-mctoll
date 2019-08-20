@@ -159,22 +159,7 @@ static inline uint8_t getPhysRegOperandSize(const MachineInstr &MI,
                                             unsigned int OpIndex) {
   MachineOperand Op = MI.getOperand(OpIndex);
   assert(Op.isReg() && "Attempt to get size of non-register operand");
-
-  unsigned int RegNo = Op.getReg();
-  if (Register::isPhysicalRegister(RegNo)) {
-    if (is64BitPhysReg(RegNo))
-      return 8;
-    if (is32BitPhysReg(RegNo))
-      return 4;
-    if (is16BitPhysReg(RegNo))
-      return 2;
-    if (is8BitPhysReg(RegNo))
-      return 1;
-
-    llvm_unreachable("Failed to get operand size for physical register");
-  }
-
-  llvm_unreachable("Register operand of unknown register class");
+  return (getPhysRegSizeInBits(Op.getReg()) / sizeof(uint64_t));
 }
 
 static inline Type *getPhysRegOperandType(const MachineInstr &MI,
@@ -182,22 +167,8 @@ static inline Type *getPhysRegOperandType(const MachineInstr &MI,
   MachineOperand Op = MI.getOperand(OpIndex);
   assert(Op.isReg() && "Attempt to get type of non-register operand");
 
-  unsigned int RegNo = Op.getReg();
-  if (Register::isPhysicalRegister(RegNo)) {
-    LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
-    if (is64BitPhysReg(RegNo))
-      return Type::getInt64Ty(Ctx);
-    if (is32BitPhysReg(RegNo))
-      return Type::getInt32Ty(Ctx);
-    if (is16BitPhysReg(RegNo))
-      return Type::getInt16Ty(Ctx);
-    if (is8BitPhysReg(RegNo))
-      return Type::getInt8Ty(Ctx);
-
-    llvm_unreachable("Failed to get operand type for physical register");
-  }
-
-  llvm_unreachable("Register operand of unknown register class");
+  LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
+  return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
 }
 
 static inline bool isPushToStack(const MachineInstr &MI) {
@@ -1744,34 +1715,30 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(
   return true;
 }
 
-// Check the sizes of the operand register at SrcOpindex and that of the
-// corresponding SSA value. Return a value that is either truncated or
-// sign-extended version of the SSA Value if their sizes do not match.
-// Return the SSA value of the operand register at SrcOpindex, if they
-// match. This is handles the situation following pattern of instructions
+// Check the sizes of the operand register PReg and that of the corresponding
+// SSA value. Return a value that is either truncated or sign-extended version
+// of the SSA Value if their sizes do not match. Return the SSA value of the
+// operand register PReg, if they match. This is handles the situation following
+// pattern of instructions
 //   rax <- ...
 //   edx <- opcode eax, ...
-
 Value *
 X86MachineInstructionRaiser::matchSSAValueToSrcRegSize(const MachineInstr &MI,
-                                                       unsigned SrcOpIndex) {
-  unsigned SrcOpSize = getPhysRegOperandSize(MI, SrcOpIndex);
-  Value *SrcOpValue = getRegOrArgValue(MI.getOperand(SrcOpIndex).getReg(),
-                                       MI.getParent()->getNumber());
+                                                       unsigned PReg) {
+  assert(Register::isPhysicalRegister(PReg) &&
+         "Expect physical register to get SSA value");
+  unsigned SrcOpSize = getPhysRegSizeInBits(PReg);
+  Value *SrcOpValue = getRegOrArgValue(PReg, MI.getParent()->getNumber());
   const DataLayout &dataLayout = MR->getModule()->getDataLayout();
 
   // Generate the appropriate cast instruction if the sizes of the current
   // source value and that of the source register do not match.
-  uint64_t SrcValueSize =
-      dataLayout.getTypeSizeInBits(SrcOpValue->getType()) / sizeof(uint64_t);
-
-  assert(SrcValueSize <= sizeof(uint64_t) && SrcOpSize <= sizeof(uint64_t) &&
-         "Unexpected source Value size in move instruction");
+  uint64_t SrcValueSize = dataLayout.getTypeSizeInBits(SrcOpValue->getType());
 
   if (SrcOpSize != SrcValueSize) {
     // Get the BasicBlock corresponding to MachineBasicBlock of MI.
     BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-    Type *CastTy = getPhysRegOperandType(MI, SrcOpIndex);
+    Type *CastTy = Type::getIntNTy(MF.getFunction().getContext(), SrcOpSize);
     CastInst *CInst = CastInst::Create(
         CastInst::getCastOpcode(SrcOpValue, false, CastTy, false), SrcOpValue,
         CastTy);
@@ -2247,7 +2214,9 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
            "Encountered mov instruction with undefined source register");
     assert(SrcValue->getType()->isSized() &&
            "Unsized source value in move instruction");
-    SrcValue = matchSSAValueToSrcRegSize(MI, Src1Index);
+    MachineOperand MO = MI.getOperand(Src1Index);
+    assert(MO.isReg() && "Unexpected non-register operand");
+    SrcValue = matchSSAValueToSrcRegSize(MI, MO.getReg());
 
     // Update the value mapping of DstPReg
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
@@ -2267,7 +2236,9 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
            "Encountered cmovcc instruction with undefined source register");
     assert(SrcValue->getType()->isSized() &&
            "Unsized source value in cmovcc instruction");
-    SrcValue = matchSSAValueToSrcRegSize(MI, Src2Index);
+    MachineOperand MO = MI.getOperand(Src2Index);
+    assert(MO.isReg() && "Unexpected non-register operand");
+    SrcValue = matchSSAValueToSrcRegSize(MI, MO.getReg());
 
     // Get destination operand value
     Value *DstValue = getRegOrArgValue(DstPReg, MBBNo);
@@ -4171,8 +4142,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
            "with RI/I format operands");
     unsigned SrcValIdx = 0;
     for (; SrcValIdx < NumImplicitUses; SrcValIdx++) {
-      OpValues[SrcValIdx] = getRegOrArgValue(MIDesc.ImplicitUses[SrcValIdx],
-                                             MI.getParent()->getNumber());
+      OpValues[SrcValIdx] =
+          matchSSAValueToSrcRegSize(MI, MIDesc.ImplicitUses[SrcValIdx]);
       NumOperandsEval++;
     }
 
@@ -4187,7 +4158,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
                "operand of BinOp instruction with RI/I operand format");
 
         // Get value of SrcOp appropriately sized.
-        OpValues[0] = matchSSAValueToSrcRegSize(MI, CurExplicitOpIndex);
+        MachineOperand MO = MI.getOperand(CurExplicitOpIndex);
+        assert(MO.isReg() && "Unexpected non-register operand");
+        OpValues[0] = matchSSAValueToSrcRegSize(MI, MO.getReg());
+
         CurExplicitOpIndex++;
         NumOperandsEval++;
       }

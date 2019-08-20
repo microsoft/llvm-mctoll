@@ -167,7 +167,7 @@ private:
 
   bool changePhysRegToVirtReg(MachineInstr &);
 
-  Value *matchSSAValueToSrcRegSize(const MachineInstr &mi, unsigned SrcOpIndex);
+  Value *matchSSAValueToSrcRegSize(const MachineInstr &, unsigned);
 
   Type *getFunctionReturnType();
   Type *getReturnTypeFromMBB(MachineBasicBlock &MBB, bool &HasCall);

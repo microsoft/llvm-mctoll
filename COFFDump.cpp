@@ -265,9 +265,7 @@ static void printSEHTable(const COFFObjectFile *Obj, uint32_t TableVA,
   if (Count == 0)
     return;
 
-  const pe32_header *PE32Header;
-  error(Obj->getPE32Header(PE32Header));
-  uint32_t ImageBase = PE32Header->ImageBase;
+  uint32_t ImageBase = Obj->getPE32Header()->ImageBase;
   uintptr_t IntPtr = 0;
   error(Obj->getVaPtr(TableVA, IntPtr));
   const support::ulittle32_t *P = (const support::ulittle32_t *)IntPtr;
@@ -295,11 +293,8 @@ static void printTLSDirectoryT(const coff_tls_directory<T> *TLSDir) {
 }
 
 static void printTLSDirectory(const COFFObjectFile *Obj) {
-  const pe32_header *PE32Header;
-  error(Obj->getPE32Header(PE32Header));
-
-  const pe32plus_header *PE32PlusHeader;
-  error(Obj->getPE32PlusHeader(PE32PlusHeader));
+  const pe32_header *PE32Header = Obj->getPE32Header();
+  const pe32plus_header *PE32PlusHeader = Obj->getPE32PlusHeader();
 
   // Skip if it's not executable.
   if (!PE32Header && !PE32PlusHeader)
@@ -325,9 +320,7 @@ static void printTLSDirectory(const COFFObjectFile *Obj) {
 
 static void printLoadConfiguration(const COFFObjectFile *Obj) {
   // Skip if it's not executable.
-  const pe32_header *PE32Header;
-  error(Obj->getPE32Header(PE32Header));
-  if (!PE32Header)
+  if (!Obj->getPE32Header())
     return;
 
   // Currently only x86 is supported
@@ -656,7 +649,7 @@ void llvm::printCOFFSymbolTable(const object::COFFImportFile *i) {
     std::string Name;
     raw_string_ostream NS(Name);
 
-    Sym.printName(NS);
+    cantFail(Sym.printName(NS));
     NS.flush();
 
     outs() << "[" << format("%2d", Index) << "]"

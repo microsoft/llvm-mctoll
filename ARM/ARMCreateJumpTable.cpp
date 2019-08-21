@@ -242,7 +242,7 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
             // Create a set of all physical registers this instruction defines.
             if (MO.isReg()) {
               unsigned int DefReg = MO.getReg();
-              if (TargetRegisterInfo::isPhysicalRegister(DefReg)) {
+              if (Register::isPhysicalRegister(DefReg)) {
                 EflagsDefRegs.insert(getARMCPSR(DefReg));
               }
             }
@@ -264,7 +264,7 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
               // Check if this use register is defined by EflagsModInstr
               if (MO.isReg()) {
                 unsigned int UseReg = MO.getReg();
-                if (TargetRegisterInfo::isPhysicalRegister(UseReg)) {
+                if (Register::isPhysicalRegister(UseReg)) {
                   if (EflagsDefRegs.find(getARMCPSR(UseReg)) !=
                       EflagsDefRegs.end()) {
                     MBBInstrsToErase.push_back(&CurInstr);
@@ -281,7 +281,7 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
             for (auto MO : CurInstr.defs()) {
               if (MO.isReg()) {
                 unsigned int DefReg = MO.getReg();
-                if (TargetRegisterInfo::isPhysicalRegister(DefReg)) {
+                if (Register::isPhysicalRegister(DefReg)) {
                   if (EflagsDefRegs.find(getARMCPSR(DefReg)) !=
                       EflagsDefRegs.end()) {
                     EflagsDefRegs.erase(DefReg);

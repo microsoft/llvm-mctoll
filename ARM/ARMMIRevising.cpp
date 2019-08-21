@@ -88,7 +88,10 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
     uint64_t SecEnd = SecStart + SecIter->getSize();
     if ((SecStart <= PLTEndOff) && (SecEnd >= PLTEndOff)) {
       StringRef SecName;
-      if (SecIter->getName(SecName)) {
+      if (auto NameOrErr = SecIter->getName())
+        SecName = *NameOrErr;
+      else {
+        consumeError(NameOrErr.takeError());
         assert(false && "Failed to get section name with PLT offset");
       }
       if (SecName.compare(".plt") != 0) {
@@ -223,43 +226,32 @@ void ARMMIRevising::relocateBranch(MachineInstr &MInst) {
   }
 }
 
-/// Address PC relative data in function, and create corresponding global value.
-void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
-  int64_t Imm = 0;
+/// Find global value by PC offset.
+const Value *ARMMIRevising::getGlobalValueByOffset(int64_t MCInstOffset,
+                                                   uint64_t PCOffset) {
   const Value *GlobVal = nullptr;
-
-  // To match the pattern: OPCODE Rx, [PC, #IMM]
-  if (MInst.getNumOperands() > 2) {
-    assert(MInst.getOperand(2).isImm() &&
-           "The third operand must be immediate data!");
-    Imm = MInst.getOperand(2).getImm();
-  }
-
   const ELF32LEObjectFile *ObjFile =
       dyn_cast<ELF32LEObjectFile>(MR->getObjectFile());
   assert(ObjFile != nullptr &&
          "Only 32-bit ELF binaries supported at present.");
+
   // Get the text section address
   int64_t TextSecAddr = MR->getTextSectionAddress();
   assert(TextSecAddr >= 0 && "Failed to find text section address");
 
-  // Get MCInst offset - the offset of machine instruction in the binary
-  // and instruction size
-  int64_t MCInstOffset = getMCInstIndex(MInst);
   uint64_t InstAddr = TextSecAddr + MCInstOffset;
-  uint64_t Offset = InstAddr + static_cast<uint64_t>(Imm) + 8;
+  uint64_t Offset = InstAddr + PCOffset;
 
   // Start to search the corresponding symbol.
   const SymbolRef *Symbol = nullptr;
   const RelocationRef *DynReloc = MR->getDynRelocAtOffset(Offset);
-
-  if (DynReloc && DynReloc->getType() == ELF::R_ARM_ABS32)
+  if (DynReloc && (DynReloc->getType() == ELF::R_ARM_ABS32 ||
+                   DynReloc->getType() == ELF::R_ARM_GLOB_DAT))
     Symbol = &*DynReloc->getSymbol();
 
   assert(MCIR != nullptr && "MCInstRaiser was not initialized!");
   if (Symbol == nullptr) {
-    auto Iter =
-        MCIR->getMCInstAt(MCInstOffset + static_cast<uint64_t>(Imm) + 8);
+    auto Iter = MCIR->getMCInstAt(Offset - TextSecAddr);
     uint64_t OffVal = static_cast<uint64_t>((*Iter).second.getData());
 
     for (auto &Sym : ObjFile->symbols()) {
@@ -276,7 +268,7 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
     }
   }
 
-  LLVMContext &LCtx = M->getContext();
+  LLVMContext &LCTX = M->getContext();
   if (Symbol != nullptr) {
     // If the symbol is found.
     Expected<StringRef> SymNameVal = Symbol->getName();
@@ -301,16 +293,16 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
       Type *GlobValTy = nullptr;
       switch (SymSz) {
       case 4:
-        GlobValTy = Type::getInt32Ty(LCtx);
+        GlobValTy = Type::getInt32Ty(LCTX);
         break;
       case 2:
-        GlobValTy = Type::getInt16Ty(LCtx);
+        GlobValTy = Type::getInt16Ty(LCTX);
         break;
       case 1:
-        GlobValTy = Type::getInt8Ty(LCtx);
+        GlobValTy = Type::getInt8Ty(LCTX);
         break;
       default:
-        GlobValTy = ArrayType::get(Type::getInt8Ty(LCtx), SymSz);
+        GlobValTy = ArrayType::get(Type::getInt8Ty(LCTX), SymSz);
         break;
       }
 
@@ -410,7 +402,7 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
                 StringRef ROStringRef(
                     reinterpret_cast<const char *>(RODataBegin));
                 Constant *StrConstant =
-                    ConstantDataArray::getString(LCtx, ROStringRef);
+                    ConstantDataArray::getString(LCTX, ROStringRef);
                 auto GlobalStrConstVal = new GlobalVariable(
                     *M, StrConstant->getType(), /* isConstant */ true,
                     GlobalValue::PrivateLinkage, StrConstant, "RO-String");
@@ -423,7 +415,7 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
           }
 
           if (GlobVal == nullptr) {
-            Type *ty = Type::getInt32Ty(LCtx);
+            Type *ty = Type::getInt32Ty(LCTX);
             Constant *GlobInit = ConstantInt::get(ty, Data);
             auto GlobVar = new GlobalVariable(*M, ty, /* isConstant */ true,
                                               GlobalValue::PrivateLinkage,
@@ -434,6 +426,51 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
           }
         }
       }
+    }
+  }
+
+  return GlobVal;
+}
+
+/// Address PC relative data in function, and create corresponding global value.
+void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
+  const Value *GlobVal = nullptr;
+  int64_t Imm = 0;
+  // To match the pattern: OPCODE Rx, [PC, #IMM]
+  if (MInst.getNumOperands() > 2) {
+    assert(MInst.getOperand(2).isImm() &&
+           "The third operand must be immediate data!");
+    Imm = MInst.getOperand(2).getImm();
+  }
+  // Get MCInst offset - the offset of machine instruction in the binary
+  // and instruction size
+  int64_t MCInstOffset = getMCInstIndex(MInst);
+  GlobVal =
+      getGlobalValueByOffset(MCInstOffset, static_cast<uint64_t>(Imm) + 8);
+
+  // Check the next instruction whether it is also related to PC relative data
+  // of global variable.
+  // It should like:
+  // ldr     r1, [pc, #32]
+  // ldr     r1, [pc, r1]
+  MachineInstr *NInst = MInst.getNextNode();
+  // To match the pattern: OPCODE Rx, [PC, Rd], Rd must be the def of previous
+  // instruction.
+  if (NInst->getNumOperands() >= 2 && NInst->getOperand(1).isReg() &&
+      NInst->getOperand(1).getReg() == ARM::PC &&
+      NInst->getOperand(2).isReg() &&
+      NInst->getOperand(2).getReg() == MInst.getOperand(0).getReg()) {
+    auto GV = dyn_cast<GlobalVariable>(GlobVal);
+    if (GV != nullptr && GV->isConstant()) {
+      // Firstly, read the PC relative data according to PC offset.
+      auto Init = GV->getInitializer();
+      uint64_t GVData = Init->getUniqueInteger().getZExtValue();
+      int64_t MCInstOff = getMCInstIndex(*NInst);
+      // Search the global symbol of object by PC relative data.
+      GlobVal = getGlobalValueByOffset(MCInstOff, GVData + 8);
+      // If the global symbol is exist, erase current ldr instruction.
+      if (GlobVal != nullptr)
+        NInst->eraseFromParent();
     }
   }
 

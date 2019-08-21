@@ -50,6 +50,8 @@ private:
   /// Decode modified immediate constants in some instructions with immediate
   /// operand.
   void decodeModImmOperand(MachineInstr &MInst);
+  /// Find global value by PC offset.
+  const Value *getGlobalValueByOffset(int64_t MCInstOffset, uint64_t PCOffset);
 
   MCInstRaiser *MCIR;
 };

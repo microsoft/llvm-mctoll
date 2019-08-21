@@ -1,3 +1,4 @@
+// REQUIRES: x86_64-linux
 // RUN: clang -o %t %s
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t1 %t-dis.ll

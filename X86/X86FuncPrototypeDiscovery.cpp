@@ -95,7 +95,7 @@ void X86MachineInstructionRaiser::AddRegisterToFunctionLiveInSet(
     if (LiveInSet.find(*SubRegs) != LiveInSet.end())
       PrevLiveInReg = *SubRegs;
   }
-  
+
   // If a sub-register of Reg is already in LiveInSet, replace it with Reg
   if (PrevLiveInReg != X86::NoRegister) {
     // Delete the sub-register and add the Reg
@@ -109,7 +109,7 @@ void X86MachineInstructionRaiser::AddRegisterToFunctionLiveInSet(
   // Check if LiveInSet already has a super-register of Reg
   for (MCSuperRegIterator SuperRegs(Reg, TRI, /*IncludeSelf=*/false);
        (SuperRegs.isValid() && (PrevLiveInReg == X86::NoRegister));
-        ++SuperRegs) {
+       ++SuperRegs) {
     if (LiveInSet.find(*SuperRegs) != LiveInSet.end())
       PrevLiveInReg = *SuperRegs;
   }
@@ -435,7 +435,7 @@ Type *X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB,
       const MachineOperand &MO = I->getOperand(0);
       if (MO.isReg()) {
         unsigned PReg = MO.getReg();
-        if (!TargetRegisterInfo::isPhysicalRegister(PReg)) {
+        if (!Register::isPhysicalRegister(PReg)) {
           continue;
         }
         // Check if PReg is any of the sub-registers of RAX (including
@@ -462,7 +462,7 @@ Type *X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB,
 
     // If the defined register is a return register
     if (DefReg != X86::NoRegister) {
-      if (!TargetRegisterInfo::isPhysicalRegister(DefReg)) {
+      if (!Register::isPhysicalRegister(DefReg)) {
         continue;
       }
       if (ReturnType == nullptr) {

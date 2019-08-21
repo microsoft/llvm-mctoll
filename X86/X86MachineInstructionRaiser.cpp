@@ -161,7 +161,7 @@ static inline uint8_t getPhysRegOperandSize(const MachineInstr &MI,
   assert(Op.isReg() && "Attempt to get size of non-register operand");
 
   unsigned int RegNo = Op.getReg();
-  if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
+  if (Register::isPhysicalRegister(RegNo)) {
     if (is64BitPhysReg(RegNo))
       return 8;
     if (is32BitPhysReg(RegNo))
@@ -183,7 +183,7 @@ static inline Type *getPhysRegOperandType(const MachineInstr &MI,
   assert(Op.isReg() && "Attempt to get type of non-register operand");
 
   unsigned int RegNo = Op.getReg();
-  if (TargetRegisterInfo::isPhysicalRegister(RegNo)) {
+  if (Register::isPhysicalRegister(RegNo)) {
     LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
     if (is64BitPhysReg(RegNo))
       return Type::getInt64Ty(Ctx);
@@ -277,7 +277,7 @@ bool X86MachineInstructionRaiser::hasPhysRegDefInBlock(
         // If the define operand is a register
         if (MO.isReg()) {
           unsigned MOReg = MO.getReg();
-          if (TargetRegisterInfo::isPhysicalRegister(MOReg)) {
+          if (Register::isPhysicalRegister(MOReg)) {
             if (SuperReg == find64BitSuperReg(MOReg))
               return true;
           }
@@ -696,7 +696,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
 
   assert((ReachingValue != nullptr) &&
          "Null incoming value of reaching definition found");
-  assert(raisedValues->getInBlockPhysRegDefVal(PhysReg, DefiningMBB) ==
+  assert(raisedValues->getInBlockRegOrArgDefVal(PhysReg, DefiningMBB).second ==
              ReachingValue &&
          "Inconsistent reaching defined value found");
   assert(ReachingValue->getType()->isIntegerTy() &&
@@ -752,7 +752,7 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
              "during reaching definition fixup");
       AllocaInst *Alloca = dyn_cast<AllocaInst>(Val);
       Value *ReachingDef =
-          raisedValues->getInBlockPhysRegDefVal(PReg, DefiningMBBNo);
+          raisedValues->getInBlockRegOrArgDefVal(PReg, DefiningMBBNo).second;
       assert((ReachingDef != nullptr) &&
              "Null reaching definition found during reaching definition fixup");
       StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,
@@ -881,7 +881,10 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
     uint64_t SecEnd = SecStart + SecIter->getSize();
     if ((SecStart <= pltEntOff) && (SecEnd >= pltEntOff)) {
       StringRef SecName;
-      if (SecIter->getName(SecName)) {
+      if (auto NameOrErr = SecIter->getName())
+        SecName = *NameOrErr;
+      else {
+        consumeError(NameOrErr.takeError());
         assert(false && "Failed to get section name with PLT offset");
       }
       if (SecName.compare(".plt") != 0) {
@@ -889,8 +892,6 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       }
       StringRef SecData = unwrapOrError(SecIter->getContents(),
                                         MR->getObjectFile()->getFileName());
-      // StringRef BytesStr;
-      //    error(Section.getContents(BytesStr));
       ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(SecData.data()),
                               SecData.size());
       // Disassemble the first instruction at the offset
@@ -1127,7 +1128,7 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
 }
 
 // Return a value corresponding to global symbol at Offset referenced in
-// MachineInst mi.
+// MachineInst MI.
 Value *
 X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                                                       uint64_t Offset) {
@@ -1178,6 +1179,17 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
     // If Offset corresponds to a global symbol, materialize a global
     // variable.
     unsigned MemAccessSizeInBytes = getInstructionMemOpSize(MI.getOpcode());
+
+    // If MI is not a memory accessing instruction, determine the access size by
+    // the size of destination register.
+    if (MemAccessSizeInBytes == 0) {
+      MachineOperand MO = MI.getOperand(0);
+      assert(MI.getNumExplicitDefs() == 1 && MO.isReg() &&
+             "Expect one explicit register def operand");
+      MemAccessSizeInBytes =
+          getPhysRegSizeInBits(MO.getReg()) / sizeof(uint64_t);
+    }
+
     assert((MemAccessSizeInBytes != 0) && "Unknown memory access size");
     Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
     assert(GlobalDataSymName && "Failed to find global symbol name.");
@@ -2088,6 +2100,15 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
                (ImmTy->getPrimitiveSizeInBits() / sizeof(uint64_t)) &&
            "Mismatched imm and dest sizes in move imm to reg instruction.");
     srcValue = ConstantInt::get(ImmTy, SrcImm);
+
+    // Check if The immediate value corresponds to a global variable.
+    if (SrcImm > 0) {
+      Value *GV = getGlobalVariableValueAt(MI, SrcImm);
+      if (GV != nullptr) {
+        srcValue = GV;
+      }
+    }
+
     // Update the value mapping of dstReg
     raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                      srcValue);
@@ -2776,13 +2797,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
          "Encountered instruction with undefined register");
 
   // Verify sanity of the instruction.
-  assert((DestValue->getType()->getPrimitiveSizeInBits() / sizeof(uint64_t)) ==
-             MemAlignment &&
-         "Mismatched value type size and instruction size of binary op "
-         "instruction");
+  assert((getPhysRegOperandSize(MI, DestIndex) == MemAlignment) &&
+         "Mismatched destination register size and instruction size of binary "
+         "op instruction");
+
   // Load the value from memory location of memRefValue.
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
-  // data access) or an LoadInst that loads an address in memory..
+  // data access) or an LoadInst that loads an address in memory.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
           isa<GetElementPtrInst>(MemRefValue) ||
           isa<GlobalValue>(MemRefValue)) &&
@@ -3139,7 +3160,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   bool IsPCRelMemRef = (BaseSupReg == X86::RIP);
   const MachineOperand &LoadOp = MI.getOperand(LoadOpIndex);
   unsigned int LoadPReg = LoadOp.getReg();
-  assert(TargetRegisterInfo::isPhysicalRegister(LoadPReg) &&
+  assert(Register::isPhysicalRegister(LoadPReg) &&
          "Expect destination to be a physical register in move from mem "
          "instruction");
 
@@ -3182,47 +3203,45 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     Type *MemTy = nullptr;
     Type *ExtTy = nullptr;
     switch (Opcode) {
-    default: {
+    default:
       raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
                                        LdInst);
-    } break;
-    case X86::MOVSX64rm32: {
+      break;
+    case X86::MOVSX64rm32:
       ExtTy = Type::getInt64Ty(Ctx);
       MemTy = Type::getInt32Ty(Ctx);
-    } break;
-    case X86::MOVZX64rm16: {
+      break;
+    case X86::MOVZX64rm16:
     case X86::MOVSX64rm16:
       ExtTy = Type::getInt64Ty(Ctx);
       MemTy = Type::getInt16Ty(Ctx);
-    } break;
+      break;
     case X86::MOVZX64rm8:
-    case X86::MOVSX64rm8: {
+    case X86::MOVSX64rm8:
       ExtTy = Type::getInt64Ty(Ctx);
       MemTy = Type::getInt8Ty(Ctx);
-    } break;
-
+      break;
     case X86::MOVZX32rm8:
     case X86::MOVZX32rm8_NOREX:
-    case X86::MOVSX32rm8: {
+    case X86::MOVSX32rm8:
       ExtTy = Type::getInt32Ty(Ctx);
       MemTy = Type::getInt8Ty(Ctx);
-    } break;
+      break;
     case X86::MOVZX32rm16:
-    case X86::MOVSX32rm16: {
+    case X86::MOVSX32rm16:
       ExtTy = Type::getInt32Ty(Ctx);
       MemTy = Type::getInt16Ty(Ctx);
-    } break;
-
+      break;
     case X86::MOVZX16rm8:
-    case X86::MOVSX16rm8: {
+    case X86::MOVSX16rm8:
       ExtTy = Type::getInt16Ty(Ctx);
       MemTy = Type::getInt8Ty(Ctx);
-    } break;
+      break;
     case X86::MOVZX16rm16:
-    case X86::MOVSX16rm16: {
+    case X86::MOVSX16rm16:
       ExtTy = Type::getInt16Ty(Ctx);
       MemTy = Type::getInt16Ty(Ctx);
-    } break;
+      break;
     }
     // Decide based on opcode value and not opcode name??
     bool IsSextInst =
@@ -3646,13 +3665,19 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     }
   } else {
     // The instruction operands do not reference memory
-    unsigned Op1Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
-    unsigned Op2Index = 0;
+    unsigned Op1Index, Op2Index;
 
+    // Determine the appropriate operand indices of the instruction based on the
+    // usage of implicit registers. Note that a cmp instruction is translated as
+    // sub op1, op2 (i.e., op1 - op2).
     if (NumImplicitUses == 1) {
+      // If an implicit operand is used, that is op1.
       MCPhysReg UseReg = MCIDesc.ImplicitUses[0];
-      Op2Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
+      Op1Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
+      Op2Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
     } else {
+      // Explicit operands are used
+      Op1Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
       Op2Index = Op1Index + 1;
     }
 
@@ -4303,8 +4328,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::SHR32r1:
     case X86::SHR64r1:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
-      /* fall through */
-      // no break
+      LLVM_FALLTHROUGH;
     case X86::SHR8ri:
     case X86::SHR16ri:
     case X86::SHR32ri:
@@ -4364,9 +4388,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     // Insert the binary operation instruction
     RaisedBB->getInstList().push_back(BinOpInstr);
     // Test and set affected flags
-    for (auto Flag : AffectedEFlags) {
+    for (auto Flag : AffectedEFlags)
       raisedValues->testAndSetEflagSSAValue(Flag, MBBNo, BinOpInstr);
-    }
 
     // Update PhysReg to Value map
     if (DstPReg != X86::NoRegister)

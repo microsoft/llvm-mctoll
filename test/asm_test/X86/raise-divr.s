@@ -1,16 +1,12 @@
-// REQUIRES: x86_64-linux
-// RUN: clang -o %t %s
-// RUN: llvm-mctoll -d %t
-// RUN: clang -o %t-dis %t-dis.ll
-// RUN: %t-dis 2>&1 | FileCheck %s
-// CHECK: ret val: 5
-
-// Test for correct discovery of arguments of call_me in the absence of
-// a use of the argument register before the xor instruction that zeros
-// the argument register. Contrast this with func-xor-three-arg.s
+# REQUIRES: x86_64-linux
+# RUN: clang -o %t %s
+# RUN: llvm-mctoll -d %t
+# RUN: clang -o %t-dis %t-dis.ll
+# RUN: %t-dis 2>&1 | FileCheck %s
+# CHECK: Value 3
 
 	.text
-	.file	"argument.c"
+	.file	"divr.c"
 	.globl	call_me                 # -- Begin function call_me
 	.p2align	4, 0x90
 	.type	call_me,@function
@@ -18,9 +14,12 @@ call_me:                                # @call_me
 	.cfi_startproc
 # %bb.0:                                # %entry
 	movl	%edi, %eax
-    xorl    %edx, %edx
-	subl	%esi, %eax
-	retq
+	cltd
+	div	%ecx
+	movl	$.L.str, %edi
+	movl	%eax, %esi
+	xorl	%eax, %eax
+	jmp	printf                  # TAILCALL
 .Lfunc_end0:
 	.size	call_me, .Lfunc_end0-call_me
 	.cfi_endproc
@@ -33,11 +32,8 @@ main:                                   # @main
 # %bb.0:                                # %entry
 	pushq	%rax
 	.cfi_def_cfa_offset 16
-	movl	$4, %edi
-	movl	$-1, %esi
-	callq	call_me
 	movl	$.L.str, %edi
-	movl	%eax, %esi
+	movl	$3, %esi
 	xorl	%eax, %eax
 	callq	printf
 	xorl	%eax, %eax
@@ -51,11 +47,5 @@ main:                                   # @main
 	.type	.L.str,@object          # @.str
 	.section	.rodata.str1.1,"aMS",@progbits,1
 .L.str:
-	.asciz	"ret val: %d\n"
-	.size	.L.str, 13
-
-
-	.ident	"clang version 9.0.0 (https://github.com/llvm-mirror/clang.git 884b0b4b1912d272bdf140a63b7d779c785ce7c1) (https://github.com/llvm-mirror/llvm.git dabd4d53f4e2ae51e4ff71501075f0896863178b)"
-	.section	".note.GNU-stack","",@progbits
-	.addrsig
-	
+	.asciz	"Value %d\n"
+	.size	.L.str, 10

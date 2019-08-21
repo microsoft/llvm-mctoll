@@ -54,16 +54,13 @@ public:
   Value *getReachingDef(unsigned int PhysReg, int MBBNo);
   Value *getEflagReachingDef(unsigned Flag, int MBBNo);
 
-  // Return <MBBNo, Value*> pair denoting the defining MBBNo and Value defined
-  // for PhysReg.
-  std::pair<int, Value *> getInBlockReachingDef(unsigned int PhysReg,
-                                                int MBBNo);
   // Return a vector of <MBBNo, Value*> pairs denoting the defining MBB numbers
   // and Values defined for PhysReg in the predecessors of MBBNo.
   std::vector<std::pair<int, Value *>>
   getGlobalReachingDefs(unsigned int PhysReg, int MBBNo);
 
-  Value *getInBlockPhysRegDefVal(unsigned int PhysReg, int MBBNo);
+  std::pair<int, Value *> getInBlockRegOrArgDefVal(unsigned int PhysReg,
+                                                   int MBBNo);
   unsigned getInBlockPhysRegSize(unsigned int PhysReg, int MBBNo);
 
   enum { INVALID_MBB = -1 };

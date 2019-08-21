@@ -101,38 +101,6 @@ bool X86RaisedValueTracker::setPhysRegSSAValue(unsigned int PhysReg, int MBBNo,
   return true;
 }
 
-// Find the defined value of SuperReg in MBBNo. Return the reaching definition
-// <MBBNo, Value> pair of SuperReg into MBBNo. If the basic block with number
-// MBBNo does not define SuperReg, return <MBBNo, nullptr>. Note that this
-// function does NOT walk the predecessors of MBBNo to find reaching definition
-// of SuperReg.
-
-std::pair<int, Value *>
-X86RaisedValueTracker::getInBlockReachingDef(unsigned int PhysReg, int MBBNo) {
-  // Always convert PhysReg to the 64-bit version.
-  unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
-
-  // TODO : Support outside of GPRs need to be implemented.
-  // Find the per-block definitions SuperReg
-  PhysRegMBBValueDefMap::iterator PhysRegBBValDefIter =
-      physRegDefsInMBB.find(SuperReg);
-  // If per-block definition map exists
-  if (PhysRegBBValDefIter != physRegDefsInMBB.end()) {
-    // Find if there is a definition in MBB with number MBBNo
-    MBBNoToValueMap mbbToValMap = PhysRegBBValDefIter->second;
-    MBBNoToValueMap::iterator mbbToValMapIter = mbbToValMap.find(MBBNo);
-    if (mbbToValMapIter != mbbToValMap.end()) {
-      assert((mbbToValMapIter->second.first != 0) &&
-             "Found incorrect size of physical register");
-      return std::make_pair(mbbToValMapIter->first,
-                            mbbToValMapIter->second.second);
-    }
-  }
-  // MachineBasicBlock with MBBNo does not define SuperReg.
-  // This is indicated by specifying INVALID_MBB
-  return std::make_pair(INVALID_MBB, nullptr);
-}
-
 // This function looks for reaching definitions of PhysReg from all the
 // predecessors of block MBBNo by walking its predecessors. Returns a vector of
 // reaching definitions only if there is a reaching definition along all the
@@ -166,7 +134,7 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo) {
         // Mark block as visited
         BlockVisited.set(CurPredMBBNo);
         const std::pair<int, Value *> ReachInfo =
-            getInBlockReachingDef(SuperReg, CurPredMBBNo);
+            getInBlockRegOrArgDefVal(SuperReg, CurPredMBBNo);
 
         // if reach info found or if CurPredMBB has a definition of SuperReg,
         // record it
@@ -200,13 +168,14 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo) {
 // translation state. If this function is called after raising MBBNo, this
 // returns a value representing the last definition of PhysReg in the block.
 
-Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
-                                                      int MBBNo) {
+std::pair<int, Value *>
+X86RaisedValueTracker::getInBlockRegOrArgDefVal(unsigned int PhysReg,
+                                                int MBBNo) {
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
 
-  Value *RetValue = nullptr;
-
+  Value *DefValue = nullptr;
+  int DefMBBNo = INVALID_MBB;
   // TODO : Support outside of GPRs need to be implemented.
   // Find the per-block definitions SuperReg
   PhysRegMBBValueDefMap::iterator PhysRegBBValDefIter =
@@ -219,12 +188,13 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
     if (mbbToValMapIter != mbbToValMap.end()) {
       assert((mbbToValMapIter->second.first != 0) &&
              "Found incorrect size of physical register");
-      RetValue = mbbToValMapIter->second.second;
+      DefMBBNo = mbbToValMapIter->first;
+      DefValue = mbbToValMapIter->second.second;
     }
   }
   // If MBBNo is entry and ReachingDef was not found, check to see
   // if this is an argument value.
-  if ((RetValue == nullptr) && (MBBNo == 0)) {
+  if ((DefValue == nullptr) && (MBBNo == 0)) {
     int pos = x86MIRaiser->getArgumentNumber(PhysReg);
 
     // If PReg is an argument register, get its value from function
@@ -235,13 +205,13 @@ Value *X86RaisedValueTracker::getInBlockPhysRegDefVal(unsigned int PhysReg,
       Function *RaisedFunction = x86MIRaiser->getRaisedFunction();
       if (pos <= (int)(RaisedFunction->arg_size())) {
         Function::arg_iterator argIter = RaisedFunction->arg_begin() + pos - 1;
-        RetValue = argIter;
+        DefMBBNo = 0;
+        DefValue = argIter;
       }
     }
   }
 
-  // MachineBasicBlock with MBBNo does not define SuperReg.
-  return RetValue;
+  return std::make_pair(DefMBBNo, DefValue);
 }
 
 // Get size of PhysReg last defined in MBBNo.
@@ -291,7 +261,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
   std::vector<std::pair<int, Value *>> ReachingDefs;
   // Look for the most recent definition of SuperReg in current block.
   const std::pair<int, Value *> LocalDef =
-      getInBlockReachingDef(SuperReg, MBBNo);
+      getInBlockRegOrArgDefVal(SuperReg, MBBNo);
 
   if (LocalDef.second != nullptr) {
     assert((LocalDef.first == MBBNo) && "Inconsistent local def info found");
@@ -347,7 +317,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       // If PhysReg is defined in MBBNo, store the defined value in the
       // newly created stack slot.
       std::pair<int, Value *> MBBNoRDPair =
-          getInBlockReachingDef(PhysReg, MBBNo);
+          getInBlockRegOrArgDefVal(PhysReg, MBBNo);
       Value *DefValue = MBBNoRDPair.second;
       if (DefValue != nullptr) {
         StoreInst *StInst = new StoreInst(DefValue, Alloca);

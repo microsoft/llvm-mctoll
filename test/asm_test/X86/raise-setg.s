@@ -1,14 +1,13 @@
+# REQUIRES: x86_64-linux
 # RUN: clang -o %t %s
 # RUN: llvm-mctoll -d %t
 # RUN: clang -o %t-dis %t-dis.ll
 # RUN: %t-dis 2>&1 | FileCheck %s
 # CHECK: call funcion 19
 
-#
 # This test will produce the mi as follows:
 #   $cl = SETCCr 15, <0x55aecf4fb118>, implicit $eflags
 #   $esi = CMOV32rr $esi(tied-def 0), $r13d, 15, implicit $eflags
-#
 
         .text
         .file	"test-setcc.c"

@@ -5,37 +5,13 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 39eb2324f7ec48bd455c370dcb26ffcf9f8dfc48
-Author: Sanjay Patel <spatel@rotateright.com>
-Date:   Fri Aug 16 18:51:30 2019 +0000
+commit 9fd495be1fb1470bfefa59938904a8f38920e0f1
+Author: Alexey Bataev <a.bataev@hotmail.com>
+Date:   Tue Aug 20 19:50:13 2019 +0000
 
-    [InstCombine] canonicalize a scalar-select-of-vectors to vector select
-
-    This pattern may arise more frequently with an enhancement to SLP vectorization suggested in PR42755:
-    https://bugs.llvm.org/show_bug.cgi?id=42755
-    ...but we should handle this pattern to make things easier for the backend either way.
-
-    For all in-tree targets that I looked at, codegen for typical vector sizes looks better when we change
-    to a vector select, so this is safe to do without a cost model (in other words, as a target-independent
-    canonicalization).
-
-    For example, if the condition of the select is a scalar, we end up with something like this on x86:
-
-	    vpcmpgtd        %xmm0, %xmm1, %xmm0
-	    vpextrb $12, %xmm0, %eax
-	    testb   $1, %al
-	    jne     LBB0_2
-      ## %bb.1:
-	    vmovaps %xmm3, %xmm2
-      LBB0_2:
-	    vmovaps %xmm2, %xmm0
-
-    Rather than the splat-condition variant:
-
-	    vpcmpgtd        %xmm0, %xmm1, %xmm0
-	    vpshufd $255, %xmm0, %xmm0      ## xmm0 = xmm0[3,3,3,3]
-	    vblendvps       %xmm0, %xmm2, %xmm3, %xmm0
-
-    Differential Revision: https://reviews.llvm.org/D66095
-
-    llvm-svn: 369140
+    [OPENMP]Fix delayed diagnostics for standalone declare target directive.
+    
+    If the function is marked as declare target in a standalone directive,
+    the delayed diagnostics is not emitted. Patch fixes this problem.
+    
+    llvm-svn: 369432

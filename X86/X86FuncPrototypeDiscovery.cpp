@@ -308,6 +308,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
           MBBDefRegs[find64BitSuperReg(DestReg)] =
               getPhysRegSizeInBits(DestReg) / 8;
         } else {
+          // First, look at use operands
           for (MachineOperand MO : MI.operands()) {
             if (!MO.isReg())
               continue;
@@ -322,7 +323,20 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
               // If Reg use has no previous def
               if (MBBDefRegs.find(find64BitSuperReg(Reg)) == MBBDefRegs.end())
                 AddRegisterToFunctionLiveInSet(FunctionLiveInRegs, Reg);
-            } else if (MO.isDef())
+            }
+          }
+          // Next look at defs
+          for (MachineOperand MO : MI.operands()) {
+            if (!MO.isReg())
+              continue;
+            unsigned Reg = MO.getReg();
+            if (!(llvm::X86::GR8RegClass.contains(Reg) ||
+                  llvm::X86::GR16RegClass.contains(Reg) ||
+                  llvm::X86::GR32RegClass.contains(Reg) ||
+                  llvm::X86::GR64RegClass.contains(Reg)))
+              continue;
+
+            if (MO.isDef())
               // We need the last definition. Even if there is a previous
               // definition, it is correct to just over write the size
               // information.

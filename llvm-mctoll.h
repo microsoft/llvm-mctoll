@@ -29,8 +29,8 @@ class RelocationRef;
 
 extern cl::opt<std::string> TripleName;
 extern cl::opt<std::string> ArchName;
+extern cl::opt<std::string> FilterFunctionSet;
 extern cl::list<std::string> FilterSections;
-extern cl::list<std::string> FilterFunctions;
 extern cl::opt<bool> Disassemble;
 // extern cl::opt<bool> DisassembleAll;
 extern cl::opt<bool> NoShowRawInsn;

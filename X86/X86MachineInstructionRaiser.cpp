@@ -963,8 +963,8 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       if (CalledFunc == nullptr) {
         // This is an undefined function symbol. Look through the list of
         // known glibc interfaces and construct a Function accordingly.
-        CalledFunc =
-            ExternalFunctions::Create(*CalledFuncSymName, *(MR->getModule()));
+        CalledFunc = ExternalFunctions::Create(*CalledFuncSymName,
+                                               *const_cast<ModuleRaiser *>(MR));
       }
       // Found the section we are looking for
       break;
@@ -4953,6 +4953,15 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
                               MCInstSize + RelCallTargetOffset;
     // Get the function at index CalltargetIndex
     CalledFunc = MR->getFunctionAt(CallTargetIndex);
+
+    // Search the called function from the excluded set of function filter.
+    if (CalledFunc == nullptr) {
+      auto Filter = MR->getFunctionFilter();
+      CalledFunc = Filter->findFunctionByIndex(
+          MCInstOffset + RelCallTargetOffset + MCInstSize,
+          FunctionFilter::FILTER_EXCLUDE);
+    }
+
     // If not, use text section relocations to get the
     // call target function.
     if (CalledFunc == nullptr) {

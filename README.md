@@ -49,6 +49,31 @@ To print debug output:
 
 `llvm-mctoll -d -print-after-all <binary>`
 
+## Control Functions to Raise in a Module
+
+C functions to be excluded or included are listed in a file using the option:
+
+`--restrict-functions-file=<filename-with-include-exclude-restrictions>`
+
+The file will have text lines as follows
+```
+exclude-functions {
+binary-name-1:function-1-prototype
+binary-name-2:function-2-prototype
+}
+
+include-functions {
+binary-name-3:function-3-prototype
+binary-name-4:function-4-prototype
+}
+```
+
+# Notes regarding function prototype specification in filter file:
+1. `function-prototype` - which includes return type - expects only the argument types and not the associated arument variable names.
+1. Currently, only LLVM primitive data types are supported.
+1. Functions that do not have arguments are expected to use a single argument type `void`
+1. A line starting with `;` is ignored.
+
 ## Build and Test
 
 Run the tests by invoking `make check-mctoll` or `ninja check-mctoll`

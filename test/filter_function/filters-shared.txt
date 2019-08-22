@@ -1,0 +1,9 @@
+exclude-functions {
+shared.so:i32 func2(i32, i32)
+;shared.so:i32 func3(i32, i32)
+}
+
+include-functions {
+shared.so:i32 func3(i32, i32)
+shared.so:i32 func1(i32, i32)
+}

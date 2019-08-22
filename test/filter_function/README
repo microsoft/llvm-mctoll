@@ -1,0 +1,11 @@
+Test script for option "--filter-functions-file"
+
+1. exec.c - The source code of binary file, which is for translation.
+The binary file will be compiled and raised.
+2. filters-exec.txt - The configuration file which lists the excluded/included
+functions of exec.c.
+3. shared.c - The source code of shared object file, which is for translation.
+The binary file will be compiled and raised.
+4. filters-shared.txt - The configuration file which lists the excluded/included
+functions of shared.c.
+

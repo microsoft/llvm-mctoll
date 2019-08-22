@@ -75,6 +75,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <fstream>
 #include <set>
 #include <system_error>
 #include <unordered_map>
@@ -139,6 +140,15 @@ cl::opt<std::string>
     llvm::ArchName("arch-name", cl::desc("Target arch to disassemble for, "
                                          "see -version for available targets"));
 
+cl::opt<std::string> llvm::FilterFunctionSet(
+    "filter-functions-file",
+    cl::desc("Specify which functions to raise via a configuration file."),
+    cl::NotHidden);
+
+cl::alias static FilterFunctionSetF(
+    "f", cl::desc("Alias for --filter-functions-file"),
+    cl::aliasopt(llvm::FilterFunctionSet), cl::NotHidden);
+
 cl::opt<bool> llvm::SectionHeaders("section-headers",
                                    cl::desc("Display summaries of the "
                                             "headers for each section."));
@@ -153,10 +163,6 @@ cl::list<std::string>
     llvm::FilterSections("section",
                          cl::desc("Operate on the specified sections only. "
                                   "With -macho dump segment,section"));
-cl::list<std::string>
-    llvm::FilterFunctions("function",
-                          cl::desc("Operate on the specified functions only. "),
-                          cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::alias static FilterSectionsj("j", cl::desc("Alias for --section"),
                                  cl::aliasopt(llvm::FilterSections));
@@ -1080,11 +1086,14 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     uint64_t Size;
     uint64_t Index;
 
-    // Build a set of function symbol names to operate on,
-    // if specified on the command-line.
-    std::set<StringRef> filterFunctionSet;
-    for (unsigned i = 0; i < FilterFunctions.size(); ++i) {
-      filterFunctionSet.insert(FilterFunctions[i]);
+    FunctionFilter *FuncFilter = moduleRaiser->getFunctionFilter();
+    if (cl::getRegisteredOptions()["filter-functions-file"]
+            ->getNumOccurrences() > 0) {
+      if (!FuncFilter->readFilterFunctionConfigFile(
+              FilterFunctionSet.getValue())) {
+        dbgs() << "Unable to read function filter configuration file "
+               << FilterFunctionSet.getValue() << ". Ignoring\n";
+      }
     }
 
     // Build a map of relocations (if they exist in the binary) of text
@@ -1147,18 +1156,30 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 #endif
 
       if (isAFunctionSymbol(Obj, Symbols[si])) {
-        if (!((FilterFunctions.getNumOccurrences() == 0) ||
-              (filterFunctionSet.find(std::get<1>(Symbols[si])) !=
-               filterFunctionSet.end()))) {
-          // This symbol is part of the filter symbols specified.
-          continue;
+        auto &SymStr = std::get<1>(Symbols[si]);
+
+        if ((FilterFunctionSet.getNumOccurrences() != 0)) {
+          // Check the symbol name whether it should be excluded or not.
+          if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_EXCLUDE)) {
+            FunctionFilter::FuncInfo *FI = FuncFilter->findFuncInfoBySymbol(
+                SymStr, FunctionFilter::FILTER_EXCLUDE);
+            if (FI != nullptr) {
+              // Record the function start index.
+              FI->StartIdx = Start;
+              continue;
+            }
+          }
+
+          // Check the symbol name whether it should be included or not.
+          if (FuncFilter->findFuncInfoBySymbol(
+                  SymStr, FunctionFilter::FILTER_INCLUDE) == nullptr)
+            continue;
         }
+
         // If Symbol is in the ELFCRTSymbol list return this is a symbol of a
         // function we are not interested in disassembling and raising.
-        if (ELFCRTSymbols.find(std::get<1>(Symbols[si])) !=
-            ELFCRTSymbols.end()) {
+        if (ELFCRTSymbols.find(SymStr) != ELFCRTSymbols.end())
           continue;
-        }
 
         // Note that since LLVM infrastructure was built to be used to build a
         // conventional compiler pipeline, MachineFunction is built well after
@@ -1403,7 +1424,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
           }
         }
       }
-      filterFunctionSet.erase(std::get<1>(Symbols[si]));
+      FuncFilter->eraseFunctionBySymbol(std::get<1>(Symbols[si]),
+                                        FunctionFilter::FILTER_INCLUDE);
     }
 
     // Record all targets of the last function parsed
@@ -1413,14 +1435,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     moduleRaiser->runMachineFunctionPasses();
 
-    if (filterFunctionSet.size() > 0) {
-      errs() << "***** WARNING: The following specified symbol(s) are not "
-                "found :\n\t";
-      for (std::set<StringRef>::iterator it = filterFunctionSet.begin();
-           it != filterFunctionSet.end(); it++) {
-        errs() << *it << " ";
-      }
-      errs() << "\n";
+    if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_INCLUDE)) {
+      errs() << "***** WARNING: The following include filter symbol(s) are not "
+                "found :\n";
+      FuncFilter->dump(FunctionFilter::FILTER_INCLUDE);
     }
   }
 

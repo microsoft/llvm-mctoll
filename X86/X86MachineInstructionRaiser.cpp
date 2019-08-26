@@ -2483,11 +2483,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     Uses.push_back(SrcValue);
   }
-  // Verify there are exactly 2 use operands or source and dest operands are
-  // the same i.e., source operand tied to dest operand.
-  assert((Uses.size() == 2 ||
-          ((Uses.size() == 1) &&
-           (MI.findTiedOperandIdx(DestOpIndex) == UseOp1Index))) &&
+
+  // Verify the instruction has 1 or 2 use operands
+  assert((Uses.size() == 1 || ((Uses.size() == 2))) &&
          "Unexpected number of operands in register binary op instruction");
 
   // If the instruction has two use operands, ensure that their values are
@@ -2584,7 +2582,108 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Set the dstReg value
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
     break;
+  case X86::IMUL64r: {
+    assert(MCID.getNumDefs() == 0 && MCID.getNumImplicitDefs() == 3 &&
+           MCID.getNumImplicitUses() == 1 &&
+           "Unexpected operands in imul instruction");
+    // Find first source operand - this is the implicit operand AL/AX/EAX/RAX
+    const MCPhysReg Src1Reg = MCID.ImplicitUses[0];
+    assert(find64BitSuperReg(Src1Reg) == X86::RAX &&
+           "Unexpected implicit register in imul instruction");
+    // Find second operand - this is the explicit operand of the instruction
+    std::vector<MCPhysReg> SrcRegs;
+    for (const MachineOperand &MO : MI.explicit_uses()) {
+      assert(MO.isReg() &&
+             "Unexpected non-register operand in binary op instruction");
+      SrcRegs.push_back(MO.getReg());
+    }
+    // Ensure that there is only one explicit source operand
+    assert(SrcRegs.size() == 1 &&
+           "Unexpected number of source register operands in imul instruction");
+    // Check the sizes of source operands are the same
+    const MCPhysReg Src2Reg = SrcRegs[0];
+    unsigned int SrcOpSize = getPhysRegSizeInBits(Src1Reg);
+    assert(getPhysRegSizeInBits(Src1Reg) == getPhysRegSizeInBits(Src2Reg) &&
+           "Mismatched size of implicit source register and explicit source "
+           "register");
+    // Get the value of Src1Reg and Src2Reg
+    Value *Src1Value = getRegOrArgValue(Src1Reg, MBBNo);
+    Value *Src2Value = getRegOrArgValue(Src2Reg, MBBNo);
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+           "Unexpected null source operand value in imul instruction");
+    assert(Src1Value->getType()->isIntegerTy() &&
+           Src2Value->getType()->isIntegerTy() &&
+           "Unexpected non-integer type source operands in imul instruction");
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    // Widen the source values since the result of th emultiplication
+    Type *WideTy = Type::getIntNTy(Ctx, SrcOpSize * 2);
+    CastInst *Src1ValueDT =
+        CastInst::Create(CastInst::getCastOpcode(Src1Value, true, WideTy, true),
+                         Src1Value, WideTy);
+    RaisedBB->getInstList().push_back(Src1ValueDT);
 
+    CastInst *Src2ValueDT =
+        CastInst::Create(CastInst::getCastOpcode(Src2Value, true, WideTy, true),
+                         Src2Value, WideTy);
+    RaisedBB->getInstList().push_back(Src2ValueDT);
+    // Multiply the values
+    Instruction *FullProductValue =
+        BinaryOperator::CreateNSWMul(Src1ValueDT, Src2ValueDT);
+    RaisedBB->getInstList().push_back(FullProductValue);
+    // Shift amount equal to size of source operand
+    Value *ShiftAmountVal =
+        ConstantInt::get(FullProductValue->getType(), SrcOpSize);
+    Value *ZeroValueDT =
+        ConstantInt::get(FullProductValue->getType(), 0, false /* isSigned */);
+
+    // Split the value into ImplicitDefs[0]:ImplicitDefs[1]
+    // Compute shr of FullProductValue
+    Instruction *ShrDT =
+        BinaryOperator::CreateLShr(FullProductValue, ShiftAmountVal);
+    RaisedBB->getInstList().push_back(ShrDT);
+    // Now generate ShrDT OR 0
+    Instruction *OrDT = BinaryOperator::CreateOr(ShrDT, ZeroValueDT);
+    RaisedBB->getInstList().push_back(OrDT);
+    // Cast OrValDT to SrcOpSize
+    Type *SrcValTy = Src1Value->getType();
+    CastInst *ProductUpperValue = CastInst::Create(
+        CastInst::getCastOpcode(OrDT, true, SrcValTy, true), OrDT, SrcValTy);
+    RaisedBB->getInstList().push_back(ProductUpperValue);
+    // Set the value of ImplicitDef[0] as ProductLowreHalfValue
+    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[0], MBBNo,
+                                     ProductUpperValue);
+
+    // Now generate and instruction to get lower half value
+    Value *MaskValue = Constant::getAllOnesValue(SrcValTy);
+    Instruction *MaskValDT =
+        CastInst::Create(CastInst::getCastOpcode(MaskValue, true, WideTy, true),
+                         MaskValue, WideTy);
+    RaisedBB->getInstList().push_back(MaskValDT);
+
+    Instruction *AndValDT =
+        BinaryOperator::CreateAnd(FullProductValue, MaskValDT);
+    RaisedBB->getInstList().push_back(AndValDT);
+    // Cast AndValDT to SrcOpSize
+    CastInst *ProductLowerHalfValue = CastInst::Create(
+        CastInst::getCastOpcode(AndValDT, true, SrcValTy, true), AndValDT,
+        SrcValTy);
+    RaisedBB->getInstList().push_back(ProductLowerHalfValue);
+    // Set the value of ImplicitDef[1] as ProductLowerHalfValue
+    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[1], MBBNo,
+                                     ProductLowerHalfValue);
+    // Set OF and CF flags to 0 if upper half of the result is 0; else to 1.
+    Value *ZeroValue = ConstantInt::get(SrcValTy, 0, false /* isSigned */);
+
+    Instruction *ZFTest =
+        new ICmpInst(CmpInst::Predicate::ICMP_EQ, ProductLowerHalfValue,
+                     ZeroValue, "Test_Zero");
+
+    RaisedBB->getInstList().push_back(ZFTest);
+    raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::OF, MBBNo,
+                                     ZFTest);
+    raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::SF, MBBNo,
+                                     ZFTest);
+  } break;
   case X86::AND8rr:
   case X86::AND16rr:
   case X86::AND32rr:
@@ -2735,12 +2834,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   default:
     assert(false && "Unhandled binary instruction");
   }
-  assert(dstValue != nullptr && (dstReg != X86::NoRegister) &&
-         "Raising of instruction unimplemented");
-  if (dstReg != X86::EFLAGS)
-    // dstReg is set to X86::EFLAGS for TEST instruction which does not write
-    // to any physical register
-    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+
   return true;
 }
 

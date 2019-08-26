@@ -403,7 +403,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
   Value *ZeroVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 0));
   switch (FlagBit) {
   case X86RegisterUtils::EFLAGS::ZF: {
-    // Set ZF - test if SubInst is zero
+    // Set ZF - test if TestVal is 0
     Instruction *ZFTest =
         new ICmpInst(CmpInst::Predicate::ICMP_EQ, TestVal, ZeroVal,
                      X86RegisterUtils::getEflagName(FlagBit));
@@ -412,7 +412,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
     physRegDefsInMBB[FlagBit][MBBNo].second = ZFTest;
   } break;
   case X86RegisterUtils::EFLAGS::SF: {
-    // Set SF - test if SubInst is signed
+    // Set SF - test if TestVal is signed
     Value *ShiftVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 1));
     // Compute (1 << ResTyNumBits - 1)
     Value *HighBitSetVal =
@@ -432,10 +432,12 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
     RaisedBB->getInstList().push_back(SFTest);
     physRegDefsInMBB[FlagBit][MBBNo].second = SFTest;
   } break;
+  // For now we model OF and CF to have the same semantics
+  case X86RegisterUtils::EFLAGS::OF:
   case X86RegisterUtils::EFLAGS::CF: {
-    // Set CF to 0 - test if SubInst is zero
+    // Set CF and OF - Test if TestVal is zero
     // NOTE: This is only a partial test to set CF. This only implements setting
-    // of CF if source of NEG is 0. Other cases need to be added.
+    // of CF if TestVal is not 0. Other cases need to be added.
     Instruction *CFTest =
         new ICmpInst(CmpInst::Predicate::ICMP_NE, TestVal, ZeroVal,
                      X86RegisterUtils::getEflagName(FlagBit));

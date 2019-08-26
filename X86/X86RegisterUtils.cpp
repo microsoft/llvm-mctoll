@@ -104,6 +104,8 @@ unsigned int getPhysRegSizeInBits(unsigned int PReg) {
     return 16;
   else if (is8BitPhysReg(PReg))
     return 8;
+  else if (isEflagBit(PReg))
+    return 1;
 
   llvm_unreachable("Unhandled physical register specified");
 }

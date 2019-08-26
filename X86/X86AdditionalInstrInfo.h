@@ -972,7 +972,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::IMUL32rri, {0, Unknown}},
     {X86::IMUL32rri8, {0, BINARY_OP_WITH_IMM}},
     {X86::IMUL64m, {0, Unknown}},
-    {X86::IMUL64r, {0, Unknown}},
+    {X86::IMUL64r, {8, BINARY_OP_RR}},
     {X86::IMUL64rm, {8, Unknown}},
     {X86::IMUL64rmi32, {8, Unknown}},
     {X86::IMUL64rmi8, {8, Unknown}},

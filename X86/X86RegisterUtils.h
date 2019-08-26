@@ -25,6 +25,7 @@ using namespace llvm;
 namespace X86RegisterUtils {
 // Separate flags - EFLAGS
 // Note : only those that are currently used are represented here.
+// EFLAGS are considered no different from GPRs
 namespace EFLAGS {
 enum {
   CF = X86::NUM_TARGET_REGS + 1,

@@ -1651,7 +1651,7 @@ Value *X86MachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
   return PRegValue;
 }
 // Find SSA value associated with operand at OpIndex, if it is a physical
-// register. This function calls getRegValue() and generates a cast
+// register. This function calls getRegOrArgValue() and generates a cast
 // instruction to match the type of operand register.
 
 Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
@@ -2047,7 +2047,8 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
   case X86::MOV8ri:
   case X86::MOV16ri:
   case X86::MOV32ri:
-  case X86::MOV64ri: {
+  case X86::MOV64ri:
+  case X86::MOV64ri32: {
     unsigned DestOpIndex = 0, SrcOpIndex = 1;
     const MachineOperand &DestOp = MI.getOperand(DestOpIndex);
     const MachineOperand &SrcOp = MI.getOperand(SrcOpIndex);
@@ -2057,28 +2058,31 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
 
     unsigned int DstPReg = DestOp.getReg();
     int64_t SrcImm = SrcOp.getImm();
-
-    unsigned int DstPRegSize = getPhysRegOperandSize(MI, DestOpIndex);
-
     Type *ImmTy = getImmOperandType(MI, 1);
-    Value *srcValue = nullptr;
+    Value *SrcValue = ConstantInt::get(ImmTy, SrcImm);
 
-    assert(DstPRegSize ==
-               (ImmTy->getPrimitiveSizeInBits() / sizeof(uint64_t)) &&
-           "Mismatched imm and dest sizes in move imm to reg instruction.");
-    srcValue = ConstantInt::get(ImmTy, SrcImm);
+    auto DestPRegTy = getPhysRegType(DstPReg);
+    if (SrcValue->getType() != DestPRegTy) {
+      CastInst *CInst = CastInst::Create(
+          CastInst::getCastOpcode(SrcValue, false, DestPRegTy, false), SrcValue,
+          DestPRegTy);
+      // Get the basicBlock corresponding to the MachineBasicBlock of the MI.
+      BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+      // Add the cast instruction RaisedBB.
+      RaisedBB->getInstList().push_back(CInst);
+    }
 
-    // Check if The immediate value corresponds to a global variable.
+    // Check if the immediate value corresponds to a global variable.
     if (SrcImm > 0) {
       Value *GV = getGlobalVariableValueAt(MI, SrcImm);
       if (GV != nullptr) {
-        srcValue = GV;
+        SrcValue = GV;
       }
     }
 
     // Update the value mapping of dstReg
     raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
-                                     srcValue);
+                                     SrcValue);
     success = true;
   } break;
   default:
@@ -3230,10 +3234,11 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
          "instruction");
 
   // Load the value from memory location of memRefValue.
-  // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
-  // data access) or an effective address value.
+  // memRefVal is either an AllocaInst (stack access), GlobalValue (global
+  // data access), an effective address value, element pointer or select
+  // instruction.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue) ||
+          isa<GlobalValue>(MemRefValue) || isa<SelectInst>(MemRefValue) ||
           isa<GetElementPtrInst>(MemRefValue)) &&
          "Unexpected type of memory reference in binary mem op instruction");
 
@@ -3244,9 +3249,9 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
                                      MemRefValue);
   } else {
-    // If it is an effective address value, convert it to a pointer to the
-    // type of load reg.
-    if (isEffectiveAddrValue(MemRefValue)) {
+    // If it is an effective address value or a select instruction, convert it
+    // to a pointer to load register type.
+    if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
       PointerType *PtrTy =
           PointerType::get(getPhysRegOperandType(MI, LoadOpIndex), 0);
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);

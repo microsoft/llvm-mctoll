@@ -1609,7 +1609,7 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::MOV64rc, {0, Unknown}},
     {X86::MOV64rd, {0, Unknown}},
     {X86::MOV64ri, {0, MOV_RI}},
-    {X86::MOV64ri32, {0, Unknown}},
+    {X86::MOV64ri32, {0, MOV_RI}},
     {X86::MOV64rm, {8, MOV_FROM_MEM}},
     {X86::MOV64rr, {0, MOV_RR}},
     {X86::MOV64rr_REV, {0, Unknown}},

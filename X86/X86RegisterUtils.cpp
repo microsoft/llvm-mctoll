@@ -109,4 +109,19 @@ unsigned int getPhysRegSizeInBits(unsigned int PReg) {
 
   llvm_unreachable("Unhandled physical register specified");
 }
+unsigned getArgumentReg(int Index, Type *Ty) {
+  llvm::LLVMContext &Ctx(Ty->getContext());
+
+  // Note: any pointer is an address and hence uses a 64-bit register
+  if ((Ty == Type::getInt64Ty(Ctx)) || (Ty->isPointerTy())) {
+    return GPR64ArgRegs64Bit[Index];
+  } else if (Ty == Type::getInt32Ty(Ctx)) {
+    return GPR64ArgRegs32Bit[Index];
+  } else if (Ty == Type::getInt16Ty(Ctx)) {
+    return GPR64ArgRegs16Bit[Index];
+  } else if (Ty == Type::getInt8Ty(Ctx)) {
+    return GPR64ArgRegs8Bit[Index];
+  }
+  return 0;
+}
 } // namespace X86RegisterUtils

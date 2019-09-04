@@ -35,7 +35,7 @@ void MachineFunctionRaiser::cleanupRaisedFunction() {
 // reference MachineFunctionRaiser class that has a forward declaration in
 // ModuleRaiser.h.
 
-Function *ModuleRaiser::getFunctionAt(uint64_t Index) const {
+Function *ModuleRaiser::getRaisedFunctionAt(uint64_t Index) const {
   int64_t TextSecAddr = getTextSectionAddress();
   for (auto MFR : mfRaiserVector)
     if ((MFR->getMCInstRaiser()->getFuncStart() + TextSecAddr) == Index)

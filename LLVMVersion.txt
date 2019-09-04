@@ -5,13 +5,12 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 9fd495be1fb1470bfefa59938904a8f38920e0f1
-Author: Alexey Bataev <a.bataev@hotmail.com>
-Date:   Tue Aug 20 19:50:13 2019 +0000
+commit 08a09822a5cb95940cfe11fc885840916c516dc4
+Author: Krzysztof Parzyszek <kparzysz@quicinc.com>
+Date:   Wed Sep 4 15:22:36 2019 +0000
 
-    [OPENMP]Fix delayed diagnostics for standalone declare target directive.
+    [Hexagon] Improve generated code for test-if-bit-clear, one more time
     
-    If the function is marked as declare target in a standalone directive,
-    the delayed diagnostics is not emitted. Patch fixes this problem.
+    Adjust isel patterns after recent commit. Fixes https://llvm.org/PR43194.
     
-    llvm-svn: 369432
+    llvm-svn: 370913

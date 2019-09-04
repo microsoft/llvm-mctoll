@@ -6,7 +6,7 @@
 // CHECK: declare dso_local i32 @func5()
 // CHECK: define dso_local i32 @func1(i32 %arg1, i32 %arg2)
 // CHECK: define dso_local i32 @func3(i32 %arg1, i32 %arg2)
-// CHECK: define dso_local void @main()
+// CHECK: define dso_local i32 @main()
 
 int func1(int a, int b) { return a + b; }
 

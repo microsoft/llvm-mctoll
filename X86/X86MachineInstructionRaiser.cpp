@@ -196,6 +196,12 @@ static inline bool isEffectiveAddrValue(Value *Val) {
   if (isa<CallInst>(Val))
     return true;
 
+  // An instruction that casts a pointer value may be considered as an effective
+  // address.
+  if (isa<CastInst>(Val)) {
+    return (dyn_cast<CastInst>(Val)->getSrcTy()->isPointerTy());
+  }
+
   if (isa<BinaryOperator>(Val)) {
     BinaryOperator *BinOpVal = dyn_cast<BinaryOperator>(Val);
     if (BinOpVal->isBinaryOp(BinaryOperator::Add) ||
@@ -858,9 +864,8 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
         consumeError(NameOrErr.takeError());
         assert(false && "Failed to get section name with PLT offset");
       }
-      if (SecName.compare(".plt") != 0) {
-        assert(false && "Unexpected section name of PLT offset");
-      }
+      if (SecName.compare(".plt") != 0)
+        continue;
       StringRef SecData = unwrapOrError(SecIter->getContents(),
                                         MR->getObjectFile()->getFileName());
       ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(SecData.data()),
@@ -958,7 +963,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       Expected<uint64_t> CalledFuncSymAddr = CalledFuncSym->getAddress();
       assert(CalledFuncSymAddr &&
              "Failed to get called function address of PLT entry");
-      CalledFunc = MR->getFunctionAt(CalledFuncSymAddr.get());
+      CalledFunc = MR->getRaisedFunctionAt(CalledFuncSymAddr.get());
 
       if (CalledFunc == nullptr) {
         // This is an undefined function symbol. Look through the list of
@@ -2458,6 +2463,24 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {
 
   assert((EffectiveAddrValue != nullptr) &&
          "Failed to get effective address value");
+
+  unsigned DestRegSize = getPhysRegSizeInBits(DestReg);
+
+  // Generate the appropriate cast instruction if the sizes of effective address
+  // value and that of destination register do not match.
+  uint64_t EffectiveAddrValueSize =
+      EffectiveAddrValue->getType()->getPrimitiveSizeInBits();
+
+  if (DestRegSize != EffectiveAddrValueSize) {
+    // Get the BasicBlock corresponding to MachineBasicBlock of MI.
+    BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+    Type *CastTy = Type::getIntNTy(MF.getFunction().getContext(), DestRegSize);
+    CastInst *CInst = CastInst::Create(
+        CastInst::getCastOpcode(EffectiveAddrValue, false, CastTy, false),
+        EffectiveAddrValue, CastTy);
+    RaisedBB->getInstList().push_back(CInst);
+    EffectiveAddrValue = CInst;
+  }
 
   // Update the value mapping of DestReg
   raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
@@ -5028,50 +5051,12 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     // case X86::CALLpcrel16   :
     // case X86::CALLpcrel32   :
   case X86::CALL64pcrel32:
+  case X86::JMP_1:
   case X86::JMP_4: {
-    const MCInstrDesc &MCID = MI.getDesc();
-    assert(X86II::isImmPCRel(MCID.TSFlags) &&
-           "PC-Relative control transfer expected");
+    Function *CalledFunc = getCalledFunction(MI);
+    LLVMContext &Ctx(MF.getFunction().getContext());
 
-    // Get target offset of the call instruction
-    const MachineOperand &MO = MI.getOperand(0);
-    assert(MO.isImm() && "Expected immediate operand not found");
-    int64_t RelCallTargetOffset = MO.getImm();
-
-    // Compute the MCInst index of the call target
-    MCInstRaiser *MCIR = getMCInstRaiser();
-    // Get MCInst offset of the corresponding call instruction in the
-    // binary.
-    uint64_t MCInstOffset = MCIR->getMCInstIndex(MI);
-    assert(MCIR != nullptr && "MCInstRaiser not initialized");
-    Function *CalledFunc = nullptr;
-    uint64_t MCInstSize = MCIR->getMCInstSize(MCInstOffset);
-    // First check if PC-relative call target embedded in the call
-    // instruction can be used to get called function.
-    int64_t CallTargetIndex = MCInstOffset + MR->getTextSectionAddress() +
-                              MCInstSize + RelCallTargetOffset;
-    // Get the function at index CalltargetIndex
-    CalledFunc = MR->getFunctionAt(CallTargetIndex);
-
-    // Search the called function from the excluded set of function filter.
-    if (CalledFunc == nullptr) {
-      auto Filter = MR->getFunctionFilter();
-      CalledFunc = Filter->findFunctionByIndex(
-          MCInstOffset + RelCallTargetOffset + MCInstSize,
-          FunctionFilter::FILTER_EXCLUDE);
-    }
-
-    // If not, use text section relocations to get the
-    // call target function.
-    if (CalledFunc == nullptr) {
-      CalledFunc =
-          MR->getCalledFunctionUsingTextReloc(MCInstOffset, MCInstSize);
-    }
-    // Look up the PLT to find called function
-    if (CalledFunc == nullptr) {
-      CalledFunc = getTargetFunctionAtPLTOffset(MI, CallTargetIndex);
-    }
-
+    assert(CalledFunc != nullptr && "Failed to detect call target");
     std::vector<Value *> CallInstFuncArgs;
     unsigned NumArgs = CalledFunc->arg_size();
     Argument *CalledFuncArgs = CalledFunc->arg_begin();
@@ -5220,13 +5205,13 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     }
 
     // Construct call inst.
-    CallInst *callInst =
+    Instruction *callInst =
         CallInst::Create(CalledFunc, ArrayRef<Value *>(CallInstFuncArgs));
 
     // If this is a branch being turned to a tail call set the flag
     // accordingly.
     if (MI.isBranch())
-      callInst->setTailCall(true);
+      dyn_cast<CallInst>(callInst)->setTailCall(true);
 
     RaisedBB->getInstList().push_back(callInst);
     // A function call with a non-void return will modify
@@ -5235,6 +5220,13 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     if (!RetType->isVoidTy()) {
       unsigned int RetReg = X86::NoRegister;
       if (RetType->isPointerTy()) {
+        // Cast pointer return type to 64-bit type
+        Type *CastTy = Type::getInt64Ty(Ctx);
+        Instruction *castInst = CastInst::Create(
+            CastInst::getCastOpcode(callInst, false, CastTy, false), callInst,
+            CastTy);
+        RaisedBB->getInstList().push_back(castInst);
+        callInst = castInst;
         RetReg = X86::RAX;
       } else {
         switch (RetType->getScalarSizeInBits()) {
@@ -5258,9 +5250,24 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
                                        callInst);
     }
     if (MI.isBranch()) {
-      // Emit ret void since there will be no ret instruction in the binary
-      Instruction *RetInstr = ReturnInst::Create(MF.getFunction().getContext());
+      // Emit appropriate ret instruction. There will be no ret instruction
+      // in the binary since this is a tail call.
+      Instruction *RetInstr;
+      if (RetType->isVoidTy())
+        RetInstr = ReturnInst::Create(Ctx);
+      else
+        RetInstr = ReturnInst::Create(Ctx, callInst);
       RaisedBB->getInstList().push_back(RetInstr);
+    }
+    // Add 'unreachable' instruction after callInst if it is a call to glibc
+    // function 'void exit(int)'
+    if (CalledFunc->getName().equals("exit")) {
+      FunctionType *FT = CalledFunc->getFunctionType();
+      if (FT->getReturnType()->isVoidTy() && (FT->getNumParams() == 1) &&
+          FT->getParamType(0)->isIntegerTy(32)) {
+        Instruction *UR = new UnreachableInst(Ctx);
+        RaisedBB->getInstList().push_back(UR);
+      }
     }
     Success = true;
   } break;

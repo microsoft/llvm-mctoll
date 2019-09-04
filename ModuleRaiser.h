@@ -94,8 +94,9 @@ public:
   bool runMachineFunctionPasses();
 
   // Return the Function * corresponding to input binary function with
-  // start offset equal to that specified as argument.
-  Function *getFunctionAt(uint64_t) const;
+  // start offset equal to that specified as argument. This returns the pointer
+  // to raised function, if one was constructed; else returns nullptr.
+  Function *getRaisedFunctionAt(uint64_t) const;
 
   // Return the Function * corresponding to input binary function from
   // text relocation record with off set in the range [Loc, Loc+Size].

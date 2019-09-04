@@ -20,6 +20,7 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
         {"memset", {"i8*", {"i8*", "i32", "i64"}, false}},
         {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
+        {"strncpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
         {"__isoc99_scanf", {"i32", {"i8*"}, true}},
         {"clock_gettime", {"i32", {"i64", "i64*"}, false}},
         {"time", {"i64", {"i64*"}, false}},
@@ -27,7 +28,8 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"putchar", {"i32", {"i32"}, false}},
         {"puts", {"i32", {"i8*"}, false}},
         {"free", {"void", {"i8*"}, false}},
-        {"atoi", {"i32", {"i8*"}, false}}};
+        {"atoi", {"i32", {"i8*"}, false}},
+        {"exit", {"void", {"i32"}, false}}};
 
 // Construct and return a Function* corresponding to a known external function
 Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {

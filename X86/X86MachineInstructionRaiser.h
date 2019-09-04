@@ -184,7 +184,9 @@ private:
                             const MachineBasicBlock *MBB,
                             unsigned StopAtInstProp, bool &HasStopInst);
 
-  void AddRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
+  void addRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
+  int64_t getBranchTargetMBBNumber(const MachineInstr &MI);
+  Function *getCalledFunction(const MachineInstr &MI);
 
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
@@ -201,6 +203,8 @@ private:
   };
 
   std::vector<JumpTableInfo> jtList;
+  // Set of MBBNos that end with tail calls
+  std::set<int> tailCallMBBNos;
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ELIMINATEPROLOGEPILOG_H

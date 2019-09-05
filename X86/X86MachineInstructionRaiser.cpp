@@ -676,8 +676,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   assert(raisedValues->getInBlockRegOrArgDefVal(PhysReg, DefiningMBB).second ==
              ReachingValue &&
          "Inconsistent reaching defined value found");
-  assert(ReachingValue->getType()->isIntegerTy() &&
-         "Unhandled stack promotion of non-integer defined type");
+  assert(ReachingValue->getType()->isIntOrPtrTy() &&
+         "Unsupported: Stack promotion of non-integer / non-pointer value");
   // Prepare to store this value in stack location.
   // Get the size of defined physical register
   int DefinedPhysRegSzInBits =

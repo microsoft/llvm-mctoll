@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the implementation of function prototype discovey APIs of
+// This file contains the implementation of function prototype discovery APIs of
 // X86MachineInstructionRaiser class for use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//

@@ -101,10 +101,6 @@ private:
   FunctionType *getRaisedFunctionPrototype();
   // This raises MachineInstr to MachineInstruction
   bool raiseMachineInstr(MachineInstr &);
-  // Cleanup MachineBasicBlocks
-  bool deleteNOOPInstrMI(MachineBasicBlock &, MachineBasicBlock::iterator);
-  bool deleteNOOPInstrMF();
-  bool unlinkEmptyMBBs();
 
   // Raise specific classes of instructions
   bool raisePushInstruction(const MachineInstr &);
@@ -138,6 +134,11 @@ private:
   bool raiseDirectBranchMachineInstr(ControlTransferInfo *);
   bool raiseIndirectBranchMachineInstr(ControlTransferInfo *);
 
+  // Helper functions
+  // Cleanup MachineBasicBlocks
+  bool deleteNOOPInstrMI(MachineBasicBlock &, MachineBasicBlock::iterator);
+  bool deleteNOOPInstrMF();
+  bool unlinkEmptyMBBs();
   // Adjust sizes of stack allocated objects
   bool adjustStackAllocatedObjects();
 
@@ -157,7 +158,6 @@ private:
   void FPURegisterStackSetValueAt(int8_t, Value *);
   Value *FPURegisterStackTop();
 
-  // Helper functions
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
   const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
@@ -187,6 +187,16 @@ private:
   void addRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
   int64_t getBranchTargetMBBNumber(const MachineInstr &MI);
   Function *getCalledFunction(const MachineInstr &MI);
+
+  // Cast SrcVal to type DstTy, if the type of SrcVal is different from DstTy.
+  // Return the cast instruction upon inserting it at the end of InsertBlock
+  Value *castValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock);
+  Type *getImmOperandType(const MachineInstr &MI, unsigned int OpIndex);
+  uint8_t getPhysRegOperandSize(const MachineInstr &MI, unsigned int OpIndex);
+  Type *getPhysRegOperandType(const MachineInstr &MI, unsigned int OpIndex);
+  bool isPushToStack(const MachineInstr &MI);
+  bool isPopFromStack(const MachineInstr &MI);
+  bool isEffectiveAddrValue(Value *Val);
 
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;

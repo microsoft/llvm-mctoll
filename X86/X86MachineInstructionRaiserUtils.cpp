@@ -811,8 +811,16 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
     NewDisp = MemRef.Disp;
   } else {
     // If the sp/bp do not reference a stack allocation, return nullptr
-    if (!isa<AllocaInst>(CurSPVal))
-      return nullptr;
+    if (!isa<AllocaInst>(CurSPVal)) {
+      // Check if this is an instruction that loads from stack (i.e., alloc)
+      LoadInst *LoadAllocInst = dyn_cast<LoadInst>(CurSPVal);
+      if (LoadAllocInst) {
+        // Set current SP value to be the alloc being loaded from.
+        CurSPVal = LoadAllocInst->getPointerOperand();
+      } else {
+        return nullptr;
+      }
+    }
     assert((MemRef.Disp != 0) && "Unexpected 0 offset value");
     // Find the stack offset of the allocation corresponding to current sp
     bool IndexFound = false;
@@ -1384,7 +1392,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             SV = CIV->getValue().getSExtValue();
             GlobalInit = ConstantInt::get(GlobalValTy, SV);
           } else if (CVType->isPointerTy()) {
-            // ConstantVec[0] is the initial global value and global valye type
+            // ConstantVec[0] is the initial global value and global value type
             // is its type.
             GlobalInit = ConstantVec[0];
             GlobalValTy = CVType;

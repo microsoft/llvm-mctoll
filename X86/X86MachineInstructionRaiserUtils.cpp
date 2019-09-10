@@ -1370,14 +1370,29 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         assert(SymbSize == MemAccessSizeInBytes && "Inconsistent symbol sizes");
 
         if (ConstantVec.size() > 0) {
-          assert(ConstantVec.size() == 1 &&
-                 "Inconsistent symbol values of global symbol found");
-          // Get the value read
-          ConstantInt *CIV = dyn_cast<ConstantInt>(ConstantVec[0]);
-          assert(CIV != nullptr && "Unexpected global value type");
-          SV = CIV->getValue().getSExtValue();
-        }
-        GlobalInit = ConstantInt::get(GlobalValTy, SV);
+          // Get type of data value
+          Type *CVType = ConstantVec[0]->getType();
+          if (CVType->isIntegerTy()) {
+            assert(ConstantVec.size() == 1 &&
+                   "Inconsistent symbol values of global symbol found");
+            // Global value is an integer. So, cast the global value that was
+            // read accordingly.
+            ConstantInt *CIV = dyn_cast<ConstantInt>(ConstantVec[0]);
+            assert(CIV != nullptr && "Unexpected global value type");
+            // Set the type of global value according to the based on the type
+            // of the cast value.
+            SV = CIV->getValue().getSExtValue();
+            GlobalInit = ConstantInt::get(GlobalValTy, SV);
+          } else if (CVType->isPointerTy()) {
+            // ConstantVec[0] is the initial global value and global valye type
+            // is its type.
+            GlobalInit = ConstantVec[0];
+            GlobalValTy = CVType;
+          } else {
+            assert(false && "Unexpected global value type");
+          }
+        } else
+          GlobalInit = ConstantInt::get(GlobalValTy, SV);
       }
 
       // Now, create the global variable for the symbol at given Offset.

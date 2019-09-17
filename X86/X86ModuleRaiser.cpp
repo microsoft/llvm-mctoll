@@ -28,44 +28,11 @@ bool X86ModuleRaiser::collectDynamicRelocations() {
   if (!Elf64LEObjFile)
     return false;
 
+  // Collect all relocation records from various relocation sections
   std::vector<SectionRef> DynRelSec = Obj->dynamic_relocation_sections();
   for (const SectionRef &Section : DynRelSec)
     for (const RelocationRef &Reloc : Section.relocations())
       DynRelocs.push_back(Reloc);
-
-  // Find .got.plt and .rela.plt sections
-  const ELFFile<ELF64LE> *ElfFile = Elf64LEObjFile->getELFFile();
-  SectionRef DotGotDotPltSec, DotRelaDotPltSec;
-  for (const SectionRef Section : Obj->sections()) {
-    StringRef SecName;
-    if (auto NameOrErr = Section.getName())
-      SecName = *NameOrErr;
-    else {
-      consumeError(NameOrErr.takeError());
-      continue;
-    }
-
-    if (SecName.equals(".rela.plt"))
-      DotRelaDotPltSec = Section;
-    else if (SecName.equals(".got.plt"))
-      DotGotDotPltSec = Section;
-  }
-
-  if (!DotRelaDotPltSec.getObject() || !DotGotDotPltSec.getObject())
-    return false;
-
-  // Perform some sanity checks
-  if (auto DotRelaDotPltShdr =
-          ElfFile->getSection(DotRelaDotPltSec.getIndex())) {
-    assert((DotRelaDotPltShdr.get()->sh_info == DotGotDotPltSec.getIndex()) &&
-           ".rela.plt does not refer .got.plt section");
-    assert((DotRelaDotPltShdr.get()->sh_type == ELF::SHT_RELA) &&
-           "Unexpected type of section .rela.plt");
-  }
-
-  // If the binary has .got.plt section, read the dynamic relocations.
-  for (const RelocationRef &Reloc : DotRelaDotPltSec.relocations())
-    DynRelocs.push_back(Reloc);
 
   return true;
 }

@@ -2633,13 +2633,23 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.push_back(EFLAGS::SF);
       AffectedEFlags.push_back(EFLAGS::ZF);
       break;
+    case X86::INC8r:
+    case X86::INC16r:
+    case X86::INC16r_alt:
     case X86::INC32r:
+    case X86::INC32r_alt:
+    case X86::INC64r:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
       AffectedEFlags.push_back(EFLAGS::SF);
       AffectedEFlags.push_back(EFLAGS::ZF);
       break;
+    case X86::DEC8r:
+    case X86::DEC16r:
+    case X86::DEC16r_alt:
     case X86::DEC32r:
+    case X86::DEC32r_alt:
+    case X86::DEC64r:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
       AffectedEFlags.push_back(EFLAGS::SF);

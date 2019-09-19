@@ -128,7 +128,7 @@ private:
   bool raiseCallMachineInstr(const MachineInstr &);
 
   bool raiseCompareMachineInstr(const MachineInstr &, bool, Value *);
-  bool raiseNotOpMemInstr(const MachineInstr &, Value *);
+  bool raiseInplaceMemOpInstr(const MachineInstr &, Value *);
   bool raiseMoveToMemInstr(const MachineInstr &, Value *);
   bool raiseMoveFromMemInstr(const MachineInstr &, Value *);
   bool raiseBinaryOpMemToRegInstr(const MachineInstr &, Value *);

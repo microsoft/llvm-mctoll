@@ -181,7 +181,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
               ArrayRef<uint8_t> v(memReadTargetByteSz);
 
               if (CurReadByteOffset + memReadTargetByteSz > DataSize)
-                return true;
+                break;
 
               Error EC = SectionContent.readBytes(CurReadByteOffset,
                                                   memReadTargetByteSz, v);

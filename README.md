@@ -1,35 +1,34 @@
 # Introduction
 This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
-# Getting Started (Linux)
+# Getting Started
 ## Building as part of LLVM tree
 
-1.  `mkdir $PWD/src && mkdir -p $PWD/build/llvm-project && cd src`
-2.  `git clone https://github.com/llvm/llvm-project && pushd llvm-project && git checkout master && popd`
-4.  `pushd llvm-project/llvm/tools && git clone https://github.com/microsoft/llvm-mctoll && git checkout master && popd`
-5.  `cd ../build/llvm-project`
-6.  Run cmake command to create build files (make or ninja) with default build type (Debug).
+1.  Setup the source tree:
+```sh
+git clone --depth 100 -b master https://github.com/llvm/llvm-project.git
+cd llvm-project && git clone -b master https://github.com/microsoft/llvm-mctoll.git llvm/tools/llvm-mctoll
+```
+2.  Build [LLVM with CMake](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables)
 
-     Support for X86-64 and ARM raisers will be built into the tool based on the LLVM build targets. There is no interdependency. Consequently,  support to raise only X86-64 binaries is built during X86-only LLVM builds; support to raise only ARM binaries is built during ARM-only LLVM builds. The tool is not built during an LLVM build with targets that do not include either X86 or ARM.
+    Support for X86-64 and ARM raisers will be built into the tool based on the LLVM build targets. There is no interdependency. Consequently,  support to raise only X86-64 binaries is built during X86-only LLVM builds; support to raise only ARM binaries is built during ARM-only LLVM builds. The tool is not built during an LLVM build with targets that do not include either X86 or ARM.
 
-    For e.g., either of the following `cmake` commands is known to build the tool and its dependencies.
+    For example:
+```sh
+mkdir build && cd build
+cmake -G "Ninja" -DLLVM_TARGETS_TO_BUILD=X86;ARM -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=Release ..
+ninja llvm-mctoll
+```
 
-    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm-project> </full/path/to/github/src/llvm-project/llvm> -DLLVM_ENABLE_PROJECTS=clang`
+## Windows notes
 
-    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm-project> </full/path/to/github/src/llvm-project/llvm> -DLLVM_TARGETS_TO_BUILD="`*TARGET_ARCH*`" -DLLVM_ENABLE_PROJECTS=clang` 
+Build using the `x64 Native Tools Command Prompt` with Ninja as above or using the Visual Studio generator for development.
+Also see https://llvm.org/docs/GettingStartedVS.html
 
-     The corresponding `cmake` commands known to work for Release builds are as follows:
-
-     `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm-project> </full/path/to/github/src/llvm-project/llvm> -DLLVM_TARGETS_TO_BUILD="`*TARGET_ARCH*`" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_ENABLE_PROJECTS=clang`
-
-    `cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=</full/path/to/github/install/llvm-project> </full/path/to/github/src/llvm-project/llvm> -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_ENABLE_PROJECTS=clang`
-
-    You may also use the option `-G "Unix Makefiles"` instead of `-G "Ninja"`.
-
-7.  Run `make llvm-mctoll` or `ninja llvm-mctoll`
+Note that Windows binaries can't be raised at the moment. For generating Linux test binaries and running the test suite resort to WSL.
 
 #### _Note_ :
-1. The current tip of `llvm-mctoll` is tested using the tip of `llvm-project` repo recorded in LLVMVersion.txt. Make sure the tip of `llvm-project` repo used in your build corresponds to that listed.
+1. `llvm-mctoll` is tested using the `llvm-project` commit recorded in LLVMVersion.txt. Make sure the tip of `llvm-project` repo used in your build corresponds to that listed.
 
 ## Usage
 

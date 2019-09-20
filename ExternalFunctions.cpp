@@ -42,7 +42,10 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"round", {"float", {"float"}, false}},
         {"feof", {"i32", {"%struct._IO_FILE*"}, false}},
         {"pow", {"float", {"float", "float"}, false}},
-        {"exit", {"void", {"i32"}, false}}};
+        {"exit", {"void", {"i32"}, false}},
+        {"_Znwm", {"i8*", {"i64"}, false}},   // new
+        {"_ZdlPv", {"void", {"i8*"}, false}}, // delete
+};
 
 // Construct and return a Function* corresponding to a known external function
 Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {

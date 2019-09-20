@@ -1,7 +1,7 @@
 # Introduction
 This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
-# Getting Started (Linux)
+# Getting Started
 ## Building as part of LLVM tree
 
 1.  Setup the source tree:
@@ -19,6 +19,11 @@ mkdir build && cd build
 cmake -G "Ninja" -DLLVM_TARGETS_TO_BUILD=X86;ARM -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=Release ..
 ninja llvm-mctoll
 ```
+
+## Windows notes
+
+Build using the `x64 Native Tools Command Prompt` with Ninja as above or using the Visual Studio generator for development.
+Also see https://llvm.org/docs/GettingStartedVS.html
 
 #### _Note_ :
 1. `llvm-mctoll` is tested using the `llvm-project` commit recorded in LLVMVersion.txt. Make sure the tip of `llvm-project` repo used in your build corresponds to that listed.

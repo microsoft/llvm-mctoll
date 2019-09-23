@@ -56,19 +56,19 @@ struct X86AdditionalInstrInfo {
   // structure.
 };
 
-using const_addl_instr_info = const std::map<unsigned, X86AdditionalInstrInfo>;
+using const_addl_instr_info = const std::map<uint16_t, X86AdditionalInstrInfo>;
 using const_addl_instr_info_iteartor = const_addl_instr_info::iterator;
 
 extern const_addl_instr_info X86AddlInstrInfo;
 
 static inline InstructionKind getInstructionKind(unsigned int Opcode) {
-  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
+  auto Iter = mctoll::X86AddlInstrInfo.find((uint16_t)Opcode);
   assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
   return Iter->second.InstKind;
 }
 
 static inline unsigned short getInstructionMemOpSize(unsigned int Opcode) {
-  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
+  auto Iter = mctoll::X86AddlInstrInfo.find((uint16_t)Opcode);
   assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
   return Iter->second.MemOpSize;
 }

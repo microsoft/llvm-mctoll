@@ -20,7 +20,7 @@ using namespace llvm;
 
 namespace mctoll {
 
-const_addl_instr_info X86AddlInstrInfo = {
+const const_addl_instr_info X86AddlInstrInfo = {
     {X86::AAA, {0, Unknown}},
     {X86::AAD8i8, {0, Unknown}},
     {X86::AAM8i8, {0, Unknown}},

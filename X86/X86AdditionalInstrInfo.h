@@ -16,7 +16,7 @@
 
 #include <cassert>
 #include <cstdint>
-#include <map>
+#include <llvm/ADT/DenseMap.h>
 
 namespace mctoll {
 
@@ -56,10 +56,10 @@ struct X86AdditionalInstrInfo {
   // structure.
 };
 
-using const_addl_instr_info = const std::map<uint16_t, X86AdditionalInstrInfo>;
+using const_addl_instr_info = const llvm::DenseMap<uint16_t, X86AdditionalInstrInfo>;
 using const_addl_instr_info_iteartor = const_addl_instr_info::iterator;
 
-extern const_addl_instr_info X86AddlInstrInfo;
+extern const const_addl_instr_info X86AddlInstrInfo;
 
 static inline InstructionKind getInstructionKind(unsigned int Opcode) {
   auto Iter = mctoll::X86AddlInstrInfo.find((uint16_t)Opcode);

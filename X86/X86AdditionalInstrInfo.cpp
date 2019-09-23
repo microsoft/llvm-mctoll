@@ -11,54 +11,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H
-#define LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H
+#include "X86AdditionalInstrInfo.h"
 
-#include "X86InstrBuilder.h"
-#include "X86Subtarget.h"
+#include <X86InstrBuilder.h>
+#include <X86Subtarget.h>
+
+using namespace llvm;
 
 namespace mctoll {
 
-// Instruction Kinds
-typedef enum {
-  Unknown = 0,
-  BINARY_OP_RM,
-  BINARY_OP_RR,
-  BINARY_OP_WITH_IMM,
-  COMPARE,
-  CONVERT_BWWDDQ,
-  CONVERT_WDDQQO,
-  DIVIDE_MEM_OP,
-  DIVIDE_REG_OP,
-  FPU_REG_OP,
-  LEA_OP,
-  LEAVE_OP,
-  LOAD_FPU_REG,
-  MOV_RR,
-  MOV_RI,
-  MOV_TO_MEM,
-  MOV_FROM_MEM,
-  NOOP,
-  NOT_OP_MEM,
-  SETCC,
-  STORE_FPU_REG,
-} InstructionKind;
-
-typedef struct {
-  // A vaue of 8 or 4 or 2 or 1 indicates the size of memory an instruction
-  // operates on. A value of 0 indicates that the instruction does not have
-  // memory operands.
-  unsigned short MemOpSize;
-  // Instruction kind
-  InstructionKind InstKind;
-  // Add any necessary additional instruction related data as fields of this
-  // structure.
-} X86AdditionalInstrInfo;
-
-using const_addl_instr_info = const std::map<unsigned, X86AdditionalInstrInfo>;
-using const_addl_instr_info_iteartor = const_addl_instr_info::iterator;
-
-static const_addl_instr_info X86AddlInstrInfo = {
+const_addl_instr_info X86AddlInstrInfo = {
     {X86::AAA, {0, Unknown}},
     {X86::AAD8i8, {0, Unknown}},
     {X86::AAM8i8, {0, Unknown}},
@@ -14194,22 +14156,4 @@ static const_addl_instr_info X86AddlInstrInfo = {
     {X86::XSTORE, {0, Unknown}},
     {X86::XTEST, {0, Unknown}}};
 
-static inline InstructionKind getInstructionKind(unsigned int Opcode) {
-  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
-  assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
-  return Iter->second.InstKind;
-}
-
-static inline unsigned short getInstructionMemOpSize(unsigned int Opcode) {
-  auto Iter = mctoll::X86AddlInstrInfo.find(Opcode);
-  assert(Iter != mctoll::X86AddlInstrInfo.end() && "Unknown opcode");
-  return Iter->second.MemOpSize;
-}
-
-static inline bool isNoop(unsigned int Opcode) {
-  return (getInstructionKind(Opcode) == mctoll::InstructionKind::NOOP);
-}
-
 } // namespace mctoll
-
-#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H

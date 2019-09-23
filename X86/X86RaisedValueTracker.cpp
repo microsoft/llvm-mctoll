@@ -13,6 +13,8 @@
 
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
+#include <X86InstrBuilder.h>
+#include <X86Subtarget.h>
 
 using namespace X86RegisterUtils;
 

@@ -17,6 +17,8 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/BinaryByteStream.h"
+#include <X86InstrBuilder.h>
+#include <X86Subtarget.h>
 
 using namespace llvm;
 using namespace mctoll;

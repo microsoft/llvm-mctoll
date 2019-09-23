@@ -32,6 +32,8 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include <X86InstrBuilder.h>
+#include <X86Subtarget.h>
 #include <set>
 #include <vector>
 using namespace llvm;

@@ -18,6 +18,8 @@
 #include "llvm-mctoll.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
+#include <X86InstrBuilder.h>
+#include <X86Subtarget.h>
 
 using namespace llvm;
 using namespace mctoll;

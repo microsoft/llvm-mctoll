@@ -34,6 +34,7 @@
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include <X86Subtarget.h>
 #include <set>
 #include <vector>
 using namespace llvm;

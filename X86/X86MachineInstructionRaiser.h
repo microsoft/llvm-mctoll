@@ -40,6 +40,13 @@ using MCPhysRegSizeMap = std::map<MCPhysReg, uint16_t>;
 // Forward declaration of X86RaisedValueTracker
 class X86RaisedValueTracker;
 
+namespace llvm {
+  class X86Subtarget;
+  class X86InstrInfo;
+  class X86RegisterInfo;
+  struct X86AddressMode;
+}
+
 class X86MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
   X86MachineInstructionRaiser() = delete;

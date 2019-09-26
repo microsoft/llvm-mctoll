@@ -202,8 +202,8 @@ private:
   Type *getImmOperandType(const MachineInstr &MI, unsigned int OpIndex);
   uint8_t getPhysRegOperandSize(const MachineInstr &MI, unsigned int OpIndex);
   Type *getPhysRegOperandType(const MachineInstr &MI, unsigned int OpIndex);
-  bool isPushToStack(const MachineInstr &MI);
-  bool isPopFromStack(const MachineInstr &MI);
+  bool isPushToStack(const MachineInstr &MI) const;
+  bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
 
   // JumpTableBlock - the Jumptable case.

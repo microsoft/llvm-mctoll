@@ -154,13 +154,11 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
 }
 
 bool X86MachineInstructionRaiser::isPushToStack(const MachineInstr &MI) const {
-  return hasInstrPrefix(MI, "PUSH") ||
-         X86II::getBaseOpcodeFor(MI.getDesc().TSFlags) == 0xC8; // ENTER
+  return instrNameStartsWith(MI, "PUSH") || instrNameStartsWith(MI, "ENTER");
 }
 
 bool X86MachineInstructionRaiser::isPopFromStack(const MachineInstr &MI) const {
-  return hasInstrPrefix(MI, "POP") ||
-         X86II::getBaseOpcodeFor(MI.getDesc().TSFlags) == 0xC9; // LEAVE
+  return instrNameStartsWith(MI, "POP") || instrNameStartsWith(MI, "LEAVE");
 }
 
 bool X86MachineInstructionRaiser::isEffectiveAddrValue(Value *Val) {

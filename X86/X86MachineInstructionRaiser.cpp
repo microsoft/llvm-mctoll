@@ -1527,8 +1527,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       break;
     }
     // Decide based on opcode value and not opcode name??
-    bool IsSextInst = hasInstrPrefix(MI, "MOVSX");
-    bool IsZextInst = hasInstrPrefix(MI, "MOVZX");
+    bool IsSextInst = instrNameStartsWith(MI, "MOVSX");
+    bool IsZextInst = instrNameStartsWith(MI, "MOVZX");
 
     if (IsSextInst || IsZextInst) {
       assert(((ExtTy != nullptr) && (MemTy != nullptr)) &&
@@ -1609,7 +1609,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   }
 
   // Is this a mov instruction?
-  bool isMovInst = hasInstrPrefix(MI, "MOV");
+  bool isMovInst = instrNameStartsWith(MI, "MOV");
 
   LoadInst *LdInst = nullptr;
   if (!isMovInst) {
@@ -1898,7 +1898,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
   // Is this a sub instruction?
-  bool isSUBInst = hasInstrPrefix(MI, "SUB");
+  bool isSUBInst = instrNameStartsWith(MI, "SUB");
 
   SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
 
@@ -3037,7 +3037,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
   return true;
 }
 
-bool X86MachineInstructionRaiser::hasInstrPrefix(const MachineInstr &MI, StringRef name) const {
+bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI, StringRef name) const {
   return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
 

@@ -3515,10 +3515,7 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     // MBB in a later walk of MachineBasicBlocks of MF.
     mbbToBBMap.insert(std::make_pair(MBBNo, CurIBB));
     // Walk MachineInsts of the MachineBasicBlock
-    for (MachineBasicBlock::iterator mbbIter = MBB.instr_begin(),
-                                     mbbEnd = MBB.instr_end();
-         mbbIter != mbbEnd; mbbIter++) {
-      MachineInstr &MI = *mbbIter;
+    for (MachineInstr &MI : MBB.instrs()) {
       // Ignore noop instructions.
       if (isNoop(MI.getOpcode())) {
         continue;

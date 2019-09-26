@@ -165,6 +165,7 @@ private:
   void FPURegisterStackSetValueAt(int8_t, Value *);
   Value *FPURegisterStackTop();
 
+  bool hasInstrPrefix(const MachineInstr &MI, StringRef name) const;
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
   const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,

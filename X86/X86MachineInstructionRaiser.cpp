@@ -1527,10 +1527,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       break;
     }
     // Decide based on opcode value and not opcode name??
-    bool IsSextInst =
-        x86InstrInfo->getName(MIDesc.getOpcode()).startswith("MOVSX");
-    bool IsZextInst =
-        x86InstrInfo->getName(MIDesc.getOpcode()).startswith("MOVZX");
+    bool IsSextInst = hasInstrPrefix(MI, "MOVSX");
+    bool IsZextInst = hasInstrPrefix(MI, "MOVZX");
 
     if (IsSextInst || IsZextInst) {
       assert(((ExtTy != nullptr) && (MemTy != nullptr)) &&
@@ -1611,8 +1609,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   }
 
   // Is this a mov instruction?
-  bool isMovInst =
-      x86InstrInfo->getName(MI.getDesc().getOpcode()).startswith("MOV");
+  bool isMovInst = hasInstrPrefix(MI, "MOV");
 
   LoadInst *LdInst = nullptr;
   if (!isMovInst) {
@@ -1869,7 +1866,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
   // Is this a sub instruction?
-  bool isSUBInst = x86InstrInfo->getName(MCIDesc.getOpcode()).startswith("SUB");
+  bool isSUBInst = hasInstrPrefix(MI, "SUB");
 
   SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
 
@@ -2998,6 +2995,10 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     assert(false && "Unhandled type of branch instruction");
   }
   return true;
+}
+
+bool X86MachineInstructionRaiser::hasInstrPrefix(const MachineInstr &MI, StringRef name) const {
+  return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
 
 // Raise a generic instruction. This is the catch all MachineInstr raiser

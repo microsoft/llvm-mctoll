@@ -25,6 +25,8 @@ ninja llvm-mctoll
 Build using the `x64 Native Tools Command Prompt` with Ninja as above or using the Visual Studio generator for development.
 Also see https://llvm.org/docs/GettingStartedVS.html
 
+Note that Windows binaries can't be raised at the moment. For generating Linux test binaries and running the test suite resort to WSL.
+
 #### _Note_ :
 1. `llvm-mctoll` is tested using the `llvm-project` commit recorded in LLVMVersion.txt. Make sure the tip of `llvm-project` repo used in your build corresponds to that listed.
 

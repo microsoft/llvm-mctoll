@@ -7,9 +7,17 @@ set(LLVM_MCTOLL_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 llvm_map_components_to_libnames(llvm_libs
   ${LLVM_TARGETS_TO_BUILD}
+  Core
+  BitWriter
+  CodeGen
   DebugInfoDWARF
   DebugInfoPDB
+  Demangle
+  MC
+  MCDisassembler
+  Object
   Symbolize
+  Support
 )
 
 set(LLVM_MCTOLL_LIB_DEPS ${llvm_libs})

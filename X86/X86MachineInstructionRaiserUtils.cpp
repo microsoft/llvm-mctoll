@@ -153,21 +153,12 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
   return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
 }
 
-bool X86MachineInstructionRaiser::isPushToStack(const MachineInstr &MI) {
-  unsigned char BaseOpcode = X86II::getBaseOpcodeFor(MI.getDesc().TSFlags);
-  // Note : Encoding of PUSH [CS | DS | ES | SS | FS | GS] not checked.
-  return ((BaseOpcode == 0x50) || (BaseOpcode == 0x6A) ||
-          (BaseOpcode == 0x68) || (BaseOpcode == 0xFF) ||
-          (BaseOpcode == 0x60) || (BaseOpcode == 0x9c));
+bool X86MachineInstructionRaiser::isPushToStack(const MachineInstr &MI) const {
+  return instrNameStartsWith(MI, "PUSH") || instrNameStartsWith(MI, "ENTER");
 }
 
-bool X86MachineInstructionRaiser::isPopFromStack(const MachineInstr &MI) {
-  unsigned char BaseOpcode = X86II::getBaseOpcodeFor(MI.getDesc().TSFlags);
-  // Note : Encoding of POP [DS | ES | SS | FS | GS] not checked.
-  return ((BaseOpcode == 0x58) || (BaseOpcode == 0x8F) ||
-          (BaseOpcode == 0x9D) || (BaseOpcode == 0x61) ||
-          // or LEAVE
-          (BaseOpcode == 0xC9));
+bool X86MachineInstructionRaiser::isPopFromStack(const MachineInstr &MI) const {
+  return instrNameStartsWith(MI, "POP") || instrNameStartsWith(MI, "LEAVE");
 }
 
 bool X86MachineInstructionRaiser::isEffectiveAddrValue(Value *Val) {

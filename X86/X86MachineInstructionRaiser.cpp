@@ -1527,10 +1527,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       break;
     }
     // Decide based on opcode value and not opcode name??
-    bool IsSextInst =
-        x86InstrInfo->getName(MIDesc.getOpcode()).startswith("MOVSX");
-    bool IsZextInst =
-        x86InstrInfo->getName(MIDesc.getOpcode()).startswith("MOVZX");
+    bool IsSextInst = instrNameStartsWith(MI, "MOVSX");
+    bool IsZextInst = instrNameStartsWith(MI, "MOVZX");
 
     if (IsSextInst || IsZextInst) {
       assert(((ExtTy != nullptr) && (MemTy != nullptr)) &&
@@ -1611,8 +1609,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   }
 
   // Is this a mov instruction?
-  bool isMovInst =
-      x86InstrInfo->getName(MI.getDesc().getOpcode()).startswith("MOV");
+  bool isMovInst = instrNameStartsWith(MI, "MOV");
 
   LoadInst *LdInst = nullptr;
   if (!isMovInst) {
@@ -1651,9 +1648,21 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::ADD32mr:
     case X86::ADD64mi8:
     case X86::ADD64i32:
-    case X86::ADD64mr: {
+    case X86::ADD64mr:
+    case X86::INC8m:
+    case X86::INC16m:
+    case X86::INC32m:
+    case X86::INC64m: {
       // Generate Add instruction
       Instruction *BinOpInst = BinaryOperator::CreateAdd(LdInst, SrcValue);
+      RaisedBB->getInstList().push_back(BinOpInst);
+      SrcValue = BinOpInst;
+    } break;
+    case X86::DEC8m:
+    case X86::DEC16m:
+    case X86::DEC32m:
+    case X86::DEC64m: {
+      Instruction *BinOpInst = BinaryOperator::CreateSub(LdInst, SrcValue);
       RaisedBB->getInstList().push_back(BinOpInst);
       SrcValue = BinOpInst;
     } break;
@@ -1672,8 +1681,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   return true;
 }
 
-// Raise not instruction with memory operand
-bool X86MachineInstructionRaiser::raiseNotOpMemInstr(const MachineInstr &MI,
+// load from memory, apply operation, store back to the same memory
+bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
                                                      Value *MemRefVal) {
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
@@ -1700,17 +1709,37 @@ bool X86MachineInstructionRaiser::raiseNotOpMemInstr(const MachineInstr &MI,
   }
 
   // Load the value from memory location
-  LoadInst *SrcValue = new LoadInst(MemRefVal);
-  SrcValue->setAlignment(
+  Instruction *SrcValue = new LoadInst(
+      MemRefVal, "", false,
       MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout()));
   RaisedBB->getInstList().push_back(SrcValue);
 
-  // Generate a not instruction
-  Instruction *NotInst = BinaryOperator::CreateNot(SrcValue);
-  RaisedBB->getInstList().push_back(NotInst);
+  switch (MI.getOpcode()) {
+  case X86::NOT16m:
+  case X86::NOT16r:
+  case X86::NOT32m:
+  case X86::NOT32r:
+  case X86::NOT64m:
+  case X86::NOT64r:
+  case X86::NOT8m:
+  case X86::NOT8r:
+    SrcValue = BinaryOperator::CreateNot(SrcValue);
+    break;
+  case X86::INC8m:
+  case X86::INC16m:
+  case X86::INC32m:
+  case X86::INC64m:
+    SrcValue = BinaryOperator::CreateAdd(
+        SrcValue, ConstantInt::get(SrcValue->getType(), 1));
+    break;
+  default:
+    assert(false && "Unhandled instruction type");
+  }
+
+  RaisedBB->getInstList().push_back(SrcValue);
 
   // Store the result back in MemRefVal
-  StoreInst *StInst = new StoreInst(NotInst, MemRefVal);
+  StoreInst *StInst = new StoreInst(SrcValue, MemRefVal);
 
   StInst->setAlignment(memAlignment);
   RaisedBB->getInstList().push_back(StInst);
@@ -1869,7 +1898,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
   // Is this a sub instruction?
-  bool isSUBInst = x86InstrInfo->getName(MCIDesc.getOpcode()).startswith("SUB");
+  bool isSUBInst = instrNameStartsWith(MI, "SUB");
 
   SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
 
@@ -2203,10 +2232,8 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   case InstructionKind::MOV_TO_MEM: {
     success = raiseMoveToMemInstr(MI, MemoryRefValue);
   } break;
-  // not instruction with memory operand. It is an instruction that loads and
-  // stores to memory.
-  case InstructionKind::NOT_OP_MEM:
-    success = raiseNotOpMemInstr(MI, MemoryRefValue);
+  case InstructionKind::INPLACE_MEM_OP:
+    success = raiseInplaceMemOpInstr(MI, MemoryRefValue);
     break;
   // Move register from memory
   case InstructionKind::MOV_FROM_MEM: {
@@ -2636,13 +2663,23 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.push_back(EFLAGS::SF);
       AffectedEFlags.push_back(EFLAGS::ZF);
       break;
+    case X86::INC8r:
+    case X86::INC16r:
+    case X86::INC16r_alt:
     case X86::INC32r:
+    case X86::INC32r_alt:
+    case X86::INC64r:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
       AffectedEFlags.push_back(EFLAGS::SF);
       AffectedEFlags.push_back(EFLAGS::ZF);
       break;
+    case X86::DEC8r:
+    case X86::DEC16r:
+    case X86::DEC16r_alt:
     case X86::DEC32r:
+    case X86::DEC32r_alt:
+    case X86::DEC64r:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
       AffectedEFlags.push_back(EFLAGS::SF);
@@ -2998,6 +3035,10 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     assert(false && "Unhandled type of branch instruction");
   }
   return true;
+}
+
+bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI, StringRef name) const {
+  return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
 
 // Raise a generic instruction. This is the catch all MachineInstr raiser
@@ -3514,10 +3555,7 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     // MBB in a later walk of MachineBasicBlocks of MF.
     mbbToBBMap.insert(std::make_pair(MBBNo, CurIBB));
     // Walk MachineInsts of the MachineBasicBlock
-    for (MachineBasicBlock::iterator mbbIter = MBB.instr_begin(),
-                                     mbbEnd = MBB.instr_end();
-         mbbIter != mbbEnd; mbbIter++) {
-      MachineInstr &MI = *mbbIter;
+    for (MachineInstr &MI : MBB.instrs()) {
       // Ignore noop instructions.
       if (isNoop(MI.getOpcode())) {
         continue;

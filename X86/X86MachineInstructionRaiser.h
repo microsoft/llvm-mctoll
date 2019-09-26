@@ -128,7 +128,7 @@ private:
   bool raiseCallMachineInstr(const MachineInstr &);
 
   bool raiseCompareMachineInstr(const MachineInstr &, bool, Value *);
-  bool raiseNotOpMemInstr(const MachineInstr &, Value *);
+  bool raiseInplaceMemOpInstr(const MachineInstr &, Value *);
   bool raiseMoveToMemInstr(const MachineInstr &, Value *);
   bool raiseMoveFromMemInstr(const MachineInstr &, Value *);
   bool raiseBinaryOpMemToRegInstr(const MachineInstr &, Value *);
@@ -165,6 +165,7 @@ private:
   void FPURegisterStackSetValueAt(int8_t, Value *);
   Value *FPURegisterStackTop();
 
+  bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
   const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
@@ -201,8 +202,8 @@ private:
   Type *getImmOperandType(const MachineInstr &MI, unsigned int OpIndex);
   uint8_t getPhysRegOperandSize(const MachineInstr &MI, unsigned int OpIndex);
   Type *getPhysRegOperandType(const MachineInstr &MI, unsigned int OpIndex);
-  bool isPushToStack(const MachineInstr &MI);
-  bool isPopFromStack(const MachineInstr &MI);
+  bool isPushToStack(const MachineInstr &MI) const;
+  bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
 
   // JumpTableBlock - the Jumptable case.

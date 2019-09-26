@@ -40,7 +40,7 @@ enum InstructionKind : uint8_t {
   MOV_TO_MEM,
   MOV_FROM_MEM,
   NOOP,
-  NOT_OP_MEM,
+  INPLACE_MEM_OP,
   SETCC,
   STORE_FPU_REG,
 };

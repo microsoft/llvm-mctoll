@@ -1460,7 +1460,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
       Type *MulValTy = IndexRegVal->getType();
       Value *ScaleAmtValue = ConstantInt::get(MulValTy, ScaleAmt);
       Instruction *MulInst =
-          BinaryOperator::CreateMul(ScaleAmtValue, IndexRegVal);
+          BinaryOperator::CreateMul(ScaleAmtValue, IndexRegVal, "memref-idxreg");
       RaisedBB->getInstList().push_back(MulInst);
       MemrefValue = MulInst;
     } break;
@@ -1479,7 +1479,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
       // Ensure the type of BaseRegVal matched that of MemrefValue.
       BaseRegVal = getRaisedValues()->castValue(
           BaseRegVal, MemrefValue->getType(), RaisedBB);
-      Instruction *AddInst = BinaryOperator::CreateAdd(BaseRegVal, MemrefValue);
+      Instruction *AddInst = BinaryOperator::CreateAdd(BaseRegVal, MemrefValue, "memref-basereg");
       // Propagate rodata related metadata
       RVT->setInstMetadataRODataIndex(BaseRegVal, AddInst);
       RaisedBB->getInstList().push_back(AddInst);
@@ -1608,7 +1608,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
         }
       }
       // Generate add memrefVal, Disp.
-      Instruction *AddInst = BinaryOperator::CreateAdd(MemrefValue, DispValue);
+      Instruction *AddInst = BinaryOperator::CreateAdd(MemrefValue, DispValue, "memref-disp");
       getRaisedValues()->setInstMetadataRODataIndex(MemrefValue, AddInst);
       getRaisedValues()->setInstMetadataRODataIndex(DispValue, AddInst);
       RaisedBB->getInstList().push_back(AddInst);

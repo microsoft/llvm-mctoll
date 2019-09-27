@@ -1296,14 +1296,16 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   if (IsMemRefGlobalVal) {
     // Load the global value.
     LoadInst *LdInst =
-        new LoadInst(dyn_cast<LoadInst>(MemRefValue)->getPointerOperand());
-    LdInst->setAlignment(MaybeAlign(MemAlignment));
-    LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-  } else {
-    LoadInst *LdInst = new LoadInst(MemRefValue);
-    LdInst->setAlignment(MaybeAlign(MemAlignment));
+        new LoadInst(dyn_cast<LoadInst>(MemRefValue)->getPointerOperand(),
+                     "globalload", false, MaybeAlign(MemAlignment));
     LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
   }
+  else {
+    LoadInst *LdInst =
+        new LoadInst(MemRefValue, "memload", false, MaybeAlign(MemAlignment));
+    LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
+  }
+
   // Insert the instruction that loads memory reference
   RaisedBB->getInstList().push_back(dyn_cast<Instruction>(LoadValue));
   Instruction *BinOpInst = nullptr;
@@ -1680,7 +1682,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     Type *LdTy = MemRefValue->getType()->getPointerElementType();
     unsigned int MemAlignment = LdTy->getPrimitiveSizeInBits() / 8;
     LoadInst *LdInst =
-        new LoadInst(LdTy, MemRefValue, "", false /* isVolatile */,
+        new LoadInst(LdTy, MemRefValue, "memload", false /* isVolatile */,
                      MaybeAlign(MemAlignment));
     LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
     RaisedBB->getInstList().push_back(LdInst);
@@ -1935,7 +1937,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
          "Expect value of load instruction to be of pointer type");
   // Load the value from memory location
   Instruction *SrcValue =
-      new LoadInst(SrcTy->getPointerElementType(), MemRefVal, "", false);
+      new LoadInst(SrcTy->getPointerElementType(), MemRefVal, "memload", false);
   RaisedBB->getInstList().push_back(SrcValue);
 
   switch (MI.getOpcode()) {

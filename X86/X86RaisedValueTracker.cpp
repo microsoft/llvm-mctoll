@@ -101,6 +101,9 @@ bool X86RaisedValueTracker::setPhysRegSSAValue(unsigned int PhysReg, int MBBNo,
          "Attempt to set value of an invalid register");
   // Always convert PhysReg to the 64-bit version.
   unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
+
+  if (!Val->hasName() && PhysReg < X86::NUM_TARGET_REGS)
+    Val->setName(x86MIRaiser->getRegisterInfo()->getName(PhysReg));
   physRegDefsInMBB[SuperReg][MBBNo].second = Val;
   physRegDefsInMBB[SuperReg][MBBNo].first =
       X86RegisterUtils::getPhysRegSizeInBits(PhysReg);

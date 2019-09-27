@@ -64,6 +64,7 @@ public:
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
                                        int MBBNo, AllocaInst *Alloca);
   int getArgumentNumber(unsigned PReg);
+  auto getRegisterInfo() const { return x86RegisterInfo; }
   bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
   X86RaisedValueTracker *getRaisedValues() { return raisedValues; }
 

@@ -133,7 +133,7 @@ private:
 
   // Helper functions
   // Cleanup MachineBasicBlocks
-  bool deleteNOOPInstrMI(MachineBasicBlock &, MachineBasicBlock::iterator);
+  static bool deleteNOOPInstrMI(MachineBasicBlock &, MachineBasicBlock::iterator);
   bool deleteNOOPInstrMF();
   bool unlinkEmptyMBBs();
   // Adjust sizes of stack allocated objects

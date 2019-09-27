@@ -194,12 +194,9 @@ bool X86MachineInstructionRaiser::hasPhysRegDefInBlock(
     int PhysReg, const MachineInstr *StartMI, const MachineBasicBlock *MBB,
     unsigned StopAtInstProp, bool &HasStopInst) {
   // Walk backwards starting from the instruction before StartMI
-  MachineBasicBlock::const_reverse_iterator InstIter;
   HasStopInst = false; // default value
-  InstIter = (StartMI == nullptr) ? MBB->rend() : StartMI->getReverseIterator();
-
   unsigned SuperReg = find64BitSuperReg(PhysReg);
-
+  auto InstIter = (StartMI == nullptr) ? MBB->rend() : StartMI->getReverseIterator();
   for (const MachineInstr &MI : make_range(++InstIter, MBB->rend())) {
     // Stop after the instruction with the specified property in the block
     if (MI.hasProperty(StopAtInstProp)) {

@@ -470,22 +470,22 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
     physRegDefsInMBB[FlagBit][MBBNo].second = ZFTest;
   } break;
   case X86RegisterUtils::EFLAGS::SF: {
+    Value *ZeroVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 0));
     // Set SF - test if TestVal is signed
-    Value *ShiftVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 1));
-    // Compute (1 << ResTyNumBits - 1)
-    Value *HighBitSetVal =
+    auto ShiftVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 1));
+    auto HighBitSetVal =
         ConstantInt::get(Ctx, APInt(ResTyNumBits, ResTyNumBits - 1));
-    Instruction *ShiftLeft = BinaryOperator::CreateShl(ShiftVal, HighBitSetVal);
-    RaisedBB->getInstList().push_back(ShiftLeft);
+    // Compute 1 << (ResTyNumBits - 1)
+    auto ShiftLeft = ConstantExpr::getShl(ShiftVal, HighBitSetVal, true, true);
 
     // Create the instruction
     //      and SubInst, ShiftLeft
-    Instruction *AndInst = BinaryOperator::CreateAnd(ShiftLeft, TestResultVal);
+    Instruction *AndInst = BinaryOperator::CreateAnd(ShiftLeft, TestResultVal, "highbit");
     RaisedBB->getInstList().push_back(AndInst);
     // Compare result of logical and operation to find if bit 31 is set SF
     // accordingly
     Instruction *SFTest =
-        new ICmpInst(CmpInst::Predicate::ICMP_EQ, AndInst, ShiftLeft,
+        new ICmpInst(CmpInst::Predicate::ICMP_NE, AndInst, ZeroVal,
                      X86RegisterUtils::getEflagName(FlagBit));
     RaisedBB->getInstList().push_back(SFTest);
     physRegDefsInMBB[FlagBit][MBBNo].second = SFTest;

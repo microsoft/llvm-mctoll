@@ -885,7 +885,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   assert(Target && "Could not allocate target machine!");
 
   LLVMTargetMachine &llvmTgtMach = static_cast<LLVMTargetMachine &>(*Target);
-  MachineModuleInfo *machineModuleInfo = new MachineModuleInfo(&llvmTgtMach);
+  MachineModuleInfoWrapperPass *machineModuleInfo =
+      new MachineModuleInfoWrapperPass(&llvmTgtMach);
   /* New Module instance with file name */
   Module module(Obj->getFileName(), llvmCtx);
   /* Set datalayout of the module to be the same as LLVMTargetMachine */
@@ -898,8 +899,9 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   ModuleRaiser *moduleRaiser = RaiserContext::getModuleRaiser(Target.get());
   assert((moduleRaiser != nullptr) && "Failed to build module raiser");
   // Set data of module raiser
-  moduleRaiser->setModuleRaiserInfo(&module, Target.get(), machineModuleInfo,
-                                    MIA.get(), MII.get(), Obj, DisAsm.get());
+  moduleRaiser->setModuleRaiserInfo(&module, Target.get(),
+                                    &machineModuleInfo->getMMI(), MIA.get(),
+                                    MII.get(), Obj, DisAsm.get());
 
   // Collect dynamic relocations.
   moduleRaiser->collectDynamicRelocations();

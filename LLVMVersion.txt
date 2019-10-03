@@ -5,12 +5,16 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 08a09822a5cb95940cfe11fc885840916c516dc4
-Author: Krzysztof Parzyszek <kparzysz@quicinc.com>
-Date:   Wed Sep 4 15:22:36 2019 +0000
+commit eb8d85e5db501d8b1c43e70ce2172102e0418754
+Author: Simon Pilgrim <llvm-dev@redking.me.uk>
+Date:   Thu Oct 3 18:13:50 2019 +0000
 
-    [Hexagon] Improve generated code for test-if-bit-clear, one more time
+    [X86] matchShuffleWithSHUFPD - use Zeroable element mask directly. NFCI.
     
-    Adjust isel patterns after recent commit. Fixes https://llvm.org/PR43194.
+    We can make use of the Zeroable mask to indicate which elements we can safely set to zero instead of creating a target shuffle mask on the fly.
     
-    llvm-svn: 370913
+    This only leaves one user of createTargetShuffleMask which we can hopefully get rid of in a similar manner.
+    
+    This is part of the work to fix PR43024 and allow us to use SimplifyDemandedElts to simplify shuffle chains - we need to get to a point where the target shuffle masks isn't adjusted by its source inputs in setTargetShuffleZeroElements but instead we cache them in a parallel Zeroable mask.
+    
+    llvm-svn: 373641

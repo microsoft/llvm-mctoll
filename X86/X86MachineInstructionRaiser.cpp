@@ -1120,11 +1120,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     // Load the global value.
     LoadInst *LdInst =
         new LoadInst(dyn_cast<LoadInst>(MemRefValue)->getPointerOperand());
-    LdInst->setAlignment(MemAlignment);
+    LdInst->setAlignment(MaybeAlign(MemAlignment));
     LoadValue = LdInst;
   } else {
     LoadInst *LdInst = new LoadInst(MemRefValue);
-    LdInst->setAlignment(MemAlignment);
+    LdInst->setAlignment(MaybeAlign(MemAlignment));
     LoadValue = LdInst;
   }
   // Insert the instruction that loads memory reference
@@ -1279,7 +1279,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
                                   ->getPointerElementType()
                                   ->getPrimitiveSizeInBits() /
                               8;
-  LdInst->setAlignment(MemAlignment);
+  LdInst->setAlignment(MaybeAlign(MemAlignment));
   RaisedBB->getInstList().push_back(LdInst);
 
   switch (Opcode) {
@@ -1479,7 +1479,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
                                     ->getPointerElementType()
                                     ->getPrimitiveSizeInBits() /
                                 8;
-    LdInst->setAlignment(MemAlignment);
+    LdInst->setAlignment(MaybeAlign(MemAlignment));
     RaisedBB->getInstList().push_back(LdInst);
 
     LLVMContext &Ctx(MF.getFunction().getContext());
@@ -1615,8 +1615,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   if (!isMovInst) {
     // Load the value from memory location
     LdInst = new LoadInst(MemRefVal);
-    LdInst->setAlignment(
-        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout()));
+    LdInst->setAlignment(MaybeAlign(
+        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout())));
     RaisedBB->getInstList().push_back(LdInst);
   }
 
@@ -1675,7 +1675,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
                                   "raising binary mem op instruction");
   StInst = new StoreInst(SrcValue, MemRefVal);
   // Push the store instruction.
-  StInst->setAlignment(memAlignment);
+  StInst->setAlignment(MaybeAlign(memAlignment));
   RaisedBB->getInstList().push_back(StInst);
 
   return true;
@@ -1683,7 +1683,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
 // load from memory, apply operation, store back to the same memory
 bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
-                                                     Value *MemRefVal) {
+                                                         Value *MemRefVal) {
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
@@ -1741,7 +1741,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   // Store the result back in MemRefVal
   StoreInst *StInst = new StoreInst(SrcValue, MemRefVal);
 
-  StInst->setAlignment(memAlignment);
+  StInst->setAlignment(MaybeAlign(memAlignment));
   RaisedBB->getInstList().push_back(StInst);
   return true;
 }
@@ -1829,7 +1829,7 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
     unsigned int memAlignment =
         SrcValue->getType()->getPointerElementType()->getPrimitiveSizeInBits() /
         8;
-    loadInst->setAlignment(memAlignment);
+    loadInst->setAlignment(MaybeAlign(memAlignment));
     RaisedBB->getInstList().push_back(loadInst);
     SrcValue = loadInst;
   }
@@ -1932,8 +1932,8 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     }
     // Load the value from memory location
     LoadInst *loadInst = new LoadInst(MemRefValue);
-    loadInst->setAlignment(
-        MemRefValue->getPointerAlignment(MR->getModule()->getDataLayout()));
+    loadInst->setAlignment(MaybeAlign(
+        MemRefValue->getPointerAlignment(MR->getModule()->getDataLayout())));
     RaisedBB->getInstList().push_back(loadInst);
     // save it at the appropriate index of operand value array
     if (memoryRefOpIndex == 0) {
@@ -3037,7 +3037,8 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
   return true;
 }
 
-bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI, StringRef name) const {
+bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
+                                                      StringRef name) const {
   return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
 

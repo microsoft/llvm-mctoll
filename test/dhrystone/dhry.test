@@ -1,4 +1,5 @@
 // Test raising of dhrystone executable
+// REQUIRES: system-linux
 // RUN: clang -o %t %S/dhry_main.c %S/dhry_funcs_mod.c -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mno-sse
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t-dis %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN

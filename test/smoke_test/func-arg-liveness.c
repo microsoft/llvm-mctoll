@@ -1,3 +1,4 @@
+// REQUIRES: system-linux
 // RUN: clang -o %t %s -O2
 // RUN: llvm-mctoll -d %t
 // RUN: clang -o %t1 %t-dis.ll

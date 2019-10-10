@@ -1,91 +1,119 @@
 # Introduction
+
 This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
-# Getting Started
-## Building as part of LLVM tree
+# Current Status
 
-1.  Setup the source tree:
+The tool is capable of raising X86-64 and Arm32 Linux/ELF libraries and executables to LLVM IR.
+Windows, OS X and C++ support need to be added. At this time X86-64 support is more mature than Arm32.
+
+Development and testing are done on Ubuntu 18.04 and it's expected that Ubuntu 16.04, 17.04 and 17.10 work. The tool is also known to build and run all tests successfully on CentOS 7.5. The tool builds on OS X and Windows and is capable of raising Linux binaries on both platforms.
+
+| Triple | VarArgs | FuncProto | StackFrame | JumpTables | SharedLibs | C++ |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| x86_64-linux | X | X | X | X | X | |
+| arm-linux | X | X | X | X | X | | 
+
+* VarArgs: function calls with variable arguments (such as printf)
+* FuncProto: function prototype discovery
+* StackFrame: stack frame abstraction
+* JumpTables: switch statements with jump tables
+* SharedLibs: shared libraries
+* C++: vtables and name mangling
+
+## Known Issues
+
+SIMD instructions such as SSE, AVX, Neon cannot be raised at this time. For X86-64 you can sometimes work around this issue by compiling the binary to raise with SSE disabled (`clang -mno-sse`). 
+
+Most testing is done using binaries compiled for Linux using LLVM. We have done only limited testing with GCC compiled code.
+
+# Getting Started
+
+There are no dependencies outside of LLVM to build `llvm-mctoll`. The following instructions assume you will build LLVM with [Ninja](https://ninja-build.org).
+
+Support for raising X86-64 and Arm32 binaries is enabled by building LLVM's X86 and ARM targets. The tool is not built unless one of the X86 or ARM LLVM targets are built.
+
+## Building as part of the LLVM tree
+
+1. On Linux and OS X build from a command prompt such as a bash shell. On Windows build from an `x64 Native Tools Command Prompt`. See [LLVM's Visual Studio guide](https://llvm.org/docs/GettingStartedVS.html) for help.
+
+2. Clone the LLVM and mctoll git repositories
+
 ```sh
 git clone --depth 100 -b master https://github.com/llvm/llvm-project.git
 cd llvm-project && git clone -b master https://github.com/microsoft/llvm-mctoll.git llvm/tools/llvm-mctoll
 ```
-2.  Build [LLVM with CMake](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables)
 
-    Support for X86-64 and ARM raisers will be built into the tool based on the LLVM build targets. There is no interdependency. Consequently,  support to raise only X86-64 binaries is built during X86-only LLVM builds; support to raise only ARM binaries is built during ARM-only LLVM builds. The tool is not built during an LLVM build with targets that do not include either X86 or ARM.
+3. Build LLVM with ARM and X86 targets and assertions enabled (See [LLVM CMake Variables](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables))
 
-    For example:
 ```sh
 mkdir build && cd build
-cmake -G "Ninja" -DLLVM_TARGETS_TO_BUILD=X86;ARM -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=Release ..
+cmake -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=Release ../llvm
 ninja llvm-mctoll
 ```
 
-## Windows notes
-
-Build using the `x64 Native Tools Command Prompt` with Ninja as above or using the Visual Studio generator for development.
-Also see https://llvm.org/docs/GettingStartedVS.html
-
-Note that Windows binaries can't be raised at the moment. For generating Linux test binaries and running the test suite resort to WSL.
-
-#### _Note_ :
-1. `llvm-mctoll` is tested using the `llvm-project` commit recorded in LLVMVersion.txt. Make sure the tip of `llvm-project` repo used in your build corresponds to that listed.
-
-## Usage
-
-To generate LLVM IR for a binary:
-
-`llvm-mctoll -d <binary>`
-
-The raised result is generated as `<binary>-dis.ll`.
-
-To check the correctness of `<binary>-dis.ll`
-1. compile `<binary>-dis.ll` to an executable (or to a shared library if `<binary>` is a shared library) using `clang`.
-2. run the resulting executable (or use the resulting shared library `<binary>-dis` in place of `<binary>`) to verify that its execution behavior is identical to that of the original `<binary>`.
-
-Tests in the tool repository are written following the above described methodology.
-
-To print debug output:
-
-`llvm-mctoll -d -print-after-all <binary>`
-
-## Control Functions to Raise in a Module
-
-C functions to be excluded or included are listed in a file using the option:
-
-`--restrict-functions-file=<filename-with-include-exclude-restrictions>`
-
-The file will have text lines as follows
+4. Run the unit tests (Linux only)
 ```
+ninja check-mctoll
+```
+
+## The version of LLVM to build against
+
+The commit recorded in `LLVMVersion.txt` is the supported version of LLVM to build against. Make sure the tip of the `llvm-project` repo you use to build corresponds to the commit listed there.
+
+# Usage
+
+| Command | Description |
+| --- | --- |
+| `-d <binary>` | Generate LLVM IR for a binary and place the result in `<binary>-dis.ll` |
+| `--restrict-functions-file=<file>` | Text file with C functions to exclude or include during raising |
+| `-print-after-all` | Print the LLVM IR after each pass of the raiser |
+
+## Raising a binary to LLVM IR
+
+This is what you came here for :-). Please [file an issue](https://github.com/microsoft/llvm-mctoll/issues) if you find a problem.
+```
+llvm-mctoll -d a.out
+```
+
+## Raising specific functions in a binary
+
+You can specify the C functions to include or exclude during raising with the `--restrict-functions-file` option.
+
+```
+llvm-mctoll -d --restrict-functions-file=restrict.txt a.out
+```
+
+Provide a plain text file with `exclude-functions` and `include-functions` sections. Inside each section list the file and function prototype seperated by a colon. Use [LLVM IR function types](https://llvm.org/docs/LangRef.html#function-type) when defining the return and argument types for a function prototype. Here is a simple example.
+
+```
+; exclude `int bar(int)` defined in a.out
 exclude-functions {
-binary-name-1:function-1-prototype
-binary-name-2:function-2-prototype
+  a.out:i32 bar(i32)   
 }
 
+; include `int foo(void)` defined in a.out
 include-functions {
-binary-name-3:function-3-prototype
-binary-name-4:function-4-prototype
+  a.out:i32 foo(void)   
 }
 ```
 
-# Notes regarding function prototype specification in filter file:
-1. `function-prototype` - which includes return type - expects only the argument types and not the associated arument variable names.
-1. Currently, only LLVM primitive data types are supported.
-1. Functions that do not have arguments are expected to use a single argument type `void`
-1. A line starting with `;` is ignored.
+## Debugging the raiser
 
-## Build and Test
+If you build `llvm-mctoll` with assertions enabled you can print the LLVM IR after each pass of the raiser to assist with debugging.
+```
+llvm-mctoll -d -print-after-all a.out
+```
 
-Run the tests by invoking `make check-mctoll` or `ninja check-mctoll`
+## Checking a translation is correct
 
-At present, the development and testing are done on Ubuntu 18.04. It is expected that build and test would work on Ubuntu 16.04, 17.04 and 17.10.
+The easiest way to check the raised LLVM IR `<binary>-dis.ll` is correct is to compile the IR to an executable using `clang` and run the resulting executable. The tests in the repository follow this methodology. 
 
-The tool is also known to build and run tests successfully on CentOS 7.5.
+# Acknowledgements
 
-# Current Status
+Please use the following reference when citing `llvm-mctoll` in your work:
 
-At present, the tool is capable of raising Linux X86-64 and Arm32 shared libraries and executables with function calls that have variable arguments (such as printf) to LLVM IR.
-
-Raising of C++ binaries needs to be added.
+* `Raising Binaries to LLVM IR with MCTOLL (WIP), S. Bharadwaj Yadavalli and Aaron Smith, LCTES 2019`
 
 # Contributing
 

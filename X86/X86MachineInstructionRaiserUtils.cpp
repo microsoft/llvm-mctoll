@@ -1880,3 +1880,8 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
   }
   return true;
 }
+
+bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
+                                                      StringRef name) const {
+  return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
+}

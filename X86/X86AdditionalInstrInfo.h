@@ -26,6 +26,7 @@ enum InstructionKind : uint8_t {
   BINARY_OP_RM,
   BINARY_OP_RR,
   BINARY_OP_WITH_IMM,
+  BRANCH_MEM_OP,
   COMPARE,
   CONVERT_BWWDDQ,
   CONVERT_WDDQQO,

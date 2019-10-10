@@ -1027,8 +1027,8 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::JMP32m_NT, {0, Unknown}},
     {X86::JMP32r, {0, Unknown}},
     {X86::JMP32r_NT, {0, Unknown}},
-    {X86::JMP64m, {0, Unknown}},
-    {X86::JMP64m_NT, {0, Unknown}},
+    {X86::JMP64m, {8, BRANCH_MEM_OP}},
+    {X86::JMP64m_NT, {8, BRANCH_MEM_OP}},
     {X86::JMP64r, {0, Unknown}},
     {X86::JMP64r_NT, {0, Unknown}},
     {X86::JMP_1, {0, Unknown}},
@@ -14154,9 +14154,9 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::XSHA1, {0, Unknown}},
     {X86::XSHA256, {0, Unknown}},
     {X86::XSTORE, {0, Unknown}},
-    {X86::XTEST, {0, Unknown}}
-};
+    {X86::XTEST, {0, Unknown}}};
 
-const const_addl_instr_info X86AddlInstrInfo(std::begin(mapdata), std::end(mapdata));
+const const_addl_instr_info X86AddlInstrInfo(std::begin(mapdata),
+                                             std::end(mapdata));
 
 } // namespace mctoll

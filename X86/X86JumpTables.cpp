@@ -36,13 +36,15 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
     for (MachineBasicBlock::iterator CurMBBIter = JmpTblBaseCalcMBB.begin();
          CurMBBIter != JmpTblBaseCalcMBB.end(); CurMBBIter++) {
       MachineInstr &JmpTblOffsetCalcMI = (*CurMBBIter);
-      unsigned opcode = JmpTblOffsetCalcMI.getOpcode();
+      unsigned Opcode = JmpTblOffsetCalcMI.getOpcode();
+      auto InstKind = getInstructionKind(Opcode);
       // A vector of switch target MBBs
       std::vector<MachineBasicBlock *> JmpTgtMBBvec;
+      // Physical destination register with the computed jump table base value.
+      unsigned int JmpTblBaseReg = X86::NoRegister;
       // Find the MI LEA64r $rip and save offset of rip
       // This is typically generated in a shared library.
-      if (opcode == X86::LEA64r &&
-          // JmpTblOffsetCalcMI.getOperand(0).getReg() == X86::RAX &&
+      if (Opcode == X86::LEA64r &&
           JmpTblOffsetCalcMI.getOperand(1).getReg() == X86::RIP &&
           JmpTblOffsetCalcMI.getOperand(4).isImm()) {
         uint32_t JmpOffset = JmpTblOffsetCalcMI.getOperand(4).getImm();
@@ -51,7 +53,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         // Calculate memory offset of the referenced offset.
         uint32_t JmpTblBaseMemAddress =
             TextSectionAddress + MCInstIndex + MCInstSz + JmpOffset;
-
+        JmpTblBaseReg = JmpTblOffsetCalcMI.getOperand(0).getReg();
         // Get the contents of the section with JmpTblBaseMemAddress
         const ELF64LEObjectFile *Elf64LEObjFile =
             dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
@@ -84,17 +86,16 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
           continue;
 
         while (JmpTblEntryOffset < DataSize) {
-          // Get the 32-bit value at JmpTblEntryOffset in section data
-          // content. This provides the offset value from JmpTblBaseMemAddress
-          // of the corresponding jump table target. Add this offset to
+          // Get the 32-bit value at JmpTblEntryOffset in section data content.
+          // This provides the offset value from JmpTblBaseMemAddress of the
+          // corresponding jump table target. Add this offset to
           // JmpTblBaseMemAddress to get section address of jump target.
 
           uint32_t JmpTgtMemAddr = *(reinterpret_cast<const uint32_t *>(
                                        DataContent + JmpTblEntryOffset)) +
                                    JmpTblBaseMemAddress;
 
-          // Get MBB corresponding to offset into text section of
-          // JmpTgtMemAddr
+          // Get MBB corresponding to offset into text section of JmpTgtMemAddr
           auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(JmpTgtMemAddr -
                                                         TextSectionAddress);
 
@@ -113,97 +114,89 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         }
       }
       // mov instruction of the kind mov offset(, IndxReg, Scale), Reg
-      else if (getInstructionKind(opcode) == InstructionKind::MOV_FROM_MEM) {
-        const MCInstrDesc &MIDesc = JmpTblOffsetCalcMI.getDesc();
-        unsigned LoadOpIndex = 0;
+      else {
         // Get index of memory reference in the instruction.
         int memoryRefOpIndex = getMemoryRefOpIndex(JmpTblOffsetCalcMI);
-        assert(memoryRefOpIndex == 1 &&
-               "Expect memory operand of a mem move instruction at index 1");
-        assert(MIDesc.getNumDefs() == 1 &&
-               JmpTblOffsetCalcMI.getOperand(LoadOpIndex).isReg() &&
-               "Expect load operand register target");
-        X86AddressMode memRef =
-            llvm::getAddressFromInstr(&JmpTblOffsetCalcMI, memoryRefOpIndex);
-        if (memRef.Base.Reg == X86::NoRegister) {
-          const MachineOperand &LoadOp =
-              JmpTblOffsetCalcMI.getOperand(LoadOpIndex);
-          unsigned int LoadPReg = LoadOp.getReg();
-          assert(
-              Register::isPhysicalRegister(LoadPReg) &&
-              "Expect destination to be a physical register in move from mem "
-              "instruction");
-          const TargetRegisterInfo *TRI =
-              MF.getRegInfo().getTargetRegisterInfo();
-          unsigned memReadTargetBitSz =
-              TRI->getRegSizeInBits(LoadPReg, machineRegInfo);
-          assert((memReadTargetBitSz % 8 == 0) &&
-                 "Size of memory read not multiple bytes");
-          unsigned memReadTargetByteSz = memReadTargetBitSz / 8;
-
-          int JmpTblBaseAddress = memRef.Disp;
-          if (JmpTblBaseAddress > 0) {
-            // This value should be an absolute offset into a rodata section.
-            // Get the contents of the section with JmpTblBase
-            const ELF64LEObjectFile *Elf64LEObjFile =
-                dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
-            assert(Elf64LEObjFile != nullptr &&
-                   "Only 64-bit ELF binaries supported at present.");
-            StringRef Contents;
-            size_t DataSize = 0;
-            size_t JmpTblBaseOffset = 0;
-            // Find the section.
-            for (section_iterator SecIter : Elf64LEObjFile->sections()) {
-              uint64_t SecStart = SecIter->getAddress();
-              uint64_t SecEnd = SecStart + SecIter->getSize();
-              // Potential JmpTblBase is in a data section
-              // OK to cast to unsigned as JmpTblBase is > 0 at this point.
-              if ((SecStart <= (unsigned)JmpTblBaseAddress) &&
-                  (SecEnd >= (unsigned)JmpTblBaseAddress) &&
-                  SecIter->isData()) {
-                Contents = unwrapOrError(SecIter->getContents(),
-                                         MR->getObjectFile()->getFileName());
-                DataSize = SecIter->getSize();
-                JmpTblBaseOffset = JmpTblBaseAddress - SecStart;
-                break;
-              }
-            }
-
-            // Section with jump table base has no content.
-            if (DataSize == 0)
-              // Continue looking for MIs which potentially load a jumptable
-              // base address.
-              continue;
-
-            BinaryByteStream SectionContent(Contents,
-                                            llvm::support::endianness::little);
-            size_t CurReadByteOffset = JmpTblBaseOffset;
-
-            while (CurReadByteOffset < DataSize) {
-              ArrayRef<uint8_t> v(memReadTargetByteSz);
-
-              if (CurReadByteOffset + memReadTargetByteSz > DataSize)
-                break;
-
-              Error EC = SectionContent.readBytes(CurReadByteOffset,
-                                                  memReadTargetByteSz, v);
-              // Eat the error; the section does not have jumptable data
-              if (EC) {
-                handleAllErrors(std::move(EC), [&](const ErrorInfoBase &EI) {});
-                break;
+        if ((InstKind == InstructionKind::MOV_FROM_MEM) ||
+            (InstKind == InstructionKind::BRANCH_MEM_OP)) {
+          assert((memoryRefOpIndex >= 0) && "Unexpected memory operand index");
+          X86AddressMode memRef =
+              llvm::getAddressFromInstr(&JmpTblOffsetCalcMI, memoryRefOpIndex);
+          if (memRef.Base.Reg == X86::NoRegister) {
+            unsigned memReadTargetByteSz = getInstructionMemOpSize(Opcode);
+            assert(memReadTargetByteSz > 0 &&
+                   "Incorrect memory access size of instruction");
+            int JmpTblBaseAddress = memRef.Disp;
+            if (JmpTblBaseAddress > 0) {
+              // This value should be an absolute offset into a rodata section.
+              // Get the contents of the section with JmpTblBase
+              const ELF64LEObjectFile *Elf64LEObjFile =
+                  dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
+              assert(Elf64LEObjFile != nullptr &&
+                     "Only 64-bit ELF binaries supported at present.");
+              StringRef Contents;
+              JmpTblBaseReg = JmpTblOffsetCalcMI.getOperand(0).getReg();
+              size_t DataSize = 0;
+              size_t JmpTblBaseOffset = 0;
+              // Find the section.
+              for (section_iterator SecIter : Elf64LEObjFile->sections()) {
+                uint64_t SecStart = SecIter->getAddress();
+                uint64_t SecEnd = SecStart + SecIter->getSize();
+                // Potential JmpTblBase is in a data section
+                // OK to cast to unsigned as JmpTblBase is > 0 at this point.
+                if ((SecStart <= (unsigned)JmpTblBaseAddress) &&
+                    (SecEnd >= (unsigned)JmpTblBaseAddress) &&
+                    SecIter->isData()) {
+                  Contents = unwrapOrError(SecIter->getContents(),
+                                           MR->getObjectFile()->getFileName());
+                  DataSize = SecIter->getSize();
+                  JmpTblBaseOffset = JmpTblBaseAddress - SecStart;
+                  break;
+                }
               }
 
-              uint64_t JmpTgtMemAddr =
-                  llvm::support::endian::read64le(v.data());
-              // get MBB corresponding to file offset into text section of
-              // JmpTgtMemAddr
-              auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(JmpTgtMemAddr -
-                                                            TextSectionAddress);
-              if (MBBNo != -1) {
-                MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);
-                JmpTgtMBBvec.push_back(MBB);
+              // Section with jump table base has no content.
+              if (DataSize == 0)
+                // Continue looking for MIs which potentially load a jumptable
+                // base address.
+                continue;
+
+              BinaryByteStream SectionContent(
+                  Contents, llvm::support::endianness::little);
+              size_t CurReadByteOffset = JmpTblBaseOffset;
+
+              while (CurReadByteOffset < DataSize) {
+                ArrayRef<uint8_t> v(memReadTargetByteSz);
+
+                if (CurReadByteOffset + memReadTargetByteSz > DataSize)
+                  break;
+
+                Error EC = SectionContent.readBytes(CurReadByteOffset,
+                                                    memReadTargetByteSz, v);
+                // Eat the error; the section does not have jumptable data
+                if (EC) {
+                  handleAllErrors(std::move(EC),
+                                  [&](const ErrorInfoBase &EI) {});
+                  break;
+                }
+
+                uint64_t JmpTgtMemAddr =
+                    llvm::support::endian::read64le(v.data());
+                // get MBB corresponding to file offset into text section of
+                // JmpTgtMemAddr
+                auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(
+                    JmpTgtMemAddr - TextSectionAddress);
+                if (MBBNo != -1) {
+                  MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);
+                  JmpTgtMBBvec.push_back(MBB);
+                } else {
+                  // Jump table entries are expected to be in a sequence. Once
+                  // data that is different from a jump table entry is detected,
+                  // stop looking for table entries.
+                  break;
+                }
+                CurReadByteOffset += memReadTargetByteSz;
               }
-              CurReadByteOffset += memReadTargetByteSz;
             }
           }
         }
@@ -214,6 +207,51 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       if (JmpTgtMBBvec.size() == 0) {
         continue;
       }
+
+      // Check to verify the current  block - JmpTblBaseCalcMBB - terminates
+      // with an indirect branch.
+      bool BuildJumpTable = true;
+      for (auto &T : JmpTblBaseCalcMBB.terminators()) {
+        if (!T.isIndirectBranch()) {
+          BuildJumpTable = false;
+          break;
+        }
+      }
+
+      if (!BuildJumpTable)
+        continue;
+
+      if (InstKind == InstructionKind::MOV_FROM_MEM) {
+        // Check to verify the current  block - JmpTblBaseCalcMBB - with the
+        // instruction that potentially calculates jump table base does indeed
+        // have register-based branch as the terminator and that register does
+        // not get redefined by any intervening instruction.
+        // NOTE: This check is not needed for branch with memory operand.
+        unsigned SR = find64BitSuperReg(JmpTblBaseReg);
+
+        for (MachineBasicBlock::const_instr_iterator instIter =
+                 JmpTblOffsetCalcMI.getNextNode()->getIterator();
+             instIter != JmpTblBaseCalcMBB.end(); ++instIter) {
+          for (auto O : instIter->defs()) {
+            if (O.isReg()) {
+              if (find64BitSuperReg(O.getReg()) == SR) {
+                BuildJumpTable = false;
+                break;
+              }
+            }
+          }
+          if (!BuildJumpTable)
+            break;
+        }
+
+        if (!BuildJumpTable)
+          continue;
+      }
+
+      // With all the checks done, we can safely assume that this is a block
+      // that computes the base of jumptables and delete it.
+      MBBsToBeErased.push_back(&JmpTblBaseCalcMBB);
+
       // Construct jump table. Current block is the block which would
       // potentially contain the start of jump targets. If current block
       // has multiple predecessors this may not be a jump table. For now
@@ -223,15 +261,12 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
              "Expect a single predecessor during jump table discovery");
       MachineBasicBlock *JmpTblPredMBB = *(JmpTblBaseCalcMBB.pred_begin());
       // Predecessor block of current block (MBB) - which is jump table
-      // block
-      // - is expected to have exactly two successors; one the current
-      // block and the other which should become the default MBB for the
-      // switch.
+      // block - is expected to have exactly two successors; one the current
+      // block and the other which should become the default MBB for the switch.
       assert((JmpTblPredMBB->succ_size() == 2) &&
              "Unexpected number of successors of switch block");
       JumpTableInfo JmpTblInfo;
-      // Set predecessor of current block as condition block of jump table
-      // info
+      // Set predecessor of current block as condition block of jump table info
       JmpTblInfo.conditionMBB = JmpTblPredMBB;
       // Set default basic block in jump table info
       for (auto Succ : JmpTblPredMBB->successors()) {
@@ -251,100 +286,16 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       std::vector<MachineInstr *> MBBInstrsToErase;
       if (BranchInstr.isConditionalBranch() &&
           BranchInstr.getDesc().hasImplicitUseOfPhysReg(X86::EFLAGS)) {
-        // Walk the basic block backwards to find the most recent
-        // instruction that implicitly defines eflags.
-        bool EflagsModifierFound = false;
-        MachineBasicBlock::reverse_instr_iterator CurInstrIter =
-            JmpTblPredMBB->instr_rbegin();
-        for (auto LastInstIter = JmpTblPredMBB->instr_rend();
-             ((CurInstrIter != LastInstIter) && (!EflagsModifierFound));
-             ++CurInstrIter) {
-          MachineInstr &curInst = *CurInstrIter;
-          if (curInst.getDesc().hasImplicitDefOfPhysReg(X86::EFLAGS)) {
-            EflagsModifierFound = true;
-          }
-        }
-        assert(EflagsModifierFound && "Failed to find eflags defining "
-                                      "instruction during jump table "
-                                      "extraction.");
-        // Note: decrement CurInstrIter to point to the eflags modifying
-        // instruction.
-        CurInstrIter--;
-        // Find the registers that the eflags modifying instruction
-        // defines. Delete all instructions that uses them since we will
-        // be deleting the eflags modifying instruction.
-        MachineInstr &EflagsModInstr = *CurInstrIter;
-        std::set<unsigned int> EflagsDefRegs;
-        for (auto MO : EflagsModInstr.defs()) {
-          // Create a set of all physical registers this instruction
-          // defines.
-          if (MO.isReg()) {
-            unsigned int DefReg = MO.getReg();
-            if (Register::isPhysicalRegister(DefReg)) {
-              EflagsDefRegs.insert(find64BitSuperReg(DefReg));
-            }
-          }
-        }
-
-        // Add EflagsModInstr to the list of instructions to delete
-        MBBInstrsToErase.push_back(&EflagsModInstr);
-
-        MachineBasicBlock::iterator InstrEndIter = JmpTblPredMBB->instr_end();
-        // Start walking the block instructions forward to identify
-        // instructions that need be deleted.
-        MachineBasicBlock::iterator InstrFwdIter =
-            MachineBasicBlock::instr_iterator(CurInstrIter);
-        // Find instructions that use any of the register in the set
-        // EflagsDefRegs. Add it to a list of instructions that can be
-        // deleted.
-        while (InstrFwdIter != InstrEndIter) {
-          MachineInstr &CurInstr = *InstrFwdIter;
-          for (auto MO : CurInstr.uses()) {
-            // Check if this use register is defined by EflagsModInstr
-            if (MO.isReg()) {
-              unsigned int UseReg = MO.getReg();
-              if (Register::isPhysicalRegister(UseReg)) {
-                unsigned SReg = (UseReg == X86::EFLAGS)
-                                    ? UseReg
-                                    : find64BitSuperReg(UseReg);
-                if (EflagsDefRegs.find(SReg) != EflagsDefRegs.end()) {
-                  MBBInstrsToErase.push_back(&CurInstr);
-                  // No need to look for other register uses.
-                  break;
-                }
-              }
-            }
-          }
-          // If this instruction redefines any of the registers, remove
-          // that register from EflagsDefRegs. Any instruction that uses
-          // this redefined register and follows the current instruction,
-          // should not be deleted.
-          for (auto MO : CurInstr.defs()) {
-            if (MO.isReg()) {
-              unsigned int DefReg = MO.getReg();
-              if (Register::isPhysicalRegister(DefReg)) {
-                if (EflagsDefRegs.find(find64BitSuperReg(DefReg)) !=
-                    EflagsDefRegs.end()) {
-                  EflagsDefRegs.erase(DefReg);
-                }
-              }
-            }
-          }
-          InstrFwdIter++;
-        }
-        // Finally add BranchInstr to the list of instructions to be
-        // deleted
-        MBBInstrsToErase.push_back(&BranchInstr);
-        // Now delete the instructions
-        for (auto MI : MBBInstrsToErase) {
-          JmpTblPredMBB->erase(MI);
-        }
+        // Delete the conditional branch instruction. The target of this
+        // instruction is default block and fall-through is the block that
+        // computes switch table base.
+        JmpTblPredMBB->erase(BranchInstr);
       }
 
       const X86Subtarget *STI = &MF.getSubtarget<X86Subtarget>();
       const X86InstrInfo *TII = STI->getInstrInfo();
 
-      MBBsToBeErased.push_back(&JmpTblBaseCalcMBB);
+      // Find the appropriate jump opcode based on the size of switch value
       BuildMI(JmpTblPredMBB, DebugLoc(), TII->get(X86::JMP64r))
           .addJumpTableIndex(JmpTblInfo.jtIdx);
       jtList.push_back(JmpTblInfo);
@@ -372,28 +323,85 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
   return true;
 }
 
-Instruction *
-X86MachineInstructionRaiser::raiseConditonforJumpTable(MachineBasicBlock &mbb) {
-  Instruction *cdi = nullptr;
-  auto intr_conditon = mbbToBBMap.find(mbb.getNumber());
-  BasicBlock *cd_bb = intr_conditon->second;
-
-  // When the case id starts with 0, we use the LOAD instruction to
-  // construct the condition value. Otherwise we use the ADD instruction.
-  for (BasicBlock::iterator DI = cd_bb->begin(); DI != cd_bb->end(); DI++) {
-    Instruction *ins = dyn_cast<Instruction>(DI);
-    if (isa<LoadInst>(DI)) {
-      cdi = ins;
-    }
-
-    if (cdi && (ins->getOpcode() == Instruction::Add)) {
-      if (isa<ConstantInt>(ins->getOperand(1))) {
-        ConstantInt *opr = dyn_cast<ConstantInt>(ins->getOperand(1));
-        if (opr->isNegative()) {
-          cdi = ins;
-        }
-      }
+// Return the Value * representing the value used to be searched in the given
+// MachineBasicBlock with a jmp to jump-table.
+Value *
+X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
+  Value *switchOnVal = nullptr;
+  // Walk the basic block backwards to find the most recent
+  // instruction that implicitly defines eflags.
+  bool EflagsModifierFound = false;
+  MachineBasicBlock::reverse_instr_iterator CurInstrIter = MBB.instr_rbegin();
+  for (auto LastInstIter = MBB.instr_rend();
+       ((CurInstrIter != LastInstIter) && (!EflagsModifierFound));
+       ++CurInstrIter) {
+    MachineInstr &curInst = *CurInstrIter;
+    if (curInst.getDesc().hasImplicitDefOfPhysReg(X86::EFLAGS)) {
+      EflagsModifierFound = true;
     }
   }
-  return cdi;
+  assert(EflagsModifierFound &&
+         "Failed to find eflags defining "
+         "instruction while detecting switch compare value");
+  // Note: decrement CurInstrIter to point to the eflags modifying
+  // instruction.
+  CurInstrIter--;
+  // This instruction is either an compare or a sub instruction
+  if (instrNameStartsWith(*CurInstrIter, "SUB") ||
+      instrNameStartsWith(*CurInstrIter, "CMP")) {
+    // This instruction is typically of the type sub reg, imm
+    // used to set the EFLAGS. In this case, the switch value is reg.
+    // A couple of sanity checks.
+    assert((((CurInstrIter->getNumExplicitOperands() == 3) &&
+             (CurInstrIter->getNumExplicitDefs() == 1)) ||
+            ((CurInstrIter->getNumExplicitOperands() == 2) ||
+             (CurInstrIter->getNumExplicitDefs() == 0))) &&
+           "Unexpected number of operands of sub instruction found while "
+           "detecting switch compare value");
+
+    unsigned int cmpSrcReg = X86::NoRegister;
+
+    if (CurInstrIter->getNumExplicitDefs() == 1) {
+      const unsigned DestOpIndex = 0, UseOp1Index = 1, UseOp2Index = 2;
+      const MachineOperand &SrcOp = CurInstrIter->getOperand(UseOp1Index);
+      const MachineOperand &ImmOp = CurInstrIter->getOperand(UseOp2Index);
+      assert(CurInstrIter->getOperand(DestOpIndex).isTied() &&
+             (CurInstrIter->findTiedOperandIdx(DestOpIndex) == UseOp1Index) &&
+             "Expect tied operand in neg instruction");
+      assert(SrcOp.isReg() && ImmOp.isImm() &&
+             "Unexpected types of operands of sub instruction found while "
+             "detecting switch compare value");
+      cmpSrcReg = SrcOp.getReg();
+    } else if (CurInstrIter->getNumExplicitDefs() == 0) {
+      const unsigned UseOp1Index = 0, UseOp2Index = 1;
+      const MachineOperand &SrcOp = CurInstrIter->getOperand(UseOp1Index);
+      const MachineOperand &ImmOp = CurInstrIter->getOperand(UseOp2Index);
+      assert(SrcOp.isReg() && ImmOp.isImm() &&
+             "Unexpected types of operands of sub instruction found while "
+             "detecting switch compare value");
+      cmpSrcReg = SrcOp.getReg();
+    } else {
+      assert(false && "Unexpected number of defs in compare instruction found "
+                      "while determining switch compare value");
+    }
+
+    assert(Register::isPhysicalRegister(cmpSrcReg) &&
+           "Unable to detect compare source register");
+    Value *CmpVal = getRegOrArgValue(cmpSrcReg, MBB.getNumber());
+    Instruction *CmpInst = dyn_cast<Instruction>(CmpVal);
+    assert((CmpInst != nullptr) &&
+           "Expect instruction while finding switch compare value");
+    switchOnVal = CmpInst->getOperand(0);
+    // If switchOnval is a cast value, it is most likely cast to match the
+    // source of the compare instruction. Get to the value prior to casting.
+    CastInst *castInst = dyn_cast<CastInst>(switchOnVal);
+    while (castInst) {
+      switchOnVal = castInst->getOperand(0);
+      castInst = dyn_cast<CastInst>(switchOnVal);
+    }
+  } else
+    assert(false && "Unhandled EFLAGS modifying instruction found while "
+                    "detecting switch compare value");
+
+  return switchOnVal;
 }

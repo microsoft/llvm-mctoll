@@ -2717,30 +2717,29 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
   assert((MCID.TSFlags & X86II::ImmMask) == 0 &&
          "PC-Relative control transfer not expected");
 
+  // Raise indirect branch instruction to jump table
   if (MI->getOperand(0).isJTI()) {
     unsigned jtIndex = MI->getOperand(0).getIndex();
     std::vector<JumpTableBlock> JTCases;
     const MachineJumpTableInfo *MJT = MF.getJumpTableInfo();
-    MachineModuleInfo &mmi = MF.getMMI();
-    const Module *md = mmi.getModule();
-    LLVMContext &Ctx = md->getContext();
+
+    // Get the case value
+    MachineBasicBlock *cdMBB = jtList[jtIndex].conditionMBB;
+    Value *cdi = getSwitchCompareValue(*cdMBB);
+    assert(cdi != nullptr && "Failed to get switch compare value.");
+    Type *caseValTy = cdi->getType();
 
     std::vector<MachineJumpTableEntry> JumpTables = MJT->getJumpTables();
     for (unsigned j = 0, f = JumpTables[jtIndex].MBBs.size(); j != f; ++j) {
-      llvm::Type *i32_type = llvm::IntegerType::getInt32Ty(Ctx);
-      llvm::ConstantInt *i32_val =
-          cast<ConstantInt>(llvm::ConstantInt::get(i32_type, j, true));
+      ConstantInt *CaseVal =
+          cast<ConstantInt>(ConstantInt::get(caseValTy, j, true));
       MachineBasicBlock *Succ = JumpTables[jtIndex].MBBs[j];
-      ConstantInt *CaseVal = i32_val;
       JTCases.push_back(std::make_pair(CaseVal, Succ));
     }
 
     // Create the Switch Instruction
     unsigned int numCases = JTCases.size();
     auto intr_df = mbbToBBMap.find(jtList[jtIndex].df_MBB->getNumber());
-    MachineBasicBlock *cdMBB = jtList[jtIndex].conditionMBB;
-    Instruction *cdi = raiseConditonforJumpTable(*cdMBB);
-    assert(cdi != nullptr && "Condition value is NUll!");
 
     BasicBlock *df_bb = intr_df->second;
     SwitchInst *Inst = SwitchInst::Create(cdi, df_bb, numCases);
@@ -2754,6 +2753,9 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
 
     CandBB->getInstList().push_back(Inst);
     CTRec->Raised = true;
+  } else {
+    assert(false && "Support to raise indirect branches to non-jumptable "
+                    "location not yet implemented");
   }
   return true;
 }
@@ -3035,11 +3037,6 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     assert(false && "Unhandled type of branch instruction");
   }
   return true;
-}
-
-bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
-                                                      StringRef name) const {
-  return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
 
 // Raise a generic instruction. This is the catch all MachineInstr raiser

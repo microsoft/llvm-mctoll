@@ -156,7 +156,7 @@ private:
   // Raise Machine Jumptable
   bool raiseMachineJumpTable();
 
-  Instruction *raiseConditonforJumpTable(MachineBasicBlock &mbb);
+  Value *getSwitchCompareValue(MachineBasicBlock &mbb);
 
   // FPU Stack access functions
   void FPURegisterStackPush(Value *);

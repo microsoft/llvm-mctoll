@@ -66,7 +66,7 @@ The commit recorded in `LLVMVersion.txt` is the supported version of LLVM to bui
 | Command | Description |
 | --- | --- |
 | `-d <binary>` | Generate LLVM IR for a binary and place the result in `<binary>-dis.ll` |
-| `--restrict-functions-file=<file>` | Text file with C functions to exclude or include during raising |
+| `--filter-functions-file=<file>` | Text file with C functions to exclude or include during raising |
 | `-print-after-all` | Print the LLVM IR after each pass of the raiser |
 
 ## Raising a binary to LLVM IR
@@ -78,10 +78,10 @@ llvm-mctoll -d a.out
 
 ## Raising specific functions in a binary
 
-You can specify the C functions to include or exclude during raising with the `--restrict-functions-file` option.
+You can specify the C functions to include or exclude during raising with the `--filter-functions-file` option.
 
 ```
-llvm-mctoll -d --restrict-functions-file=restrict.txt a.out
+llvm-mctoll -d --filter-functions-file=restrict.txt a.out
 ```
 
 Provide a plain text file with `exclude-functions` and `include-functions` sections. Inside each section list the file and function prototype seperated by a colon. Use [LLVM IR function types](https://llvm.org/docs/LangRef.html#function-type) when defining the return and argument types for a function prototype. Here is a simple example.

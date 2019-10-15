@@ -143,11 +143,12 @@ cl::opt<std::string>
 cl::opt<std::string> llvm::FilterFunctionSet(
     "filter-functions-file",
     cl::desc("Specify which functions to raise via a configuration file."),
-    cl::NotHidden);
+    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::alias static FilterFunctionSetF(
     "f", cl::desc("Alias for --filter-functions-file"),
-    cl::aliasopt(llvm::FilterFunctionSet), cl::NotHidden);
+    cl::aliasopt(llvm::FilterFunctionSet), cl::cat(LLVMMCToLLCategory),
+    cl::NotHidden);
 
 cl::opt<bool> llvm::SectionHeaders("section-headers",
                                    cl::desc("Display summaries of the "

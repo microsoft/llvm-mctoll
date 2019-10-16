@@ -109,7 +109,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::ADD8mi, {1, MOV_TO_MEM}},
     {X86::ADD8mi8, {1, MOV_TO_MEM}},
     {X86::ADD8mr, {1, MOV_TO_MEM}},
-    {X86::ADD8ri, {0, Unknown}},
+    {X86::ADD8ri, {0, BINARY_OP_WITH_IMM}},
     {X86::ADD8ri8, {0, Unknown}},
     {X86::ADD8rm, {1, Unknown}},
     {X86::ADD8rr, {0, BINARY_OP_RR}},

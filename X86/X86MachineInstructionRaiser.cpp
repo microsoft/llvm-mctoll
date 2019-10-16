@@ -2389,6 +2389,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::ADD16i16:
     case X86::ADD32i32:
     case X86::ADD64i32:
+    case X86::ADD8ri:
     case X86::ADD16ri:
     case X86::ADD16ri8:
     case X86::ADD32ri:
@@ -2543,6 +2544,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     switch (MI.getOpcode()) {
     case X86::ADD8i8:
     case X86::ADD16i16:
+    case X86::ADD8ri:
     case X86::ADD16ri:
     case X86::ADD16ri8:
     case X86::ADD32ri:

@@ -5,16 +5,37 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit eb8d85e5db501d8b1c43e70ce2172102e0418754
-Author: Simon Pilgrim <llvm-dev@redking.me.uk>
-Date:   Thu Oct 3 18:13:50 2019 +0000
+commit 1893f9a45813d7b486576d88642e0e1cc5bc92fb
+Author: Luis Marques <luismarques@lowrisc.org>
+Date:   Wed Oct 16 15:06:02 2019 +0000
 
-    [X86] matchShuffleWithSHUFPD - use Zeroable element mask directly. NFCI.
-    
-    We can make use of the Zeroable mask to indicate which elements we can safely set to zero instead of creating a target shuffle mask on the fly.
-    
-    This only leaves one user of createTargetShuffleMask which we can hopefully get rid of in a similar manner.
-    
-    This is part of the work to fix PR43024 and allow us to use SimplifyDemandedElts to simplify shuffle chains - we need to get to a point where the target shuffle masks isn't adjusted by its source inputs in setTargetShuffleZeroElements but instead we cache them in a parallel Zeroable mask.
-    
-    llvm-svn: 373641
+    [RISCV] Add MachineInstr immediate verification
+
+    Summary:
+    This patch implements the `TargetInstrInfo::verifyInstruction` hook for RISC-V. Currently the hook verifies the machine instruction's immediate operands, to check if the immediates are within the expected bounds. Without the hook invalid immediates are not detected except when doing assembly parsing, so they are silently emitted (including being truncated when emitting object code).
+
+    The bounds information is specified in tablegen by using the `OperandType` definition, which sets the `MCOperandInfo`'s `OperandType` field. Several RISC-V-specific immediate operand types were created, which extend the `MCInstrDesc`'s `OperandType` `enum`.
+
+    To have the hook called with `llc` pass it the `-verify-machineinstrs` option. For Clang add the cmake build config `-DLLVM_ENABLE_EXPENSIVE_CHECKS=True`, or temporarily patch `TargetPassConfig::addVerifyPass`.
+
+    Review concerns:
+
+    - The patch adds immediate operand type checks that cover at least the base ISA. There are several other operand types for the C extension and one type for the F/D extensions that were left out of this initial patch because they introduced further design concerns that I felt were best evaluated separately.
+
+    - Invalid register classes (e.g. passing a GPR register where a GPRC is expected) are already caught, so were not included.
+
+    - This design makes the more abstract `MachineInstr` verification depend on MC layer definitions, which arguably is not the cleanest design, but is in line with how things are done in other parts of the target and LLVM in general.
+
+    - There is some duplication of logic already present in the `MCOperandPredicate`s. Since the `MachineInstr` and `MCInstr` notions of immediates are fundamentally different, this is currently necessary.
+
+    Reviewers: asb, lenary
+
+    Reviewed By: lenary
+
+    Subscribers: hiraditya, rbar, johnrusso, simoncook, apazos, sabuasal, niosHD, kito-cheng, shiva0217, jrtc27, MaskRay, zzheng, edward-jones, rogfer01, MartinMosbeck, brucehoult, the_o, rkruppe, PkmX, jocewei, psnobl, benna, Jim, s.egerton, pzheng, llvm-commits
+
+    Tags: #llvm
+
+    Differential Revision: https://reviews.llvm.org/D67397
+
+    llvm-svn: 375006

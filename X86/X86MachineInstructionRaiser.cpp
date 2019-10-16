@@ -1706,12 +1706,18 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
         MemPtrTy);
     RaisedBB->getInstList().push_back(CInst);
     MemRefVal = CInst;
+    SrcTy = MemRefVal->getType();
   }
 
+  // Make sure the value is of pointer type.
+  assert(SrcTy->isPointerTy() &&
+         "Expect value of load instruction to be of pointer type");
   // Load the value from memory location
   Instruction *SrcValue = new LoadInst(
-      MemRefVal, "", false,
-      MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout()));
+      SrcTy->getPointerElementType(), MemRefVal, "", false,
+      MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout())
+          .valueOrOne()
+          .value());
   RaisedBB->getInstList().push_back(SrcValue);
 
   switch (MI.getOpcode()) {

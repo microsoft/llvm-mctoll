@@ -512,7 +512,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
                                               false /* isConstant */, Lnkg,
                                               GlobalInit, Symname->data());
           // Don't use symbSize as it was modified.
-          GlobalVal->setAlignment(Symb->st_size);
+          GlobalVal->setAlignment(MaybeAlign(Symb->st_size));
           GlobalVal->setDSOLocal(true);
           MemrefValue = GlobalVal;
         }
@@ -622,7 +622,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
                                             false /* isConstant */, Lnkg,
                                             GlobalInit, Symname->data());
         // Don't use symSize as it was modified.
-        GlobalVal->setAlignment(SymAlignment);
+        GlobalVal->setAlignment(MaybeAlign(SymAlignment));
         GlobalVal->setDSOLocal(true);
         MemrefValue = GlobalVal;
       }
@@ -1056,7 +1056,7 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
           auto GlobalStrConstVal = new GlobalVariable(
               *(MR->getModule()), StrConstant->getType(), true /* isConstant */,
               GlobalValue::PrivateLinkage, StrConstant, "RO-String");
-          GlobalStrConstVal->setAlignment(1);
+          GlobalStrConstVal->setAlignment(MaybeAlign(1));
           // Record the mapping between offset and global value
           MR->addRODataValueAt(GlobalStrConstVal, Offset);
           RODataValue = GlobalStrConstVal;
@@ -1136,7 +1136,7 @@ const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
             auto GlobalVal = new GlobalVariable(
                 *(MR->getModule()), GlobalValTy, false /* isConstant */,
                 linkage, GlobalInit, GlobalDataSymName.get());
-            GlobalVal->setAlignment(GlobDataSymSectionAlignment);
+            GlobalVal->setAlignment(MaybeAlign(GlobDataSymSectionAlignment));
             GlobalVal->setDSOLocal(true);
             RODataValue = GlobalVal;
           }
@@ -1400,7 +1400,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       auto GlobalVal = new GlobalVariable(
           *(MR->getModule()), GlobalValTy, false /* isConstant */, Lnkg,
           GlobalInit, GlobalDataSymNameIndexStrRef);
-      GlobalVal->setAlignment(GlobDataSymAlignment);
+      GlobalVal->setAlignment(MaybeAlign(GlobDataSymAlignment));
       GlobalVal->setDSOLocal(true);
       GlobalVariableValue = GlobalVal;
     }

@@ -26,6 +26,7 @@ enum InstructionKind : uint8_t {
   BINARY_OP_RM,
   BINARY_OP_RR,
   BINARY_OP_WITH_IMM,
+  BINARY_OP_MRI_OR_MRC, // binary operation instructions with MRI/MRC encoding
   BRANCH_MEM_OP,
   COMPARE,
   CONVERT_BWWDDQ,
@@ -57,7 +58,8 @@ struct X86AdditionalInstrInfo {
   // structure.
 };
 
-using const_addl_instr_info = const llvm::DenseMap<uint16_t, X86AdditionalInstrInfo>;
+using const_addl_instr_info =
+    const llvm::DenseMap<uint16_t, X86AdditionalInstrInfo>;
 using const_addl_instr_info_iteartor = const_addl_instr_info::iterator;
 
 extern const const_addl_instr_info X86AddlInstrInfo;

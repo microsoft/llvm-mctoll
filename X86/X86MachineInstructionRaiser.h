@@ -41,11 +41,11 @@ using MCPhysRegSizeMap = std::map<MCPhysReg, uint16_t>;
 class X86RaisedValueTracker;
 
 namespace llvm {
-  class X86Subtarget;
-  class X86InstrInfo;
-  class X86RegisterInfo;
-  struct X86AddressMode;
-}
+class X86Subtarget;
+class X86InstrInfo;
+class X86RegisterInfo;
+struct X86AddressMode;
+} // namespace llvm
 
 class X86MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
@@ -122,16 +122,17 @@ private:
   bool raiseLEAMachineInstr(const MachineInstr &);
   bool raiseMoveRegToRegMachineInstr(const MachineInstr &);
   bool raiseMoveImmToRegMachineInstr(const MachineInstr &);
+
   bool raiseBinaryOpRegToRegMachineInstr(const MachineInstr &);
   bool raiseBinaryOpImmToRegMachineInstr(const MachineInstr &);
+  bool raiseBinaryOpMRIOrMRCEncodedMachineInstr(const MachineInstr &MI);
+  bool raiseBinaryOpMemToRegInstr(const MachineInstr &, Value *);
   bool raiseSetCCMachineInstr(const MachineInstr &);
   bool raiseCallMachineInstr(const MachineInstr &);
-
   bool raiseCompareMachineInstr(const MachineInstr &, bool, Value *);
   bool raiseInplaceMemOpInstr(const MachineInstr &, Value *);
   bool raiseMoveToMemInstr(const MachineInstr &, Value *);
   bool raiseMoveFromMemInstr(const MachineInstr &, Value *);
-  bool raiseBinaryOpMemToRegInstr(const MachineInstr &, Value *);
   bool raiseDivideInstr(const MachineInstr &, Value *);
   bool raiseLoadIntToFloatRegInstr(const MachineInstr &, Value *);
   bool raiseStoreIntToFloatRegInstr(const MachineInstr &, Value *);

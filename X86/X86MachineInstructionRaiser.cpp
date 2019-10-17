@@ -2354,6 +2354,142 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
   return Success;
 }
 
+// Raise a binary operation instruction with operand encoding MRI or MRC
+// TODO: The current implementation handles only instructions with first operand
+// as register operand. Need to expand to add support for instructions with
+// first operand as memory operand.
+bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
+    const MachineInstr &MI) {
+  bool success = true;
+  unsigned int DstIndex = 0, SrcOp1Index = 1, SrcOp2Index = 2, SrcOp3Index = 3;
+  const MCInstrDesc &MIDesc = MI.getDesc();
+  int MBBNo = MI.getParent()->getNumber();
+
+  // Get the BasicBlock corresponding to MachineBasicBlock of MI.
+  // Raised instruction is added to this BasicBlock.
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+
+  // A binary operation instruction with encoding MRI or MRC specifies three
+  // operands - the first operand is memory or register and the second is a
+  // register and the third is an immediate value or CL register. As noted
+  // above, support is not yet implemented if for first operand being a memory
+  // operand.
+  //
+  // X86::EFLAGS is the implicit def operand.
+  unsigned NumOperands = MI.getNumExplicitOperands() +
+                         MIDesc.getNumImplicitUses() +
+                         MIDesc.getNumImplicitDefs();
+
+  assert((NumOperands == 5) && "Unexpected number of operands of BinOp "
+                               "instruction with MRI/MRC operand format");
+
+  // Ensure that the instruction defines EFLAGS as implicit define register.
+  assert(MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+         "Expected implicit def operand EFLAGS not found");
+
+  // TODO: Memory accessing instructions not yet supported.
+  assert(!MIDesc.mayLoad() && !MIDesc.mayStore() &&
+         "Unsupported MRI/MRC instruction");
+
+  MachineOperand DstOp = MI.getOperand(DstIndex);
+  MachineOperand SrcOp1 = MI.getOperand(SrcOp1Index);
+  MachineOperand SrcOp2 = MI.getOperand(SrcOp2Index);
+  // Check the validity of operands.
+  // The first operand is also as the destination operand.
+  // Verify source and dest are tied and are registers.
+  assert(DstOp.isTied() && (MI.findTiedOperandIdx(DstIndex) == SrcOp1Index) &&
+         "Expect tied operand in MRI/MRC encoded instruction");
+  assert(SrcOp1.isReg() && SrcOp2.isReg() &&
+         "Unexpected operands of an MRC/MRI encoded instruction");
+  // Values need to be discovered to form the appropriate instruction.
+  // Note that DstOp is both source and dest.
+  unsigned int DstPReg = DstOp.getReg();
+  Value *SrcOp1Value = matchSSAValueToSrcRegSize(MI, SrcOp1.getReg());
+  Value *SrcOp2Value = matchSSAValueToSrcRegSize(MI, SrcOp2.getReg());
+  assert(SrcOp1Value->getType() == SrcOp2Value->getType() &&
+         "Mismatched types of MRI/MRC encoded instructions");
+  Instruction *BinOpInstr = nullptr;
+  // EFLAGS that are affected by the result of the binary operation
+  std::vector<unsigned> AffectedEFlags;
+  Value *CountValue = nullptr;
+
+  switch (MI.getOpcode()) {
+  case X86::SHLD16rri8:
+  case X86::SHLD32rri8:
+  case X86::SHLD64rri8:
+  case X86::SHRD16rri8:
+  case X86::SHRD32rri8:
+  case X86::SHRD64rri8: {
+    MachineOperand SrcOp3 = MI.getOperand(SrcOp3Index);
+    assert(SrcOp3.isImm() &&
+           "Expect immediate operand in an MRI encoded instruction");
+    CountValue =
+        ConstantInt::get(getImmOperandType(MI, SrcOp3Index), SrcOp3.getImm());
+    // cast CountValue as needed
+    CountValue = castValue(CountValue, SrcOp1Value->getType(), RaisedBB);
+  } break;
+  case X86::SHLD16rrCL:
+  case X86::SHLD32rrCL:
+  case X86::SHLD64rrCL:
+  case X86::SHRD16rrCL:
+  case X86::SHRD32rrCL:
+  case X86::SHRD64rrCL: {
+    assert((MIDesc.getNumImplicitUses() == 1) &&
+           "Expect one implicit use in MCR encoded instruction");
+    assert((MIDesc.ImplicitUses[0] == X86::CL) &&
+           "Expect implicit CL regsiter operand in MCR encoded instruction");
+    CountValue = matchSSAValueToSrcRegSize(MI, X86::CL);
+    // cast CountValue as needed
+    CountValue = castValue(CountValue, SrcOp1Value->getType(), RaisedBB);
+  } break;
+  default:
+    llvm_unreachable("Unhandled MRI/MRC encoded instruction");
+  }
+
+  // Now generate the call to instrinsic
+  // Types of all operands are already asserted to be the same
+  Type *OpTy = SrcOp1Value->getType();
+  std::string IntrinsicFuncName;
+  if (instrNameStartsWith(MI, "SHLD"))
+    IntrinsicFuncName =
+        "llvm.fshl.i" + std::to_string(OpTy->getScalarSizeInBits());
+  else if (instrNameStartsWith(MI, "SHRD")) {
+    IntrinsicFuncName =
+        "llvm.fshr.i" + std::to_string(OpTy->getScalarSizeInBits());
+    // Swap the argument order
+    Value *tmp = SrcOp1Value;
+    SrcOp1Value = SrcOp2Value;
+    SrcOp2Value = tmp;
+  } else
+    llvm_unreachable("Unhandled MCR/MCI encoded instruction");
+  Module *M = MR->getModule();
+  Function *IntrinsicFunc = M->getFunction(IntrinsicFuncName);
+  // Create the function if it does not exist
+  if (IntrinsicFunc == nullptr) {
+    vector<Type *> IntrinsicFuncArgs = {OpTy, OpTy, OpTy};
+    FunctionType *IntrinsicFuncType =
+        FunctionType::get(OpTy, IntrinsicFuncArgs, false /* not vararg */);
+    IntrinsicFunc = Function::Create(
+        IntrinsicFuncType, GlobalValue::ExternalLinkage, IntrinsicFuncName, M);
+  }
+
+  ArrayRef<Value *> IntrinsicCallArgs({SrcOp1Value, SrcOp2Value, CountValue});
+  BinOpInstr = CallInst::Create(IntrinsicFunc, IntrinsicCallArgs);
+  // Test an set EFLAGs
+  AffectedEFlags.push_back(EFLAGS::CF);
+  // Insert the binary operation instruction
+  RaisedBB->getInstList().push_back(BinOpInstr);
+  // Test and set affected flags
+  for (auto Flag : AffectedEFlags)
+    raisedValues->testAndSetEflagSSAValue(Flag, MBBNo, BinOpInstr);
+
+  // Update PhysReg to Value map
+  if (DstPReg != X86::NoRegister)
+    raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
+                                     BinOpInstr);
+  return success;
+}
+
 // Raise a binary operation instruction with operand encoding I or RI
 bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     const MachineInstr &MI) {
@@ -2423,8 +2559,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     raisedValues->setPhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
                                      StackRefVal);
   } else {
-    // Values that need to be discovered to form the appropriate
-    // instruction.
+    // Values need to be discovered to form the appropriate instruction.
     Value *SrcOp1Value = nullptr;
     Value *SrcOp2Value = nullptr;
     unsigned int DstPReg = X86::NoRegister;
@@ -3066,6 +3201,9 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
   switch (getInstructionKind(Opcode)) {
   case InstructionKind::BINARY_OP_WITH_IMM:
     success = raiseBinaryOpImmToRegMachineInstr(MI);
+    break;
+  case InstructionKind::BINARY_OP_MRI_OR_MRC:
+    success = raiseBinaryOpMRIOrMRCEncodedMachineInstr(MI);
     break;
   case InstructionKind::CONVERT_BWWDDQ:
     success = raiseConvertBWWDDQMachineInstr(MI);

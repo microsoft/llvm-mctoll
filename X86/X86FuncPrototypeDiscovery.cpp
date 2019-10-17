@@ -41,6 +41,19 @@ using namespace llvm;
 using namespace mctoll;
 using namespace X86RegisterUtils;
 
+// A convenience function that is slightly different from the LLVM API viz.,
+// MCInstrDesc::hasImplicitDefOfPhysReg() which returns true if Reg or its
+// sub-register is an implicit definition. In contrast, this function returns
+// true only if Reg is an implicit definition.
+static bool hasExactImplicitDefOfPhysReg(const MachineInstr &I, unsigned Reg,
+                                         const MCRegisterInfo *MRI) {
+  if (const MCPhysReg *ImpDefs = I.getDesc().ImplicitDefs)
+    for (; *ImpDefs; ++ImpDefs)
+      if (*ImpDefs == Reg)
+        return true;
+  return false;
+}
+
 // Return argument number associated with physical
 // register PReg according to C calling convention.
 
@@ -606,7 +619,7 @@ Type *X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB,
     // defined.
     for (MCSubRegIterator SubRegs(X86::RAX, TRI, /*IncludeSelf=*/true);
          (SubRegs.isValid() && DefReg == X86::NoRegister); ++SubRegs) {
-      if (I->getDesc().hasImplicitDefOfPhysReg(*SubRegs, TRI)) {
+      if (hasExactImplicitDefOfPhysReg(*I, *SubRegs, TRI)) {
         DefReg = *SubRegs;
         break;
       }

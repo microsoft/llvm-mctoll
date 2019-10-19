@@ -1,3 +1,4 @@
+// REQUIRES: system-linux
 // RUN: clang -o %t-opt %s -mno-sse
 // RUN: llvm-mctoll -d %t-opt
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll

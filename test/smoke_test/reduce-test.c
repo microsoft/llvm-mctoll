@@ -1,3 +1,4 @@
+// REQUIRES: system-linux
 // RUN: clang -o %t.so %S/Inputs/reduce.c -shared -fPIC -Os
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll

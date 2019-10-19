@@ -1,4 +1,5 @@
-// RUN: clang -o exec %s
+// REQUIRES: system-linux
+// RUN: clang --target=x86_64-linux -o exec %s
 // RUN: llvm-mctoll -d exec --filter-functions-file=%p/filters-exec.txt
 // RUN: cat exec-dis.ll | FileCheck %s
 // CHECK: declare dso_local i32 @func2(i32, i32)

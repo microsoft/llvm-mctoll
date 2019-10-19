@@ -1,4 +1,5 @@
-// RUN: clang -o shared.so %s -shared -fPIC
+// REQUIRES: system-linux
+// RUN: clang --target=x86_64-linux -o shared.so %s -shared -fPIC
 // RUN: llvm-mctoll -d shared.so --filter-functions-file=%p/filters-shared.txt
 // RUN: cat shared-dis.ll | FileCheck %s
 // CHECK: declare dso_local i32 @func2(i32, i32)

@@ -4,10 +4,10 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
 # Current Status
 
-The tool is capable of raising X86-64 and Arm32 Linux/ELF libraries and executables to LLVM IR.
-Windows, OS X and C++ support need to be added. At this time X86-64 support is more mature than Arm32.
+`Llvm-mctoll` is capable of raising X86-64 and Arm32 Linux/ELF libraries and executables to LLVM IR.
+Raising Windows, OS X and C++ binaries needs to be added. At this time X86-64 support is more mature than Arm32.
 
-Development and testing are done on Ubuntu 18.04 and it's expected that Ubuntu 16.04, 17.04 and 17.10 work. The tool is also known to build and run all tests successfully on CentOS 7.5. The tool builds on OS X and Windows and is capable of raising Linux binaries on both platforms.
+Development and testing are done on Ubuntu 18.04. Other platforms that are expected to work are Ubuntu 16.04, Ubuntu 17.04, Ubuntu 17.10, CentOS 7.5, Debian 10, Windows 10, and OS X.
 
 | Triple | VarArgs | FuncProto | StackFrame | JumpTables | SharedLibs | C++ |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -19,11 +19,11 @@ Development and testing are done on Ubuntu 18.04 and it's expected that Ubuntu 1
 * StackFrame: stack frame abstraction
 * JumpTables: switch statements with jump tables
 * SharedLibs: shared libraries
-* C++: vtables and name mangling
+* C++: vtables, name mangling and exception handling
 
 ## Known Issues
 
-SIMD instructions such as SSE, AVX, Neon cannot be raised at this time. For X86-64 you can sometimes work around this issue by compiling the binary to raise with SSE disabled (`clang -mno-sse`). 
+SIMD instructions such as SSE, AVX, and Neon cannot be raised at this time. For X86-64 you can sometimes work around this issue by compiling the binary to raise with SSE disabled (`clang -mno-sse`). 
 
 Most testing is done using binaries compiled for Linux using LLVM. We have done only limited testing with GCC compiled code.
 
@@ -35,16 +35,22 @@ Support for raising X86-64 and Arm32 binaries is enabled by building LLVM's X86 
 
 ## Building as part of the LLVM tree
 
-1. On Linux and OS X build from a command prompt such as a bash shell. On Windows build from an `x64 Native Tools Command Prompt`. See [LLVM's Visual Studio guide](https://llvm.org/docs/GettingStartedVS.html) for help.
+1. On Linux and OS X build from a command prompt such as a bash shell. On Windows build from an `x64 Native Tools Command Prompt`. See [LLVM's Visual Studio guide](https://llvm.org/docs/GettingStartedVS.html).
 
 2. Clone the LLVM and mctoll git repositories
 
 ```sh
-git clone --depth 100 -b master https://github.com/llvm/llvm-project.git
+git clone --depth 500 -b master https://github.com/llvm/llvm-project.git
 cd llvm-project && git clone -b master https://github.com/microsoft/llvm-mctoll.git llvm/tools/llvm-mctoll
 ```
 
-3. Build LLVM with ARM and X86 targets and assertions enabled (See [LLVM CMake Variables](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables))
+3. The commit recorded in `LLVMVersion.txt` is the tested version of LLVM to build against. If you use a different version LLVM you might encounter build errors.
+
+```
+git checkout <hash from LLVMVersion.txt>
+```
+
+4. Run cmake to create a ninja project then build the `llvm-mctoll` target. See [LLVM CMake Variables](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables) for more information on LLVM's cmake options.
 
 ```sh
 mkdir build && cd build
@@ -52,14 +58,10 @@ cmake -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang 
 ninja llvm-mctoll
 ```
 
-4. Run the unit tests (Linux only)
+5. Run the unit tests (Linux only)
 ```
 ninja check-mctoll
 ```
-
-## The version of LLVM to build against
-
-The commit recorded in `LLVMVersion.txt` is the supported version of LLVM to build against. Make sure the tip of the `llvm-project` repo you use to build corresponds to the commit listed there.
 
 # Usage
 

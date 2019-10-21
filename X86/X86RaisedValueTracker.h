@@ -48,7 +48,7 @@ public:
   X86RaisedValueTracker() = delete;
   X86RaisedValueTracker(X86MachineInstructionRaiser *);
   bool setPhysRegSSAValue(unsigned int PhysReg, int MBBNo, Value *Val);
-  bool testAndSetEflagSSAValue(unsigned Flag, int MBBNo, Value *);
+  bool testAndSetEflagSSAValue(unsigned Flag, const MachineInstr &MI, Value *);
   bool setEflagValue(unsigned FlagBit, int MBBNo, bool Set);
 
   Value *getReachingDef(unsigned int PhysReg, int MBBNo);

@@ -65,6 +65,7 @@ public:
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
                                        int MBBNo, AllocaInst *Alloca);
   int getArgumentNumber(unsigned PReg);
+  bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
 
 private:
   // Bit positions used for individual status flags of EFLAGS register.
@@ -166,7 +167,6 @@ private:
   void FPURegisterStackSetValueAt(int8_t, Value *);
   Value *FPURegisterStackTop();
 
-  bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
   const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,

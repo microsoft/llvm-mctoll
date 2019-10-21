@@ -789,8 +789,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
     // Set SF and ZF based on dstValue; technically OF, AF, CF and PF also
     // needs to be set but ignoring for now.
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
 
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
@@ -979,8 +979,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
       // Set SF and ZF based on dstValue; technically PF also needs
       // to be set but ignoring for now.
-      raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
-      raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
     }
     // Clear OF and CF
     raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
@@ -1007,8 +1007,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
     // Set SF and ZF based on dstValue; technically PF also needs
     // to be set but ignoring for now.
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
     break;
   case X86::NEG8r:
   case X86::NEG16r:
@@ -1028,16 +1028,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstValue = BinaryOperator::CreateNeg(SrcOp);
     // Set CF to 0 if source operand is 0
     // Note: Add this instruction _before_ adding the result of neg
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MBBNo, SrcOp);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, SrcOp);
     // Now add the neg instruction
     if (isa<Instruction>(dstValue))
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
     // Now set up the flags according to the result
     // Set SF and ZF based on dstValue; technically PF also needs
     // to be set but ignoring for now.
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MBBNo, dstValue);
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MBBNo, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
@@ -2123,12 +2122,13 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   MCPhysReg ImpDefReg = MCIDesc.ImplicitDefs[0];
   assert(ImpDefReg == X86::EFLAGS &&
          "Expected implicit EFLAGS def in compare instruction");
-  // Create instructions to set CF and ZF flags according to the result
+  // Create instructions to set CF, ZF, SF, and OF flags according to the result
   // SubInst.
-  raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI.getParent()->getNumber(),
-                                        SubInst);
-  raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI.getParent()->getNumber(),
-                                        SubInst);
+  // NOTE: Support for tracking AF and PF not yet implemented.
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, SubInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, SubInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, SubInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, SubInst);
   return true;
 }
 
@@ -2363,7 +2363,6 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   bool success = true;
   unsigned int DstIndex = 0, SrcOp1Index = 1, SrcOp2Index = 2, SrcOp3Index = 3;
   const MCInstrDesc &MIDesc = MI.getDesc();
-  int MBBNo = MI.getParent()->getNumber();
 
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
@@ -2481,7 +2480,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   RaisedBB->getInstList().push_back(BinOpInstr);
   // Test and set affected flags
   for (auto Flag : AffectedEFlags)
-    raisedValues->testAndSetEflagSSAValue(Flag, MBBNo, BinOpInstr);
+    raisedValues->testAndSetEflagSSAValue(Flag, MI, BinOpInstr);
 
   // Update PhysReg to Value map
   if (DstPReg != X86::NoRegister)
@@ -2847,7 +2846,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     RaisedBB->getInstList().push_back(BinOpInstr);
     // Test and set affected flags
     for (auto Flag : AffectedEFlags)
-      raisedValues->testAndSetEflagSSAValue(Flag, MBBNo, BinOpInstr);
+      raisedValues->testAndSetEflagSSAValue(Flag, MI, BinOpInstr);
 
     // Update PhysReg to Value map
     if (DstPReg != X86::NoRegister)

@@ -2447,33 +2447,25 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
 
   // Now generate the call to instrinsic
   // Types of all operands are already asserted to be the same
-  Type *OpTy = SrcOp1Value->getType();
-  std::string IntrinsicFuncName;
-  if (instrNameStartsWith(MI, "SHLD"))
-    IntrinsicFuncName =
-        "llvm.fshl.i" + std::to_string(OpTy->getScalarSizeInBits());
-  else if (instrNameStartsWith(MI, "SHRD")) {
-    IntrinsicFuncName =
-        "llvm.fshr.i" + std::to_string(OpTy->getScalarSizeInBits());
+  auto IntrinsicKind = Intrinsic::not_intrinsic;
+  if (instrNameStartsWith(MI, "SHLD")) {
+    IntrinsicKind = Intrinsic::fshl;
+  } else if (instrNameStartsWith(MI, "SHRD")) {
+    IntrinsicKind = Intrinsic::fshr;
     // Swap the argument order
     Value *tmp = SrcOp1Value;
     SrcOp1Value = SrcOp2Value;
     SrcOp2Value = tmp;
   } else
     llvm_unreachable("Unhandled MCR/MCI encoded instruction");
+  assert((IntrinsicKind != Intrinsic::not_intrinsic) &&
+         "Failed to set appropriate intrinsic kind");
   Module *M = MR->getModule();
-  Function *IntrinsicFunc = M->getFunction(IntrinsicFuncName);
-  // Create the function if it does not exist
-  if (IntrinsicFunc == nullptr) {
-    vector<Type *> IntrinsicFuncArgs = {OpTy, OpTy, OpTy};
-    FunctionType *IntrinsicFuncType =
-        FunctionType::get(OpTy, IntrinsicFuncArgs, false /* not vararg */);
-    IntrinsicFunc = Function::Create(
-        IntrinsicFuncType, GlobalValue::ExternalLinkage, IntrinsicFuncName, M);
-  }
-
-  ArrayRef<Value *> IntrinsicCallArgs({SrcOp1Value, SrcOp2Value, CountValue});
-  BinOpInstr = CallInst::Create(IntrinsicFunc, IntrinsicCallArgs);
+  Function *IntrinsicFunc =
+      Intrinsic::getDeclaration(M, IntrinsicKind, SrcOp1Value->getType());
+  Value *IntrinsicCallArgs[] = {SrcOp1Value, SrcOp2Value, CountValue};
+  BinOpInstr =
+      CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
   // Test an set EFLAGs
   AffectedEFlags.push_back(EFLAGS::CF);
   // Insert the binary operation instruction

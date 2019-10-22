@@ -912,7 +912,11 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   std::error_code EC;
   std::map<SectionRef, SmallVector<SectionRef, 1>> SectionRelocMap;
   for (const SectionRef &Section : ToolSectionFilter(*Obj)) {
-    section_iterator Sec2 = Section.getRelocatedSection();
+    Expected<section_iterator> SecOrErr = Section.getRelocatedSection();
+    if (!SecOrErr) {
+      break;
+    }
+    section_iterator Sec2 = *SecOrErr;
     if (Sec2 != Obj->section_end())
       SectionRelocMap[*Sec2].push_back(Section);
   }

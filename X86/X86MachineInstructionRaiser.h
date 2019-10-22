@@ -16,6 +16,7 @@
 
 #include "MachineInstructionRaiser.h"
 #include "X86AdditionalInstrInfo.h"
+#include "llvm/IR/Instructions.h"
 
 /*
  * Type alias for Map of MBBNo -> BasicBlock * used to keep track of

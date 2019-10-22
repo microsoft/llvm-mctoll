@@ -139,7 +139,12 @@ bool ModuleRaiser::collectTextSectionRelocs(const SectionRef &TextSec) {
   // That section is the one with relocations corresponding to the
   // section with index TextSecIndex.
   for (const SectionRef &CandRelocSection : Obj->sections()) {
-    section_iterator RelocatedSecIter = CandRelocSection.getRelocatedSection();
+    Expected<section_iterator> RelSecOrErr =
+        CandRelocSection.getRelocatedSection();
+    if (!RelSecOrErr) {
+      return false;
+    }
+    section_iterator RelocatedSecIter = *RelSecOrErr;
     // If the CandRelocSection has a corresponding relocated section
     if (RelocatedSecIter != Obj->section_end()) {
       // If the corresponding relocated section is TextSec, CandRelocSection

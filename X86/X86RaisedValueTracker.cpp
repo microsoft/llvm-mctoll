@@ -385,10 +385,9 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
   return RetValue;
 }
 
-// Set the value of FlagBit to BitVal based on the value of Result.
+// Set the value of FlagBit to BitVal based on the value computed by TestVal.
 // If the test corresponding to FlagBit is true, it is set, else it is cleared.
-// MBBNo is the MachineBasicBlock number in which the translation is being done
-// that affects this flag change.
+// TestVal is the raised value of MI.
 bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
                                                     const MachineInstr &MI,
                                                     Value *TestVal) {
@@ -489,13 +488,38 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       castInst = dyn_cast<CastInst>(TestVal);
     }
 
-    Instruction *TestInst = dyn_cast<Instruction>(TestVal);
-    assert((TestInst != nullptr) && "Expect test producing instruction while "
-                                    "testing and setting of EFLAGS");
-
-    if ((x86MIRaiser->instrNameStartsWith(MI, "SUB")) ||
-        (x86MIRaiser->instrNameStartsWith(MI, "CMP"))) {
+    if (x86MIRaiser->instrNameStartsWith(MI, "NEG")) {
+      // Set CF to 0 if source operand is 0 else to 1
+      Instruction *TestInst = dyn_cast<Instruction>(TestVal);
+      assert((TestInst != nullptr) && "Expect test producing instruction while "
+                                      "testing and setting of EFLAGS");
+      // TestInst should be a sub 0, val instruction
+      assert((TestInst->getOpcode() == Instruction::Sub) &&
+             "Expect NEG to be raised as SUB");
+      // Get the arguments of the sub instruction that computes the neg
       Value *TestArg[2];
+      TestArg[0] = TestInst->getOperand(0);
+      TestArg[1] = TestInst->getOperand(1);
+      assert((TestArg[0]->getType() == TestArg[1]->getType()) &&
+             "Differing types of test values not expected");
+      // A zero value of appropriate type
+      Value *ZeroVal =
+          ConstantFP::getZeroValueForNegation(TestArg[1]->getType());
+      assert(((TestArg[0] == ZeroVal)) &&
+             "Expected zero value of sub instruction while updating CF for NEG "
+             "instruction");
+      // Set ZF - test if TestVal is not equal to 0 - to get the CF bit value.
+      Instruction *CmpInst =
+          new ICmpInst(CmpInst::Predicate::ICMP_NE, TestArg[0], ZeroVal,
+                       X86RegisterUtils::getEflagName(FlagBit));
+      RaisedBB->getInstList().push_back(CmpInst);
+      NewCF = CmpInst;
+    } else if ((x86MIRaiser->instrNameStartsWith(MI, "SUB")) ||
+               (x86MIRaiser->instrNameStartsWith(MI, "CMP"))) {
+      Value *TestArg[2];
+      Instruction *TestInst = dyn_cast<Instruction>(TestVal);
+      assert((TestInst != nullptr) && "Expect test producing instruction while "
+                                      "testing and setting of EFLAGS");
       TestArg[0] = TestInst->getOperand(0);
       TestArg[1] = TestInst->getOperand(1);
       assert((TestArg[0]->getType() == TestArg[1]->getType()) &&
@@ -510,6 +534,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = ExtractValueInst::Create(GetCF, 1, "Extract_CF", RaisedBB);
     } else if (x86MIRaiser->instrNameStartsWith(MI, "ADD")) {
       Value *TestArg[2];
+      Instruction *TestInst = dyn_cast<Instruction>(TestVal);
+      assert((TestInst != nullptr) && "Expect test producing instruction while "
+                                      "testing and setting of EFLAGS");
       TestArg[0] = TestInst->getOperand(0);
       TestArg[1] = TestInst->getOperand(1);
       assert((TestArg[0]->getType() == TestArg[1]->getType()) &&
@@ -524,7 +551,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = ExtractValueInst::Create(GetCF, 1, "Extract_CF", RaisedBB);
     } else if (x86MIRaiser->instrNameStartsWith(MI, "SHRD")) {
       // TestInst should have been a call to intrinsic llvm.fshr.*
-      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestInst);
+      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestVal);
       assert((IntrinsicCall != nullptr) &&
              (IntrinsicCall->getFunctionType()->getNumParams() == 3) &&
              "Expected call instruction with three arguments not found");
@@ -572,7 +599,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = SelectCF;
     } else if (x86MIRaiser->instrNameStartsWith(MI, "SHLD")) {
       // TestInst should have been a call to intrinsic llvm.fshl.*
-      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestInst);
+      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestVal);
       assert((IntrinsicCall != nullptr) &&
              (IntrinsicCall->getFunctionType()->getNumParams() == 3) &&
              "Expected call instruction with three arguments not found");
@@ -632,7 +659,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = SelectCF;
     } else {
       MI.dump();
-      assert(false && "*** EFLAGS update abstraction not handled yet");
+      assert(false &&
+             "*** Abstraction of CF for the instruction not handled yet");
     }
     // Update CF.
     assert((NewCF != nullptr) && "Value to update CF not found");

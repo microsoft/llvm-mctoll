@@ -1028,7 +1028,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstValue = BinaryOperator::CreateNeg(SrcOp);
     // Set CF to 0 if source operand is 0
     // Note: Add this instruction _before_ adding the result of neg
-    raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, SrcOp);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, dstValue);
     // Now add the neg instruction
     if (isa<Instruction>(dstValue))
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));

@@ -2725,8 +2725,17 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.push_back(EFLAGS::ZF);
       // Test and set of PF not yet supported
       break;
+    case X86::OR8i8:
+    case X86::OR8ri:
+    case X86::OR16ri8:
+    case X86::OR16i16:
+    case X86::OR16ri:
+    case X86::OR32i32:
     case X86::OR32ri:
     case X86::OR32ri8:
+    case X86::OR64i32:
+    case X86::OR64ri32:
+    case X86::OR64ri8:
       // Generate or instruction
       BinOpInstr = BinaryOperator::CreateOr(SrcOp1Value, SrcOp2Value);
       // Clear OF and CF

@@ -198,7 +198,7 @@ uint64_t __attribute__((noinline)) or_register_64_imm32(uint64_t val) {
   return result;
 }
 
-// Test raising of neg instruction
+// Test raising of or instruction
 int main() {
   uint8_t s_al = or_implicit_al_imm(0x21);
   uint8_t s_reg = or_register_8_imm(0x21);

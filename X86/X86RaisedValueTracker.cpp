@@ -390,7 +390,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
 // TestVal is the raised value of MI.
 bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
                                                     const MachineInstr &MI,
-                                                    Value *TestVal) {
+                                                    Value *TestResultVal) {
   assert((FlagBit >= X86RegisterUtils::EFLAGS::CF) &&
          (FlagBit < X86RegisterUtils::EFLAGS::UNDEFINED) &&
          "Unknown EFLAGS bit specified");
@@ -402,13 +402,14 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
   BasicBlock *RaisedBB =
       x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
 
-  unsigned int ResTyNumBits = TestVal->getType()->getPrimitiveSizeInBits();
+  unsigned int ResTyNumBits =
+      TestResultVal->getType()->getPrimitiveSizeInBits();
   switch (FlagBit) {
   case X86RegisterUtils::EFLAGS::ZF: {
     Value *ZeroVal = ConstantInt::get(Ctx, APInt(ResTyNumBits, 0));
     // Set ZF - test if TestVal is 0
     Instruction *ZFTest =
-        new ICmpInst(CmpInst::Predicate::ICMP_EQ, TestVal, ZeroVal,
+        new ICmpInst(CmpInst::Predicate::ICMP_EQ, TestResultVal, ZeroVal,
                      X86RegisterUtils::getEflagName(FlagBit));
 
     RaisedBB->getInstList().push_back(ZFTest);
@@ -425,7 +426,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
 
     // Create the instruction
     //      and SubInst, ShiftLeft
-    Instruction *AndInst = BinaryOperator::CreateAnd(ShiftLeft, TestVal);
+    Instruction *AndInst = BinaryOperator::CreateAnd(ShiftLeft, TestResultVal);
     RaisedBB->getInstList().push_back(AndInst);
     // Compare result of logical and operation to find if bit 31 is set SF
     // accordingly
@@ -444,13 +445,13 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
 
     // If TestVal is a cast value, it is most likely cast to match the
     // source of the compare instruction. Get to the value prior to casting.
-    CastInst *castInst = dyn_cast<CastInst>(TestVal);
+    CastInst *castInst = dyn_cast<CastInst>(TestResultVal);
     while (castInst) {
-      TestVal = castInst->getOperand(0);
-      castInst = dyn_cast<CastInst>(TestVal);
+      TestResultVal = castInst->getOperand(0);
+      castInst = dyn_cast<CastInst>(TestResultVal);
     }
 
-    Instruction *TestInst = dyn_cast<Instruction>(TestVal);
+    Instruction *TestInst = dyn_cast<Instruction>(TestResultVal);
     assert((TestInst != nullptr) && "Expect test producing instruction while "
                                     "testing and setting of EFLAGS");
 
@@ -461,18 +462,66 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       TestArg[1] = TestInst->getOperand(1);
       assert((TestArg[0]->getType() == TestArg[1]->getType()) &&
              "Differing types of test values unexpected");
+
+      // Construct a call to get overflow value upon comparison of test arg
+      // values
+      Value *ValueOF =
+          Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
+      CallInst *GetOF = CallInst::Create(ValueOF, ArrayRef<Value *>(TestArg));
+      RaisedBB->getInstList().push_back(GetOF);
+      // Extract OF and set it
+      physRegDefsInMBB[FlagBit][MBBNo].second =
+          ExtractValueInst::Create(GetOF, 1, "Extract_OF", RaisedBB);
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "ROL")) {
+      // OF flag is defined only for 1-bit rotates i.e., ROLr*1).
+      // It is undefined in all other cases. OF flag is set to the exclusive OR
+      // of CF after rotate and the most-significant bit of the result.
+      if ((MI.getNumExplicitOperands() == 2) &&
+          (MI.findTiedOperandIdx(1) == 0)) {
+        // CF flag receives a copy of the bit that was shifted from one end to
+        // the other. Find the least-significant bit, which is the bit shifted
+        // from the most-significant location.
+        // NOTE: CF computation is repeated here, just to be sure.
+        BasicBlock *RaisedBB =
+            x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
+        // Construct constant 1 of TestResultVal type
+        Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
+        // Get LSB of TestResultVal using the instruction and TestResultVal, 1
+        Instruction *ResultLSB = BinaryOperator::CreateAnd(
+            TestResultVal, OneValue, "lsb-result", RaisedBB);
+        // Set ResultCF to 1 if LSB is 1, else to 0
+        Instruction *ResultCF = new ICmpInst(CmpInst::Predicate::ICMP_EQ,
+                                             ResultLSB, OneValue, "CF-RES");
+        // Insert compare instruction
+        RaisedBB->getInstList().push_back(ResultCF);
+
+        // Get most-significant bit of the result (i.e., TestResultVal)
+        auto ResultNumBits = TestResultVal->getType()->getPrimitiveSizeInBits();
+        // Construct a constant with only the most significant bit set
+        Value *LeftShift =
+            ConstantInt::get(TestResultVal->getType(), (ResultNumBits - 1));
+        // Get (1 << LeftShift)
+        Value *MSBSetConst = BinaryOperator::CreateShl(OneValue, LeftShift,
+                                                       "MSB-CONST", RaisedBB);
+        // Get (TestResultVal & MSBSetConst) to get the most significant bit of
+        // TestResultVal
+        Instruction *ResultMSB = BinaryOperator::CreateAnd(
+            TestResultVal, MSBSetConst, "MSB-RES", RaisedBB);
+        // Check if MSB is non-zero
+        Value *ZeroValue = ConstantInt::get(ResultMSB->getType(), 0);
+        // Generate (ResultMSB != 0) to indicate MSB
+        Instruction *MSBIsSet = new ICmpInst(CmpInst::Predicate::ICMP_NE,
+                                             ResultMSB, ZeroValue, "MSB-SET");
+        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(MSBIsSet));
+        // Generate XOR ResultCF, MSBIsSet to compute OF
+        Instruction *ResultOF =
+            BinaryOperator::CreateXor(ResultCF, MSBIsSet, "OF", RaisedBB);
+        physRegDefsInMBB[FlagBit][MBBNo].second = ResultOF;
+      }
     } else {
       MI.dump();
       assert(false && "*** EFLAGS update abstraction not handled yet");
     }
-    // Construct a call to get overflow value upon comparison of test arg values
-    Value *ValueOF =
-        Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
-    CallInst *GetOF = CallInst::Create(ValueOF, ArrayRef<Value *>(TestArg));
-    RaisedBB->getInstList().push_back(GetOF);
-    // Extract OF and set it
-    physRegDefsInMBB[FlagBit][MBBNo].second =
-        ExtractValueInst::Create(GetOF, 1, "Extract_OF", RaisedBB);
   } break;
   case X86RegisterUtils::EFLAGS::CF: {
     Module *M = x86MIRaiser->getModuleRaiser()->getModule();
@@ -482,15 +531,15 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
 
     // If TestVal is a cast value, it is most likely cast to match the
     // source of the compare instruction. Get to the value prior to casting.
-    CastInst *castInst = dyn_cast<CastInst>(TestVal);
+    CastInst *castInst = dyn_cast<CastInst>(TestResultVal);
     while (castInst) {
-      TestVal = castInst->getOperand(0);
-      castInst = dyn_cast<CastInst>(TestVal);
+      TestResultVal = castInst->getOperand(0);
+      castInst = dyn_cast<CastInst>(TestResultVal);
     }
 
     if (x86MIRaiser->instrNameStartsWith(MI, "NEG")) {
       // Set CF to 0 if source operand is 0 else to 1
-      Instruction *TestInst = dyn_cast<Instruction>(TestVal);
+      Instruction *TestInst = dyn_cast<Instruction>(TestResultVal);
       assert((TestInst != nullptr) && "Expect test producing instruction while "
                                       "testing and setting of EFLAGS");
       // TestInst should be a sub 0, val instruction
@@ -517,7 +566,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
     } else if ((x86MIRaiser->instrNameStartsWith(MI, "SUB")) ||
                (x86MIRaiser->instrNameStartsWith(MI, "CMP"))) {
       Value *TestArg[2];
-      Instruction *TestInst = dyn_cast<Instruction>(TestVal);
+      Instruction *TestInst = dyn_cast<Instruction>(TestResultVal);
       assert((TestInst != nullptr) && "Expect test producing instruction while "
                                       "testing and setting of EFLAGS");
       TestArg[0] = TestInst->getOperand(0);
@@ -534,7 +583,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = ExtractValueInst::Create(GetCF, 1, "Extract_CF", RaisedBB);
     } else if (x86MIRaiser->instrNameStartsWith(MI, "ADD")) {
       Value *TestArg[2];
-      Instruction *TestInst = dyn_cast<Instruction>(TestVal);
+      Instruction *TestInst = dyn_cast<Instruction>(TestResultVal);
       assert((TestInst != nullptr) && "Expect test producing instruction while "
                                       "testing and setting of EFLAGS");
       TestArg[0] = TestInst->getOperand(0);
@@ -551,14 +600,14 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = ExtractValueInst::Create(GetCF, 1, "Extract_CF", RaisedBB);
     } else if (x86MIRaiser->instrNameStartsWith(MI, "SHRD")) {
       // TestInst should have been a call to intrinsic llvm.fshr.*
-      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestVal);
+      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestResultVal);
       assert((IntrinsicCall != nullptr) &&
              (IntrinsicCall->getFunctionType()->getNumParams() == 3) &&
              "Expected call instruction with three arguments not found");
       Value *DstArgVal = IntrinsicCall->getArgOperand(1);
       Value *CountArgVal = IntrinsicCall->getArgOperand(2);
-      // If count is 1 or greater, CF is filled with the last bit shifted out of
-      // destination operand.
+      // If count is 1 or greater, CF is filled with the last bit shifted out
+      // of destination operand.
       Value *ZeroVal = ConstantInt::get(
           Ctx, APInt(CountArgVal->getType()->getPrimitiveSizeInBits(), 0));
       Instruction *CountValTest =
@@ -599,14 +648,14 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = SelectCF;
     } else if (x86MIRaiser->instrNameStartsWith(MI, "SHLD")) {
       // TestInst should have been a call to intrinsic llvm.fshl.*
-      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestVal);
+      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestResultVal);
       assert((IntrinsicCall != nullptr) &&
              (IntrinsicCall->getFunctionType()->getNumParams() == 3) &&
              "Expected call instruction with three arguments not found");
       Value *DstArgVal = IntrinsicCall->getArgOperand(0);
       Value *CountArgVal = IntrinsicCall->getArgOperand(2);
-      // If count is 1 or greater, CF is filled with the last bit shifted out of
-      // destination operand.
+      // If count is 1 or greater, CF is filled with the last bit shifted out
+      // of destination operand.
       Value *ZeroVal = ConstantInt::get(
           Ctx, APInt(CountArgVal->getType()->getPrimitiveSizeInBits(), 0));
       Instruction *CountValTest =
@@ -657,6 +706,24 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       RaisedBB->getInstList().push_back(SelectCF);
 
       NewCF = SelectCF;
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "ROL")) {
+      // CF flag receives a copy of the bit that was shifted from one end to
+      // the other. Find the least-significant bit, which is the bit shifted
+      // from the most-significant location.
+      // NOTE: CF computation is repeated here, just to be sure.
+      BasicBlock *RaisedBB =
+          x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
+      // Construct constant 1 of TestResultVal type
+      Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
+      // Get LSB of TestResultVal using the instruction and TestResultVal, 1
+      Instruction *ResultLSB = BinaryOperator::CreateAnd(
+          TestResultVal, OneValue, "lsb-result", RaisedBB);
+      // Set ResultCF to 1 if LSB is 1, else to 0
+      Instruction *ResultCF = new ICmpInst(CmpInst::Predicate::ICMP_EQ,
+                                           ResultLSB, OneValue, "CF-RES");
+      // Insert compare instruction
+      RaisedBB->getInstList().push_back(ResultCF);
+      NewCF = ResultCF;
     } else {
       MI.dump();
       assert(false &&

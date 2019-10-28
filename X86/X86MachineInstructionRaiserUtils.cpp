@@ -1781,18 +1781,24 @@ X86MachineInstructionRaiser::matchSSAValueToSrcRegSize(const MachineInstr &MI,
   Value *SrcOpValue = getRegOrArgValue(PReg, MI.getParent()->getNumber());
   const DataLayout &dataLayout = MR->getModule()->getDataLayout();
 
-  // Generate the appropriate cast instruction if the sizes of the current
-  // source value and that of the source register do not match.
-  uint64_t SrcValueSize = dataLayout.getTypeSizeInBits(SrcOpValue->getType());
-  if (SrcOpSize != SrcValueSize) {
-    // Get the BasicBlock corresponding to MachineBasicBlock of MI.
-    BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-    Type *CastTy = Type::getIntNTy(MF.getFunction().getContext(), SrcOpSize);
-    CastInst *CInst = CastInst::Create(
-        CastInst::getCastOpcode(SrcOpValue, false, CastTy, false), SrcOpValue,
-        CastTy);
-    RaisedBB->getInstList().push_back(CInst);
-    SrcOpValue = CInst;
+  if (SrcOpValue) {
+    // Generate the appropriate cast instruction if the sizes of the current
+    // source value and that of the source register do not match.
+    uint64_t SrcValueSize = dataLayout.getTypeSizeInBits(SrcOpValue->getType());
+    if (SrcOpSize != SrcValueSize) {
+      // Get the BasicBlock corresponding to MachineBasicBlock of MI.
+      BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+      Type *CastTy = Type::getIntNTy(MF.getFunction().getContext(), SrcOpSize);
+      CastInst *CInst = CastInst::Create(
+          CastInst::getCastOpcode(SrcOpValue, false, CastTy, false), SrcOpValue,
+          CastTy);
+      RaisedBB->getInstList().push_back(CInst);
+      SrcOpValue = CInst;
+    }
+  } else {
+    dbgs() << "***** Uninitialized register usage found\n";
+    dbgs() << "*****" << MR->getModule()->getSourceFileName() << "\n\t";
+    MI.print(dbgs());
   }
   return SrcOpValue;
 }

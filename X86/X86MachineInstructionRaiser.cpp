@@ -2411,6 +2411,43 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
                                      MI.getParent()->getNumber(), CMP);
     Success = true;
   } break;
+  case X86::COND_LE: {
+    // Check ZF == 1 or SF != OF
+    Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
+    Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+    Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+    assert((ZFValue != nullptr) && (SFValue != nullptr) &&
+           (OFValue != nullptr) &&
+           "Failed to get EFLAGS value while raising SETLE!");
+    // Check ZF == 1
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, TrueValue, "ZFCmp_SETLE");
+    RaisedBB->getInstList().push_back(ZFCond);
+    // Test SF != OF
+    CmpInst *SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue,
+                                     OFValue, "SFOFCmp_SETLE");
+    RaisedBB->getInstList().push_back(SFOFCond);
+
+    Instruction *SETCond =
+        BinaryOperator::CreateOr(ZFCond, SFOFCond, "Cond_SETLE", RaisedBB);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), SETCond);
+    Success = true;
+  } break;
+  case X86::COND_GE: {
+    // SF == OF
+    Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+    Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+    assert(SFValue != nullptr && OFValue != nullptr &&
+           "Failed to get EFLAGS value while raising SETGE");
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    // Compare SF and OF
+    CmpInst *SETCond = new ICmpInst(Pred, SFValue, OFValue, "Cond_SETGE");
+    RaisedBB->getInstList().push_back(SETCond);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), SETCond);
+    Success = true;
+  } break;
   case X86::COND_INVALID:
     assert(false && "Set instruction with invalid condition found");
     break;
@@ -2845,6 +2882,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::ROL32r1:
     case X86::ROL64r1:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      // Mark affected EFLAGs. Note OF is affected only for 1-bit rotates.
+      AffectedEFlags.push_back(EFLAGS::OF);
       LLVM_FALLTHROUGH;
     case X86::ROL8ri:
     case X86::ROL16ri:
@@ -2858,8 +2897,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       Value *IntrinsicCallArgs[] = {SrcOp1Value, SrcOp1Value, SrcOp2Value};
       BinOpInstr =
           CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
-      // Test and set EFLAGs
-      AffectedEFlags.push_back(EFLAGS::OF);
+      // Mark affected EFLAGs
       AffectedEFlags.push_back(EFLAGS::CF);
     } break;
     case X86::XOR8ri:

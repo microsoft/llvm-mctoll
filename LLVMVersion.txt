@@ -5,8 +5,14 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 8be5827f85619a09fecc47544f649b7503e91396
-Author: Kit Barton <kbarton@ca.ibm.com>
-Date:   Tue Oct 22 11:39:15 2019 -0700
+commit 506992848729ceb97d95b29b5a3f691936003c32
+Author: David Carlier <devnexen@gmail.com>
+Date:   Wed Oct 30 14:51:22 2019 +0000
 
-    Test commit - add clarification to README regarding Darwin.
+    [OpenMP] Reset affinity mask in the process child on FreeBSD
+    
+    Reviewers: dim, chandlerc, jdoerfert
+    
+    Reviewed By: dim
+    
+    Differential Revision: https://reviews.llvm.org/D69047

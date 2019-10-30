@@ -72,8 +72,8 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
 
       // Create alloca instruction to allocate stack slot
       Type *Ty = getPhysRegOperandType(mi, 0);
-      AllocaInst *Alloca =
-          new AllocaInst(Ty, AllocaAddrSpace, 0, DL.getPrefTypeAlignment(Ty));
+      AllocaInst *Alloca = new AllocaInst(
+          Ty, AllocaAddrSpace, 0, MaybeAlign(DL.getPrefTypeAlignment(Ty)));
 
       // Create a stack slot associated with the alloca instruction
       unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(

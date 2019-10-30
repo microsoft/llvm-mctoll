@@ -871,8 +871,9 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   typeAlignment = dataLayout.getPrefTypeAlignment(Ty);
 
   // Create alloca instruction to allocate stack slot
-  AllocaInst *alloca = new AllocaInst(Ty, allocaAddrSpace, 0, typeAlignment,
-                                      IsStackPointerAdjust ? "StackAdj" : "");
+  AllocaInst *alloca =
+      new AllocaInst(Ty, allocaAddrSpace, 0, MaybeAlign(typeAlignment),
+                     IsStackPointerAdjust ? "StackAdj" : "");
 
   // Create a stack slot associated with the alloca instruction
   stackFrameIndex = MF.getFrameInfo().CreateStackObject(

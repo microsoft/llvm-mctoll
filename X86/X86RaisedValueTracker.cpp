@@ -286,8 +286,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo) {
       unsigned int typeAlignment = DL.getPrefTypeAlignment(AllocTy);
 
       // Create alloca instruction to allocate stack slot
-      AllocaInst *Alloca =
-          new AllocaInst(AllocTy, allocaAddrSpace, 0, typeAlignment, "");
+      AllocaInst *Alloca = new AllocaInst(
+          AllocTy, allocaAddrSpace, 0, MaybeAlign(typeAlignment), "stack-slot");
 
       // Create a stack slot associated with the alloca instruction of size 8
       unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(

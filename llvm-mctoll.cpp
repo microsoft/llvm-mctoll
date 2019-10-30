@@ -45,6 +45,7 @@
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/COFFImportFile.h"
@@ -841,9 +842,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     report_error(Obj->getFileName(),
                  "no register info for target " + TripleName);
 
+  MCTargetOptions MCOptions;
   // Set up disassembler.
   std::unique_ptr<const MCAsmInfo> AsmInfo(
-      TheTarget->createMCAsmInfo(*MRI, TripleName));
+      TheTarget->createMCAsmInfo(*MRI, TripleName, MCOptions));
   if (!AsmInfo)
     report_error(Obj->getFileName(),
                  "no assembly info for target " + TripleName);

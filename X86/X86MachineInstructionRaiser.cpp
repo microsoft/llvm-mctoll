@@ -237,7 +237,12 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
 
   assert((TargetTy != nullptr) && (UseRegTy != nullptr) &&
          "Target type not set for cwd/cdq/cqo instruction");
-  Value *UseValue = getRegOrArgValue(UseReg, MI.getParent()->getNumber());
+  // Value *UseValue = getRegOrArgValue(UseReg, MI.getParent()->getNumber());
+  Value *UseValue = matchSSAValueToSrcRegSize(MI, UseReg);
+
+  // Check if UseReg is a use-before-define register
+  if (UseValue == nullptr)
+    return false;
 
   // Generate sign-extend instruction
   SExtInst *TargetSextInst = new SExtInst(UseValue, TargetTy);
@@ -572,7 +577,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
                "Failed to get EFLAGS value while raising CMOVAE");
         // Construct a compare instruction
         CMOVCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
-                                FalseValue, "Cond_CMOVNS");
+                                FalseValue, "Cond_CMOVAE");
       } break;
       case X86::COND_B: {
         // Check if CF == 1
@@ -582,6 +587,24 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         Pred = CmpInst::Predicate::ICMP_EQ;
         // Construct a compare instruction
         CMOVCond = new ICmpInst(Pred, CFValue, TrueValue, "Cond_CMOVB");
+      } break;
+      case X86::COND_NO: {
+        // Test OF == 0
+        Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+        assert(OFValue != nullptr &&
+               "Failed to get EFLAGS value while raising CMOVNO");
+        // Construct a compare instruction
+        CMOVCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, OFValue,
+                                FalseValue, "Cond_CMOVNO");
+      } break;
+      case X86::COND_O: {
+        // Check if OF == 1
+        Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+        assert(OFValue != nullptr &&
+               "Failed to get EFLAGS value while raising CMOVO!");
+        Pred = CmpInst::Predicate::ICMP_EQ;
+        // Construct a compare instruction
+        CMOVCond = new ICmpInst(Pred, OFValue, TrueValue, "Cond_CMOVO");
       } break;
       case X86::COND_INVALID:
         assert(false && "CMOV instruction with invalid condition found");
@@ -1802,12 +1825,11 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
          (UseDefReg_1 == MIDesc.ImplicitDefs[1]) &&
          "Unexpected use/def registers in div instruction");
 
-  Value *DividendLowBytes =
-      getRegOrArgValue(UseDefReg_0, MI.getParent()->getNumber());
-  Value *DividendHighBytes =
-      getRegOrArgValue(UseDefReg_1, MI.getParent()->getNumber());
-  assert((DividendLowBytes != nullptr) && (DividendHighBytes != nullptr) &&
-         "Unexpected use before definition in div instruction");
+  Value *DividendLowBytes = matchSSAValueToSrcRegSize(MI, UseDefReg_0);
+  Value *DividendHighBytes = matchSSAValueToSrcRegSize(MI, UseDefReg_1);
+  if ((DividendLowBytes == nullptr) || (DividendHighBytes == nullptr))
+    return false;
+
   // Divisor is srcValue.
   // Create a Value representing the dividend.
   // TODO: Not sure how the implicit use registers of IDIV8m are encode.
@@ -2657,6 +2679,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::ADD64ri32:
       AdjSPRef.Disp = Imm;
       break;
+    case X86::SUB32i32:
     case X86::SUB32ri:
     case X86::SUB32ri8:
     case X86::SUB64ri8:
@@ -2822,8 +2845,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
       raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
       AffectedEFlags.push_back(EFLAGS::CF);
-      // Test and set of OF not yet supported
+      AffectedEFlags.push_back(EFLAGS::OF);
     } break;
+    case X86::SUB32i32:
     case X86::SUB32ri:
     case X86::SUB32ri8:
     case X86::SUB64ri8:
@@ -2834,6 +2858,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.push_back(EFLAGS::SF);
       AffectedEFlags.push_back(EFLAGS::ZF);
       AffectedEFlags.push_back(EFLAGS::CF);
+      AffectedEFlags.push_back(EFLAGS::OF);
       break;
     case X86::AND8i8:
     case X86::AND8ri:

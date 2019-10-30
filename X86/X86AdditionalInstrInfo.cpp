@@ -2629,7 +2629,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::SUB16rm, {2, Unknown}},
     {X86::SUB16rr, {0, Unknown}},
     {X86::SUB16rr_REV, {0, Unknown}},
-    {X86::SUB32i32, {0, Unknown}},
+    {X86::SUB32i32, {0, BINARY_OP_WITH_IMM}},
     {X86::SUB32mi, {4, COMPARE}},
     {X86::SUB32mi8, {4, COMPARE}},
     {X86::SUB32mr, {4, COMPARE}},

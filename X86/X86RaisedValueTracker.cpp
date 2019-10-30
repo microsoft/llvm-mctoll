@@ -472,6 +472,22 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // Extract OF and set it
       physRegDefsInMBB[FlagBit][MBBNo].second =
           ExtractValueInst::Create(GetOF, 1, "Extract_OF", RaisedBB);
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "ADD")) {
+      IntrinsicOF = Intrinsic::sadd_with_overflow;
+      TestArg[0] = TestInst->getOperand(0);
+      TestArg[1] = TestInst->getOperand(1);
+      assert((TestArg[0]->getType() == TestArg[1]->getType()) &&
+             "Differing types of test values unexpected");
+
+      // Construct a call to get overflow value upon comparison of test arg
+      // values
+      Value *ValueOF =
+          Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
+      CallInst *GetOF = CallInst::Create(ValueOF, ArrayRef<Value *>(TestArg));
+      RaisedBB->getInstList().push_back(GetOF);
+      // Extract OF and set it
+      physRegDefsInMBB[FlagBit][MBBNo].second =
+          ExtractValueInst::Create(GetOF, 1, "Extract_OF", RaisedBB);
     } else if (x86MIRaiser->instrNameStartsWith(MI, "ROL")) {
       // OF flag is defined only for 1-bit rotates i.e., ROLr*1).
       // It is undefined in all other cases. OF flag is set to the exclusive OR

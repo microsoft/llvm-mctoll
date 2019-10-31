@@ -1892,3 +1892,45 @@ bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
                                                       StringRef name) const {
   return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
+
+// Return a new function which is the same in every respect except with
+// specified return type.
+void X86MachineInstructionRaiser::changeRaisedFunctionReturnType(Type *RetTy) {
+  LLVMContext &Ctx = MF.getFunction().getContext();
+
+  Type *FuncRetTy = raisedFunction->getReturnType();
+
+  if (FuncRetTy != RetTy) {
+    std::vector<Type *> ArgTypes;
+    for (const Argument &I : raisedFunction->args())
+      ArgTypes.push_back(I.getType());
+
+    // Create function with new signature and clone the old body into it.
+    auto NewFT = FunctionType::get(Type::getVoidTy(Ctx), ArgTypes, false);
+    auto NewF = Function::Create(NewFT, raisedFunction->getLinkage(),
+                                 raisedFunction->getAddressSpace(),
+                                 raisedFunction->getName());
+    NewF->copyAttributesFrom(raisedFunction);
+    NewF->setSubprogram(raisedFunction->getSubprogram());
+
+    raisedFunction->getParent()->getFunctionList().insert(
+        raisedFunction->getIterator(), NewF);
+    NewF->takeName(raisedFunction);
+
+    NewF->getBasicBlockList().splice(NewF->begin(),
+                                     raisedFunction->getBasicBlockList());
+    // Loop over the argument list, transferring uses of the old arguments over
+    // to the new arguments, also transferring over the names as well.
+    for (Function::arg_iterator I = raisedFunction->arg_begin(),
+                                E = raisedFunction->arg_end(),
+                                I2 = NewF->arg_begin();
+         I != E; ++I) {
+      // Move the name and users over to the new version.
+      I->replaceAllUsesWith(&*I2);
+      I2->takeName(&*I);
+      ++I2;
+    }
+    raisedFunction = NewF;
+  }
+  return;
+}

@@ -207,6 +207,7 @@ private:
   bool isPushToStack(const MachineInstr &MI) const;
   bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
+  void changeRaisedFunctionReturnType(Type *);
 
   // JumpTableBlock - the Jumptable case.
   using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;

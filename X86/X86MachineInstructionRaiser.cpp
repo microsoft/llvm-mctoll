@@ -2547,7 +2547,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
          "Mismatched types of MRI/MRC encoded instructions");
   Instruction *BinOpInstr = nullptr;
   // EFLAGS that are affected by the result of the binary operation
-  std::vector<unsigned> AffectedEFlags;
+  std::set<unsigned> AffectedEFlags;
   Value *CountValue = nullptr;
 
   switch (MI.getOpcode()) {
@@ -2612,7 +2612,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   BinOpInstr =
       CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
   // Test and set EFLAGs
-  AffectedEFlags.push_back(EFLAGS::CF);
+  AffectedEFlags.insert(EFLAGS::CF);
   // Insert the binary operation instruction
   RaisedBB->getInstList().push_back(BinOpInstr);
   // Test and set affected flags
@@ -2825,7 +2825,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
     Instruction *BinOpInstr = nullptr;
     // EFLAGS that are affected by the result of the binary operation
-    std::vector<unsigned> AffectedEFlags;
+    std::set<unsigned> AffectedEFlags;
 
     switch (MI.getOpcode()) {
     case X86::ADD8i8:
@@ -2842,10 +2842,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Generate add instruction
       BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
       // Clear OF and CF
-      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
-      AffectedEFlags.push_back(EFLAGS::CF);
-      AffectedEFlags.push_back(EFLAGS::OF);
+      AffectedEFlags.insert(EFLAGS::CF);
+      AffectedEFlags.insert(EFLAGS::OF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
     } break;
     case X86::SUB32i32:
     case X86::SUB32ri:
@@ -2855,10 +2855,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::SUB64i32:
       // Generate sub instruction
       BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
-      AffectedEFlags.push_back(EFLAGS::CF);
-      AffectedEFlags.push_back(EFLAGS::OF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::CF);
+      AffectedEFlags.insert(EFLAGS::OF);
       break;
     case X86::AND8i8:
     case X86::AND8ri:
@@ -2877,8 +2877,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
       raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
       // Test and set EFLAGs
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       // Test and set of PF not yet supported
       break;
     case X86::OR8i8:
@@ -2898,8 +2898,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
       raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
       // Test and set EFLAGs
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       // Test and set of PF not yet supported
       break;
     case X86::ROL8r1:
@@ -2908,7 +2908,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::ROL64r1:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       // Mark affected EFLAGs. Note OF is affected only for 1-bit rotates.
-      AffectedEFlags.push_back(EFLAGS::OF);
+      AffectedEFlags.insert(EFLAGS::OF);
       LLVM_FALLTHROUGH;
     case X86::ROL8ri:
     case X86::ROL16ri:
@@ -2923,7 +2923,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       BinOpInstr =
           CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
       // Mark affected EFLAGs
-      AffectedEFlags.push_back(EFLAGS::CF);
+      AffectedEFlags.insert(EFLAGS::CF);
     } break;
     case X86::XOR8ri:
     case X86::XOR16ri:
@@ -2937,8 +2937,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
       raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
       // Test and set EFLAGs
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       // Test and set of PF not yet supported
       break;
     case X86::IMUL32rri8:
@@ -2959,8 +2959,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::SHR64ri:
       // Generate shr instruction
       BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       break;
     case X86::SHL8ri:
     case X86::SHL16ri:
@@ -2968,8 +2968,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::SHL64ri:
       // Generate shl instruction
       BinOpInstr = BinaryOperator::CreateShl(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       break;
     case X86::SAR8ri:
     case X86::SAR16ri:
@@ -2977,8 +2977,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::SAR64ri:
       // Generate shr instruction
       BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       break;
     case X86::TEST8i8:
     case X86::TEST16i16:
@@ -2988,8 +2988,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::TEST16ri:
     case X86::TEST32ri:
       BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       break;
     case X86::INC8r:
     case X86::INC16r:
@@ -2999,8 +2999,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::INC64r:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       break;
     case X86::DEC8r:
     case X86::DEC16r:
@@ -3010,8 +3010,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::DEC64r:
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.push_back(EFLAGS::SF);
-      AffectedEFlags.push_back(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
       break;
     default:
       MI.dump();
@@ -3439,12 +3439,24 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
     unsigned int retReg =
         (RetType->getPrimitiveSizeInBits() == 64) ? X86::RAX : X86::EAX;
     RetValue =
-        raisedValues->getReachingDef(retReg, MI.getParent()->getNumber());
+        raisedValues->getReachingDef(retReg, MI.getParent()->getNumber(), true);
   }
+
   // Create return instruction
   Instruction *retInstr =
       ReturnInst::Create(MF.getFunction().getContext(), RetValue);
   RaisedBB->getInstList().push_back(retInstr);
+
+  // Make sure that the return type of raisedFunction is void. Else change it to
+  // void type as reaching definition computation is more accurate than that
+  // deduced earlier just looking at the per-basic block definitions.
+  Type *RaisedFuncReturnTy = raisedFunction->getReturnType();
+  if (RetValue == nullptr) {
+    if (!RaisedFuncReturnTy->isVoidTy()) {
+      changeRaisedFunctionReturnType(
+          Type::getVoidTy(MF.getFunction().getContext()));
+    }
+  }
 
   return true;
 }

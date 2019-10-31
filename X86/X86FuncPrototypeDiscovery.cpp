@@ -218,7 +218,7 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
       }
     }
   }
-  
+
   // If return type is still not discovered, assume it to be void
   if (returnType == nullptr)
     returnType = Type::getVoidTy(MF.getFunction().getContext());
@@ -233,7 +233,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
 
   if (raisedFunction != nullptr)
     return raisedFunction->getFunctionType();
-  
+
   // Cleanup NOOP instructions from all MachineBasicBlocks
   deleteNOOPInstrMF();
   // Clean up any empty basic blocks
@@ -263,7 +263,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     MachineBasicBlock *MBB = TraversedMBB.MBB;
     if (MBB->empty())
       continue;
-    
+
     int MBBNo = MBB->getNumber();
     tailCallMBBNos.clear();
     MBBDefRegs.clear();
@@ -274,12 +274,12 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     MachineInstr &TermInst = MBB->instr_back();
     if (TermInst.isBranch()) {
       auto OpType = TermInst.getOperand(0).getType();
-      assert(((OpType == MachineOperand::MachineOperandType::MO_Immediate) ||
-              (OpType ==
-               MachineOperand::MachineOperandType::MO_JumpTableIndex)) &&
-             "Unexpected block terminator found");
+      assert(
+          ((OpType == MachineOperand::MachineOperandType::MO_Immediate) ||
+           (OpType == MachineOperand::MachineOperandType::MO_JumpTableIndex)) &&
+          "Unexpected block terminator found");
     }
-    
+
     // Union of defined registers of all predecessors
     for (auto PredMBB : MBB->predecessors()) {
       auto PredMBBRegDefSizeIter =
@@ -338,18 +338,18 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
           unsigned UseReg = Use1Op.getReg();
           if (MBBDefRegs.find(find64BitSuperReg(UseReg)) == MBBDefRegs.end())
             addRegisterToFunctionLiveInSet(FunctionLiveInRegs, UseReg);
-          
+
           UseReg = Use2Op.getReg();
           if (MBBDefRegs.find(find64BitSuperReg(UseReg)) == MBBDefRegs.end())
             addRegisterToFunctionLiveInSet(FunctionLiveInRegs, UseReg);
         }
-        
+
         // Add def reg to MBBDefRegs set
         unsigned DestReg = DestOp.getReg();
         // We need the last definition. Even if there is a previous definition,
         // it is correct to just over write the size information.
         MBBDefRegs[find64BitSuperReg(DestReg)] =
-          getPhysRegSizeInBits(DestReg) / 8;
+            getPhysRegSizeInBits(DestReg) / 8;
       } else if (MI.isCall() || MI.isUnconditionalBranch()) {
         // If this is an unconditional branch, check if it is a tail call.
         if (MI.isUnconditionalBranch()) {
@@ -364,7 +364,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
               int64_t BranchOffset = MO.getImm();
               MCInstRaiser *MCIR = getMCInstRaiser();
               assert(MCIR != nullptr && "MCInstRaiser not initialized");
-              
+
               // Get the (MCInst) offset of the instruction in the binary
               uint64_t MCInstOffset = MCIR->getMCInstIndex(MI);
               int64_t BranchTargetOffset = MCInstOffset +
@@ -380,7 +380,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
             }
           }
         }
-        
+
         // If the instruction is a call or a potential tail call,
         // attempt to find the called function.
         if (MI.isCall() || IsTailCall) {
@@ -449,7 +449,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
         for (MachineOperand MO : MI.operands()) {
           if (!MO.isReg())
             continue;
-          
+
           unsigned Reg = MO.getReg();
           if (!(llvm::X86::GR8RegClass.contains(Reg) ||
                 llvm::X86::GR16RegClass.contains(Reg) ||
@@ -463,12 +463,12 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
               addRegisterToFunctionLiveInSet(FunctionLiveInRegs, Reg);
           }
         }
-        
+
         // Next look at defs
         for (MachineOperand MO : MI.operands()) {
           if (!MO.isReg())
             continue;
-          
+
           unsigned Reg = MO.getReg();
           if (!(llvm::X86::GR8RegClass.contains(Reg) ||
                 llvm::X86::GR16RegClass.contains(Reg) ||
@@ -484,7 +484,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
         }
       }
     }
-    
+
     // Save the per-MBB define register definition information
     if (PerMBBDefinedPhysRegMap.find(MBBNo) != PerMBBDefinedPhysRegMap.end()) {
       // Per-MBB reg def info is expected to exist only if this is not
@@ -510,26 +510,26 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // FunctionList. Since the return type and arguments are now
   // discovered, we need to replace this place holder Function object in
   // module with the correct Function object being created now.
-  
+
   // 1. Get the current function name
   StringRef functionName = MF.getFunction().getName();
   Module *module = MR->getModule();
-  
+
   // 2. Get the corresponding Function* registered in module
   Function *tempFunctionPtr = module->getFunction(functionName);
   assert(tempFunctionPtr != nullptr && "Function not found in module list");
-  
+
   // 4. Delete the tempFunc from module list to allow for the creation of the
   //    real function to add the correct one to FunctionList of the module.
   module->getFunctionList().remove(tempFunctionPtr);
-  
+
   // 3. Create a function type using the discovered arguments and return value.
   FunctionType *FT =
-    FunctionType::get(returnType, argTypeVector, false /* isVarArg*/);
-  
+      FunctionType::get(returnType, argTypeVector, false /* isVarArg*/);
+
   // 4. Create the real Function now that we have discovered the arguments.
-  raisedFunction = Function::Create(FT, GlobalValue::ExternalLinkage,
-                                    functionName, module);
+  raisedFunction =
+      Function::Create(FT, GlobalValue::ExternalLinkage, functionName, module);
 
   // Set global linkage
   raisedFunction->setLinkage(GlobalValue::ExternalLinkage);
@@ -551,7 +551,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // Insert the map of raised function to tempFunctionPointer.
   const_cast<ModuleRaiser *>(MR)->insertPlaceholderRaisedFunctionMap(
       raisedFunction, tempFunctionPtr);
-  
+
   return raisedFunction->getFunctionType();
 }
 
@@ -569,12 +569,22 @@ Type *X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB,
   for (MachineBasicBlock::const_reverse_instr_iterator I = MBB.instr_rbegin(),
                                                        E = MBB.instr_rend();
        I != E; I++) {
-    // Do not inspect the last call instruction or instructions prior to
-    // the last call instruction.
+    // No need to inspect instructions prior to the last call instruction since
+    // the function prototype will indicate if the called function has a return
+    // value. The return type of the called function is the return type of this
+    // function.
     if (I->isCall()) {
+      Function *CalledFunc = getCalledFunction(*I);
+      assert(
+          (CalledFunc != nullptr) &&
+          "No called function prototype found while determining return type");
       HasCall = true;
+      ReturnType = CalledFunc->getReturnType();
       break;
     }
+
+    if (ReturnType)
+      return ReturnType;
 
     // No need to inspect return instruction
     if (I->isReturn())
@@ -589,7 +599,7 @@ Type *X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB,
         unsigned PReg = MO.getReg();
         if (!Register::isPhysicalRegister(PReg))
           continue;
-        
+
         // Check if PReg is any of the sub-registers of RAX (including itself)
         for (MCSubRegIterator SubRegs(X86::RAX, TRI,
                                       /*IncludeSelf=*/true);
@@ -617,7 +627,7 @@ Type *X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB,
     if (DefReg != X86::NoRegister) {
       if (!Register::isPhysicalRegister(DefReg))
         continue;
-      
+
       if (ReturnType == nullptr) {
         ReturnType = getPhysRegType(DefReg);
         // Stop processing any further instructions as the return type is found.
@@ -691,7 +701,7 @@ X86MachineInstructionRaiser::getBranchTargetMBBNumber(const MachineInstr &MI) {
 
   if (!MI.isBranch())
     return TargetMBBNo;
-  
+
   const MCInstrDesc &MCID = MI.getDesc();
   if ((MI.getNumOperands() > 0) && MI.getOperand(0).isImm()) {
     // Only if this is a direct branch instruction with an immediate offset
@@ -710,7 +720,7 @@ X86MachineInstructionRaiser::getBranchTargetMBBNumber(const MachineInstr &MI) {
       TargetMBBNo = MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset);
     }
   }
-  
+
   return TargetMBBNo;
 }
 
@@ -766,6 +776,6 @@ X86MachineInstructionRaiser::getCalledFunction(const MachineInstr &MI) {
       CalledFunc = getTargetFunctionAtPLTOffset(MI, CallTargetIndex);
   } break;
   }
-  
+
   return CalledFunc;
 }

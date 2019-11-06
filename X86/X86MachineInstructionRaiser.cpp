@@ -751,8 +751,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   // Convenience variables for instructions with a dest and one or two
   // operands
   const unsigned DestOpIndex = 0, UseOp1Index = 1, UseOp2Index = 2;
-  std::vector<Value *> Uses;
+  std::vector<Value *> ExplicitSrcValues;
   int MBBNo = MI.getParent()->getNumber();
+  bool Success = true;
 
   for (const MachineOperand &MO : MI.explicit_uses()) {
     assert(MO.isReg() &&
@@ -760,18 +761,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     auto UseOpIndex = MI.findRegisterUseOperandIdx(MO.getReg(), false, nullptr);
     Value *SrcValue = getRegOperandValue(MI, UseOpIndex);
 
-    Uses.push_back(SrcValue);
+    ExplicitSrcValues.push_back(SrcValue);
   }
 
   // Verify the instruction has 1 or 2 use operands
-  assert((Uses.size() == 1 || ((Uses.size() == 2))) &&
+  assert((ExplicitSrcValues.size() == 1 || ((ExplicitSrcValues.size() == 2))) &&
          "Unexpected number of operands in register binary op instruction");
 
   // If the instruction has two use operands, ensure that their values are
   // of the same type and non-pointer type.
-  if (Uses.size() == 2) {
-    Value *Src1Value = Uses.at(0);
-    Value *Src2Value = Uses.at(1);
+  if (ExplicitSrcValues.size() == 2) {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
     // The user operand values can be null if the instruction is 'xor op
     // op'. See below.
     if ((Src1Value != nullptr) && (Src2Value != nullptr)) {
@@ -805,8 +806,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         RaisedBB->getInstList().push_back(CInst);
         Src2Value = CInst;
       }
-      Uses[0] = Src1Value;
-      Uses[1] = Src2Value;
+      ExplicitSrcValues[0] = Src1Value;
+      ExplicitSrcValues[1] = Src2Value;
     }
   }
 
@@ -826,11 +827,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            "operand");
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected number of defines in an add instruction");
-    assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
+    assert((ExplicitSrcValues.at(0) != nullptr) &&
+           (ExplicitSrcValues.at(1) != nullptr) &&
            "Unhandled situation: register is used before initialization in "
            "add");
     dstReg = MI.getOperand(DestOpIndex).getReg();
-    dstValue = BinaryOperator::CreateNSWAdd(Uses.at(0), Uses.at(1));
+    dstValue = BinaryOperator::CreateNSWAdd(ExplicitSrcValues.at(0),
+                                            ExplicitSrcValues.at(1));
     if (isa<Instruction>(dstValue))
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
     // Set SF and ZF based on dstValue; technically OF, AF, CF and PF also
@@ -850,11 +853,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            "operand");
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected number of defines in a mul instruction");
-    assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
+    assert((ExplicitSrcValues.at(0) != nullptr) &&
+           (ExplicitSrcValues.at(1) != nullptr) &&
            "Unhandled situation: register is used before initialization in "
            "mul");
     dstReg = MI.getOperand(DestOpIndex).getReg();
-    dstValue = BinaryOperator::CreateNSWMul(Uses.at(0), Uses.at(1));
+    dstValue = BinaryOperator::CreateNSWMul(ExplicitSrcValues.at(0),
+                                            ExplicitSrcValues.at(1));
     if (isa<Instruction>(dstValue))
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
     // Setting EFLAG bits does not seem to matter, so not setting
@@ -996,7 +1001,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->setEflagValue(EFLAGS::SF, MBBNo, false);
       raisedValues->setEflagValue(EFLAGS::ZF, MBBNo, true);
     } else {
-      assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
+      assert((ExplicitSrcValues.at(0) != nullptr) &&
+             (ExplicitSrcValues.at(1) != nullptr) &&
              "Unhandled situation: register used before initialization in "
              "xor");
       switch (opc) {
@@ -1004,19 +1010,22 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       case X86::AND16rr:
       case X86::AND32rr:
       case X86::AND64rr:
-        dstValue = BinaryOperator::CreateAnd(Uses.at(0), Uses.at(1));
+        dstValue = BinaryOperator::CreateAnd(ExplicitSrcValues.at(0),
+                                             ExplicitSrcValues.at(1));
         break;
       case X86::OR8rr:
       case X86::OR16rr:
       case X86::OR32rr:
       case X86::OR64rr:
-        dstValue = BinaryOperator::CreateOr(Uses.at(0), Uses.at(1));
+        dstValue = BinaryOperator::CreateOr(ExplicitSrcValues.at(0),
+                                            ExplicitSrcValues.at(1));
         break;
       case X86::XOR8rr:
       case X86::XOR16rr:
       case X86::XOR32rr:
       case X86::XOR64rr:
-        dstValue = BinaryOperator::CreateXor(Uses.at(0), Uses.at(1));
+        dstValue = BinaryOperator::CreateXor(ExplicitSrcValues.at(0),
+                                             ExplicitSrcValues.at(1));
         break;
       default:
         assert(false && "Reached unexpected location");
@@ -1041,11 +1050,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     assert((MCID.getNumDefs() == 0) &&
            MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            "Unexpected defines in a test instruction");
-    assert((Uses.at(0) != nullptr) && (Uses.at(1) != nullptr) &&
+    assert((ExplicitSrcValues.at(0) != nullptr) &&
+           (ExplicitSrcValues.at(1) != nullptr) &&
            "Unhandled situation: register is used before initialization in "
            "test");
     dstReg = X86::EFLAGS;
-    dstValue = BinaryOperator::CreateAnd(Uses.at(0), Uses.at(1));
+    dstValue = BinaryOperator::CreateAnd(ExplicitSrcValues.at(0),
+                                         ExplicitSrcValues.at(1));
     if (isa<Instruction>(dstValue))
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
     // Clear OF and CF
@@ -1070,7 +1081,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            "Unexpected defines in a neg instruction");
     dstReg = DestOp.getReg();
-    Value *SrcOp = Uses.at(0);
+    Value *SrcOp = ExplicitSrcValues.at(0);
     dstValue = BinaryOperator::CreateNeg(SrcOp);
     // Set CF to 0 if source operand is 0
     // Note: Add this instruction _before_ adding the result of neg
@@ -1099,7 +1110,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected defines in a not instruction");
     dstReg = DestOp.getReg();
-    Value *SrcOp = Uses.at(0);
+    Value *SrcOp = ExplicitSrcValues.at(0);
     dstValue = BinaryOperator::CreateNot(SrcOp);
     // No EFLAGS are effected
     // Add the not instruction
@@ -1108,12 +1119,59 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
+  case X86::SHL8rCL:
+  case X86::SHL16rCL:
+  case X86::SHL32rCL:
+  case X86::SHL64rCL: {
+    // Verify source and dest are tied and are registers
+    const MachineOperand &DestOp = MI.getOperand(DestOpIndex);
+    assert(DestOp.isTied() &&
+           (MI.findTiedOperandIdx(DestOpIndex) == UseOp1Index) &&
+           "Expect tied operand in shl instruction");
+    assert(DestOp.isReg() && "Expect reg operand in shl instruction");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected defines in a shl instruction");
+    dstReg = DestOp.getReg();
+    Value *SrcOpValue = ExplicitSrcValues.at(0);
+    assert((MCID.getNumImplicitUses() == 1) &&
+           "Expect one implicit use in shl instruction");
+    assert((MCID.ImplicitUses[0] == X86::CL) &&
+           "Expect implicit CL regsiter operand in shl instruction");
+    Value *CountValue = matchSSAValueToSrcRegSize(MI, X86::CL);
+    // Check for undefined use
+    if (CountValue == nullptr)
+      Success = false;
+    else {
+      // cast CountValue as needed
+      Type *SrcOpValueTy = SrcOpValue->getType();
+      CountValue = castValue(CountValue, SrcOpValueTy, RaisedBB);
+      // Count is masked to 5 bits (6 bits if 64-bit register)
+      bool Is64Bit = (SrcOpValue->getType()->getPrimitiveSizeInBits() == 64);
+      Value *CountMask = Is64Bit ? ConstantInt::get(SrcOpValueTy, 0x1f)
+                                 : ConstantInt::get(SrcOpValueTy, 0x3f);
+      // Generate mask
+      CountValue = BinaryOperator::CreateAnd(CountValue, CountMask,
+                                             "shl-cnt-msk", RaisedBB);
 
+      dstValue = BinaryOperator::CreateShl(SrcOpValue, CountValue);
+
+      // Add the shl instruction
+      if (isa<Instruction>(dstValue))
+        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+
+      // Affected EFLAGS
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, dstValue);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
+
+      raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+    }
+  } break;
   default:
     assert(false && "Unhandled binary instruction");
   }
 
-  return true;
+  return Success;
 }
 
 bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
@@ -1773,13 +1831,9 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
 
   switch (MI.getOpcode()) {
   case X86::NOT16m:
-  case X86::NOT16r:
   case X86::NOT32m:
-  case X86::NOT32r:
   case X86::NOT64m:
-  case X86::NOT64r:
   case X86::NOT8m:
-  case X86::NOT8r:
     SrcValue = BinaryOperator::CreateNot(SrcValue);
     break;
   case X86::INC8m:
@@ -2428,6 +2482,16 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
     CmpInst *CMP = new ICmpInst(Pred, SFValue, FalseValue);
+    RaisedBB->getInstList().push_back(CMP);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMP);
+    Success = true;
+  } break;
+  case X86::COND_S: {
+    // Check if SF == 1
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+    CmpInst *CMP = new ICmpInst(Pred, SFValue, TrueValue);
     RaisedBB->getInstList().push_back(CMP);
     raisedValues->setPhysRegSSAValue(DestOp.getReg(),
                                      MI.getParent()->getNumber(), CMP);

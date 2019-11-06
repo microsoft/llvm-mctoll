@@ -681,14 +681,26 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       RaisedBB->getInstList().push_back(SelectCF);
 
       NewCF = SelectCF;
-    } else if (x86MIRaiser->instrNameStartsWith(MI, "SHLD")) {
-      // TestInst should have been a call to intrinsic llvm.fshl.*
-      CallInst *IntrinsicCall = dyn_cast<CallInst>(TestResultVal);
-      assert((IntrinsicCall != nullptr) &&
-             (IntrinsicCall->getFunctionType()->getNumParams() == 3) &&
-             "Expected call instruction with three arguments not found");
-      Value *DstArgVal = IntrinsicCall->getArgOperand(0);
-      Value *CountArgVal = IntrinsicCall->getArgOperand(2);
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "SHL")) {
+      Value *DstArgVal = nullptr;
+      Value *CountArgVal = nullptr;
+      // If this is a funnel shift
+      if (x86MIRaiser->instrNameStartsWith(MI, "SHLD")) {
+        // TestInst should have been a call to intrinsic llvm.fshl.*
+        CallInst *IntrinsicCall = dyn_cast<CallInst>(TestResultVal);
+        assert((IntrinsicCall != nullptr) &&
+               (IntrinsicCall->getFunctionType()->getNumParams() == 3) &&
+               "Expected call instruction with three arguments not found");
+        DstArgVal = IntrinsicCall->getArgOperand(0);
+        CountArgVal = IntrinsicCall->getArgOperand(2);
+      } else {
+        // TestInst should have been shl instruction
+        BinaryOperator *BinOp = dyn_cast<BinaryOperator>(TestResultVal);
+        assert((BinOp != nullptr) && (BinOp->getNumOperands() == 2) &&
+               "Expected a shl binary operator with 2 operands");
+        DstArgVal = BinOp->getOperand(0);
+        CountArgVal = BinOp->getOperand(1);
+      }
       // If count is 1 or greater, CF is filled with the last bit shifted out
       // of destination operand.
       Value *ZeroVal = ConstantInt::get(

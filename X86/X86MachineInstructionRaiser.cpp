@@ -2989,6 +2989,30 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Mark affected EFLAGs
       AffectedEFlags.insert(EFLAGS::CF);
     } break;
+    case X86::ROR8r1:
+    case X86::ROR16r1:
+    case X86::ROR32r1:
+    case X86::ROR64r1:
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      // Mark affected EFLAGs. Note OF is affected only for 1-bit rotates.
+      AffectedEFlags.insert(EFLAGS::OF);
+      LLVM_FALLTHROUGH;
+    case X86::ROR8ri:
+    case X86::ROR16ri:
+    case X86::ROR32ri:
+    case X86::ROR64ri: {
+      // Generate the call to instrinsic
+      auto IntrinsicKind = Intrinsic::fshr;
+      Module *M = MR->getModule();
+      Function *IntrinsicFunc =
+          Intrinsic::getDeclaration(M, IntrinsicKind, SrcOp1Value->getType());
+      Value *IntrinsicCallArgs[] = {SrcOp1Value, SrcOp1Value, SrcOp2Value};
+      BinOpInstr =
+          CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+      // Mark affected EFLAGs
+      AffectedEFlags.insert(EFLAGS::CF);
+    } break;
+
     case X86::XOR8ri:
     case X86::XOR16ri:
     case X86::XOR32ri:
@@ -3481,8 +3505,9 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
     success = raiseDivideInstr(MI, SrcVal);
   } break;
   default: {
-    outs() << "*** Generic instruction not raised : ";
-    MI.dump();
+    dbgs() << "*** Generic instruction not raised : " << MF.getName().data()
+           << "\n\t";
+    MI.print(dbgs());
     success = false;
   }
   }

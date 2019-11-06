@@ -1798,7 +1798,8 @@ X86MachineInstructionRaiser::matchSSAValueToSrcRegSize(const MachineInstr &MI,
     }
   } else {
     dbgs() << "***** Uninitialized register usage found\n";
-    dbgs() << "*****" << MR->getModule()->getSourceFileName() << "\n\t";
+    dbgs() << "*****" << MR->getModule()->getSourceFileName() << ": "
+           << MF.getName().data() << "\n\t";
     MI.print(dbgs());
   }
   return SrcOpValue;

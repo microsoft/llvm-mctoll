@@ -553,6 +553,58 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
             BinaryOperator::CreateXor(ResultCF, MSBIsSet, "OF", RaisedBB);
         physRegDefsInMBB[FlagBit][MBBNo].second = ResultOF;
       }
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "ROR")) {
+      // OF flag is defined only for 1-bit rotates i.e., RORr*1).
+      // It is undefined in all other cases. OF flag is set to the exclusive OR
+      // of the two most-significant bits of the result.
+      if ((MI.getNumExplicitOperands() == 2) &&
+          (MI.findTiedOperandIdx(1) == 0)) {
+        // Find most-significant bit of result.
+        BasicBlock *RaisedBB =
+            x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
+        Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
+
+        // Get most-significant bit of the result (i.e., TestResultVal)
+        auto ResultNumBits = TestResultVal->getType()->getPrimitiveSizeInBits();
+        // Construct a constant with only the most significant bit set
+        Value *LeftShift =
+            ConstantInt::get(TestResultVal->getType(), (ResultNumBits - 1));
+        // Get (1 << LeftShift)
+        Value *BitSetConst = BinaryOperator::CreateShl(OneValue, LeftShift,
+                                                       "MSB-CONST", RaisedBB);
+        // Get (TestResultVal & MSBSetConst) to get the most significant bit of
+        // TestResultVal
+        Instruction *BitSetResult = BinaryOperator::CreateAnd(
+            TestResultVal, BitSetConst, "MSB-RES", RaisedBB);
+        // Check if MSB is non-zero
+        Value *ZeroValue = ConstantInt::get(BitSetResult->getType(), 0);
+        // Generate (BitSetResult != 0) to indicate MSB
+        Instruction *MSBIsSet = new ICmpInst(
+            CmpInst::Predicate::ICMP_NE, BitSetResult, ZeroValue, "MSB-SET");
+        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(MSBIsSet));
+
+        // Construct a constant with only the pre-MSB location set
+        LeftShift =
+            ConstantInt::get(TestResultVal->getType(), (ResultNumBits - 2));
+        // Get (1 << LeftShift)
+        BitSetConst = BinaryOperator::CreateShl(OneValue, LeftShift,
+                                                "Pre-MSB-CONST", RaisedBB);
+        // Get (TestResultVal & BitSetConst) to get the pre-most significant bit
+        // of TestResultVal
+        BitSetResult = BinaryOperator::CreateAnd(TestResultVal, BitSetConst,
+                                                 "Pre-MSB-RES", RaisedBB);
+        // Check if pre-MSB is non-zero
+        // Generate (BitSetResult != 0) to indicate pre-MSB
+        Instruction *PreMSBIsSet =
+            new ICmpInst(CmpInst::Predicate::ICMP_NE, BitSetResult, ZeroValue,
+                         "Pre-MSB-SET");
+        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(PreMSBIsSet));
+
+        // Generate XOR MSBIsSet, PreMSBIsSet to compute OF
+        Instruction *ResultOF =
+            BinaryOperator::CreateXor(MSBIsSet, PreMSBIsSet, "OF", RaisedBB);
+        physRegDefsInMBB[FlagBit][MBBNo].second = ResultOF;
+      }
     } else {
       MI.dump();
       assert(false && "*** EFLAGS update abstraction not handled yet");
@@ -771,6 +823,34 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // Insert compare instruction
       RaisedBB->getInstList().push_back(ResultCF);
       NewCF = ResultCF;
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "ROR")) {
+      // CF flag receives a copy of the bit that was shifted from one end to
+      // the other. Find the most-significant bit, which is the bit shifted
+      // from the least-significant location.
+      // Find most-significant bit of result.
+      BasicBlock *RaisedBB =
+          x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
+      Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
+
+      // Get most-significant bit of the result (i.e., TestResultVal)
+      auto ResultNumBits = TestResultVal->getType()->getPrimitiveSizeInBits();
+      // Construct a constant with only the most significant bit set
+      Value *LeftShift =
+          ConstantInt::get(TestResultVal->getType(), (ResultNumBits - 1));
+      // Get (1 << LeftShift)
+      Value *BitSetConst =
+          BinaryOperator::CreateShl(OneValue, LeftShift, "MSB-CONST", RaisedBB);
+      // Get (TestResultVal & MSBSetConst) to get the most significant bit of
+      // TestResultVal
+      Instruction *BitSetResult = BinaryOperator::CreateAnd(
+          TestResultVal, BitSetConst, "MSB-RES", RaisedBB);
+      // Check if MSB is non-zero
+      Value *ZeroValue = ConstantInt::get(BitSetResult->getType(), 0);
+      // Generate (BitSetResult != 0) to indicate MSB
+      Instruction *MSBIsSet = new ICmpInst(CmpInst::Predicate::ICMP_NE,
+                                           BitSetResult, ZeroValue, "MSB-SET");
+      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(MSBIsSet));
+      NewCF = MSBIsSet;
     } else {
       MI.dump();
       assert(false &&

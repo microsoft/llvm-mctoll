@@ -3029,11 +3029,16 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::ZF);
       // Test and set of PF not yet supported
       break;
+    case X86::IMUL16rri:
+    case X86::IMUL32rri:
     case X86::IMUL32rri8:
     case X86::IMUL64rri8:
     case X86::IMUL64rri32:
       BinOpInstr = BinaryOperator::CreateMul(SrcOp1Value, SrcOp2Value);
-      // TODO: Set affected EFLAGS information appropriately
+      // OF is also affected, but is set to be the same as CF. Setting of OF for
+      // IMUL is handled along with setting of CF. So, there is no need to add
+      // OF as affected flag.
+      AffectedEFlags.insert(EFLAGS::CF);
       break;
     case X86::SHR8r1:
     case X86::SHR16r1:

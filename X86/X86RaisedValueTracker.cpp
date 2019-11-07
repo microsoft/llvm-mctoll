@@ -459,8 +459,6 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
     auto IntrinsicOF = Intrinsic::not_intrinsic;
     Value *TestArg[2];
     Module *M = x86MIRaiser->getModuleRaiser()->getModule();
-    BasicBlock *RaisedBB =
-        x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
 
     // If TestVal is a cast value, it is most likely cast to match the
     // source of the compare instruction. Get to the value prior to casting.
@@ -517,8 +515,6 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
         // the other. Find the least-significant bit, which is the bit shifted
         // from the most-significant location.
         // NOTE: CF computation is repeated here, just to be sure.
-        BasicBlock *RaisedBB =
-            x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
         // Construct constant 1 of TestResultVal type
         Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
         // Get LSB of TestResultVal using the instruction and TestResultVal, 1
@@ -560,8 +556,6 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       if ((MI.getNumExplicitOperands() == 2) &&
           (MI.findTiedOperandIdx(1) == 0)) {
         // Find most-significant bit of result.
-        BasicBlock *RaisedBB =
-            x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
         Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
 
         // Get most-significant bit of the result (i.e., TestResultVal)
@@ -612,8 +606,6 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
   } break;
   case X86RegisterUtils::EFLAGS::CF: {
     Module *M = x86MIRaiser->getModuleRaiser()->getModule();
-    BasicBlock *RaisedBB =
-        x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
     Value *NewCF = nullptr;
 
     // If TestVal is a cast value, it is most likely cast to match the
@@ -810,8 +802,6 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // the other. Find the least-significant bit, which is the bit shifted
       // from the most-significant location.
       // NOTE: CF computation is repeated here, just to be sure.
-      BasicBlock *RaisedBB =
-          x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
       // Construct constant 1 of TestResultVal type
       Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
       // Get LSB of TestResultVal using the instruction and TestResultVal, 1
@@ -828,8 +818,6 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // the other. Find the most-significant bit, which is the bit shifted
       // from the least-significant location.
       // Find most-significant bit of result.
-      BasicBlock *RaisedBB =
-          x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
       Value *OneValue = ConstantInt::get(TestResultVal->getType(), 1);
 
       // Get most-significant bit of the result (i.e., TestResultVal)
@@ -851,6 +839,29 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
                                            BitSetResult, ZeroValue, "MSB-SET");
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(MSBIsSet));
       NewCF = MSBIsSet;
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "IMUL")) {
+      // TestInst should have been mul instruction
+      BinaryOperator *TestInst = dyn_cast<BinaryOperator>(TestResultVal);
+      assert((TestInst != nullptr) && (TestInst->getNumOperands() == 2) &&
+             "Expected a mul binary operator with 2 operands");
+      Value *TestArg[2];
+      TestArg[0] = TestInst->getOperand(0);
+      TestArg[1] = TestInst->getOperand(1);
+      assert((TestArg[0]->getType() == TestArg[1]->getType()) &&
+             "Differing types of test values unexpected");
+
+      // Construct a call to get overflow value upon comparison of test arg
+      // values.
+      Value *ValueOF = Intrinsic::getDeclaration(
+          M, Intrinsic::smul_with_overflow, TestArg[0]->getType());
+      CallInst *GetOF = CallInst::Create(ValueOF, ArrayRef<Value *>(TestArg));
+      RaisedBB->getInstList().push_back(GetOF);
+      // Extract OF and set both OF and CF to the same value
+      auto NewOF = ExtractValueInst::Create(GetOF, 1, "OF", RaisedBB);
+      physRegDefsInMBB[EFLAGS::OF][MBBNo].second = NewOF;
+      NewCF = NewOF;
+      // Set OF to the same value of CF
+      physRegDefsInMBB[EFLAGS::OF][MBBNo].second = NewCF;
     } else {
       MI.dump();
       assert(false &&

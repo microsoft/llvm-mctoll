@@ -1178,6 +1178,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     const MachineInstr &MI, Value *MemRefValue) {
   unsigned int Opcode = MI.getOpcode();
   const MCInstrDesc &MIDesc = MI.getDesc();
+  std::set<unsigned> AffectedEFlags;
+  std::set<unsigned> ClearedEFlags;
 
   assert((MIDesc.getNumDefs() == 1) &&
          "Encountered memory load instruction with more than 1 defs");
@@ -1295,11 +1297,33 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     // Create mul instruction
     BinOpInst = BinaryOperator::CreateMul(SecondSourceVal, LoadValue);
   } break;
+  case X86::XOR8rm:
+  case X86::XOR16rm:
+  case X86::XOR32rm:
+  case X86::XOR64rm: {
+    // Create xor instruction
+    BinOpInst = BinaryOperator::CreateXor(DestValue, LoadValue);
+    ClearedEFlags.insert(EFLAGS::OF);
+    ClearedEFlags.insert(EFLAGS::CF);
+    AffectedEFlags.insert(EFLAGS::SF);
+    AffectedEFlags.insert(EFLAGS::ZF);
+    // PF not yet supported
+    // AffectedEFlags.insert(EFLAGS::PF);
+  } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");
   }
   // Add instruction to block
   RaisedBB->getInstList().push_back(BinOpInst);
+
+  // Clear EFLAGS if any
+  int MMBNo = MI.getParent()->getNumber();
+  for (auto F : ClearedEFlags)
+    raisedValues->setEflagValue(F, MMBNo, false);
+
+  // Test and set affected flags
+  for (auto Flag : AffectedEFlags)
+    raisedValues->testAndSetEflagSSAValue(Flag, MI, BinOpInst);
 
   // Update PhysReg to Value map
   raisedValues->setPhysRegSSAValue(DestPReg, MI.getParent()->getNumber(),

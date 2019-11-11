@@ -1903,6 +1903,17 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
          (UseDefReg_1 == MIDesc.ImplicitDefs[1]) &&
          "Unexpected use/def registers in div instruction");
 
+  bool isSigned = true;
+  switch (MI.getOpcode()) {
+  case X86::DIV16m:
+  case X86::DIV32m:
+  case X86::DIV64m:
+    isSigned = false;
+    break;
+  default:
+    isSigned = true;
+  }
+
   Value *DividendLowBytes = matchSSAValueToSrcRegSize(MI, UseDefReg_0);
   Value *DividendHighBytes = matchSSAValueToSrcRegSize(MI, UseDefReg_1);
   if ((DividendLowBytes == nullptr) || (DividendHighBytes == nullptr))
@@ -1936,12 +1947,12 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
   // Cast DividendHighBytes and DividendLowBytes to types with double the
   // size.
   CastInst *DividendLowBytesDT = CastInst::Create(
-      CastInst::getCastOpcode(DividendLowBytes, true, DoubleTy, true),
+      CastInst::getCastOpcode(DividendLowBytes, isSigned, DoubleTy, isSigned),
       DividendLowBytes, DoubleTy);
   RaisedBB->getInstList().push_back(DividendLowBytesDT);
 
   CastInst *DividendHighBytesDT = CastInst::Create(
-      CastInst::getCastOpcode(DividendHighBytes, true, DoubleTy, true),
+      CastInst::getCastOpcode(DividendHighBytes, isSigned, DoubleTy, isSigned),
       DividendHighBytes, DoubleTy);
   RaisedBB->getInstList().push_back(DividendHighBytesDT);
 
@@ -1968,21 +1979,24 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
     SrcValue = loadInst;
   }
   // Cast divisor (srcValue) to double type
-  CastInst *srcValueDT =
-      CastInst::Create(CastInst::getCastOpcode(SrcValue, true, DoubleTy, true),
-                       SrcValue, DoubleTy);
+  CastInst *srcValueDT = CastInst::Create(
+      CastInst::getCastOpcode(SrcValue, isSigned, DoubleTy, isSigned), SrcValue,
+      DoubleTy);
   RaisedBB->getInstList().push_back(srcValueDT);
 
   // quotient
-  Instruction *QuotientDT =
-      BinaryOperator::CreateSDiv(FullDividend, srcValueDT);
+  Instruction *QuotientDT = nullptr;
+  if (isSigned)
+    QuotientDT = BinaryOperator::CreateSDiv(FullDividend, srcValueDT);
+  else
+    QuotientDT = BinaryOperator::CreateUDiv(FullDividend, srcValueDT);
   RaisedBB->getInstList().push_back(QuotientDT);
 
   // Cast Quotient back to UseDef reg value type
-  CastInst *Quotient =
-      CastInst::Create(CastInst::getCastOpcode(
-                           QuotientDT, true, DividendLowBytes->getType(), true),
-                       QuotientDT, DividendLowBytes->getType());
+  CastInst *Quotient = CastInst::Create(
+      CastInst::getCastOpcode(QuotientDT, isSigned, DividendLowBytes->getType(),
+                              isSigned),
+      QuotientDT, DividendLowBytes->getType());
 
   RaisedBB->getInstList().push_back(Quotient);
   // Update ssa val of UseDefReg_0
@@ -1990,18 +2004,22 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
                                    Quotient);
 
   // remainder
-  Instruction *RemainderDT =
-      BinaryOperator::CreateSRem(FullDividend, srcValueDT);
+  Instruction *RemainderDT = nullptr;
+  if (isSigned)
+    RemainderDT = BinaryOperator::CreateSRem(FullDividend, srcValueDT);
+  else
+    RemainderDT = BinaryOperator::CreateURem(FullDividend, srcValueDT);
   RaisedBB->getInstList().push_back(RemainderDT);
 
   // Cast RemainderDT back to UseDef reg value type
   CastInst *Remainder = CastInst::Create(
-      CastInst::getCastOpcode(RemainderDT, true, DividendHighBytes->getType(),
-                              true),
+      CastInst::getCastOpcode(RemainderDT, isSigned,
+                              DividendHighBytes->getType(), isSigned),
       RemainderDT, DividendHighBytes->getType());
 
   RaisedBB->getInstList().push_back(Remainder);
-  // Update ssa val of UseDefReg_1
+  // CF, OF, SF, ZF, AF and PF flags are undefined. So, no need to generate code
+  // to compute any of the status flags. Update ssa val of UseDefReg_1
   raisedValues->setPhysRegSSAValue(UseDefReg_1, MI.getParent()->getNumber(),
                                    Remainder);
 

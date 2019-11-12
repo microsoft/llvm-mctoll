@@ -14,6 +14,9 @@
 #include "ARMFunctionPrototype.h"
 #include "ARMSubtarget.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
 
@@ -197,8 +200,8 @@ Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
       Function::Create(fnTy, GlobalValue::ExternalLinkage, fn.getName(), mdl);
 
   if (PrintPass) {
-    mf.dump();
-    pnfn->dump();
+    LLVM_DEBUG(mf.dump());
+    LLVM_DEBUG(pnfn->dump());
   }
 
   if (PrintPass)

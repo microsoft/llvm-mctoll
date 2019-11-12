@@ -17,8 +17,11 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Support/BinaryByteStream.h"
+#include "llvm/Support/Debug.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
+
+#define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
 using namespace mctoll;
@@ -318,7 +321,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
 
   if (PrintPass) {
     outs() << "CFG : After Raising Jump Tables\n";
-    MF.dump();
+    LLVM_DEBUG(MF.dump());
   }
   return true;
 }

@@ -7,8 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "MCInstOrData.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "mctoll"
 
 MCInstOrData::MCInstOrData(const MCInstOrData &V) {
   Type = V.Type;
@@ -62,7 +65,7 @@ void MCInstOrData::dump() const {
     outs() << "0x" << format("%04" PRIx16, Data) << "\n";
     break;
   case Tag::INSTRUCTION:
-    Inst.dump();
+    LLVM_DEBUG(Inst.dump());
     break;
   }
 }

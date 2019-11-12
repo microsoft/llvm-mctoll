@@ -15,6 +15,7 @@
 #include "X86RegisterUtils.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
+#include "llvm/Support/Debug.h"
 
 using namespace X86RegisterUtils;
 
@@ -622,7 +623,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
         physRegDefsInMBB[FlagBit][MBBNo].second = ResultOF;
       }
     } else {
-      MI.dump();
+      LLVM_DEBUG(MI.dump());
       assert(false && "*** EFLAGS update abstraction not handled yet");
     }
   } break;
@@ -885,7 +886,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // Set OF to the same value of CF
       physRegDefsInMBB[EFLAGS::OF][MBBNo].second = NewCF;
     } else {
-      MI.dump();
+      LLVM_DEBUG(MI.dump());
       assert(false &&
              "*** Abstraction of CF for the instruction not handled yet");
     }

@@ -30,12 +30,16 @@
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
 #include <set>
 #include <vector>
+
+#define DEBUG_TYPE "mctoll"
+
 using namespace llvm;
 using namespace mctoll;
 using namespace X86RegisterUtils;
@@ -2084,7 +2088,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     } else if (NonMemRefOp->isImm()) {
       NonMemRefOpTy = getImmOperandType(MI, nonMemRefOpIndex);
     } else {
-      MI.dump();
+      LLVM_DEBUG(MI.dump());
       assert(false && "Unhandled second operand type in compare instruction");
     }
 
@@ -2118,7 +2122,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
           ConstantInt::get(MemRefValue->getType()->getPointerElementType(),
                            NonMemRefOp->getImm());
     } else {
-      MI.dump();
+      LLVM_DEBUG(MI.dump());
       assert(false && "Unhandled first operand type in compare instruction");
     }
     // save non-memory reference value at the appropriate index of operand
@@ -2378,7 +2382,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     // TODO : Memory references with BaseType FrameIndexBase
     // (i.e., not RegBase type)
     outs() << "****** Unhandled memory reference in instruction\n\t";
-    MI.dump();
+    LLVM_DEBUG(MI.dump());
     outs() << "****** reference of type FrameIndexBase";
     return false;
   }
@@ -2421,7 +2425,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     break;
   default:
     outs() << "Unhandled memory referencing instruction.\n";
-    MI.dump();
+    LLVM_DEBUG(MI.dump());
   }
   return success;
 }
@@ -2600,7 +2604,7 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
   }
 
   if (Pred == CmpInst::Predicate::BAD_ICMP_PREDICATE) {
-    MI.dump();
+    LLVM_DEBUG(MI.dump());
     assert(false && "Unhandled set instruction");
   }
   return Success;
@@ -3164,7 +3168,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::ZF);
       break;
     default:
-      MI.dump();
+      LLVM_DEBUG(MI.dump());
       assert(false && "Unhandled reg to imm binary operator instruction");
       break;
     }
@@ -3503,7 +3507,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       assert(false && "Invalid condition on branch");
       break;
     default:
-      MI->dump();
+      LLVM_DEBUG(MI->dump());
       assert(false && "Unhandled conditional branch");
     }
 
@@ -3615,7 +3619,7 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
 bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
   if (PrintPass) {
     outs() << "CFG : Before Raising Terminator Instructions\n";
-    raisedFunction->dump();
+    LLVM_DEBUG(raisedFunction->dump());
   }
 
   // Raise branch instructions with control transfer records
@@ -3680,7 +3684,7 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
   }
   if (PrintPass) {
     outs() << "CFG : After Raising Terminator Instructions\n";
-    raisedFunction->dump();
+    LLVM_DEBUG(raisedFunction->dump());
   }
 
   return true;

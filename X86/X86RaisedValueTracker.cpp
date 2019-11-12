@@ -112,8 +112,6 @@ bool X86RaisedValueTracker::setPhysRegSSAValue(unsigned int PhysReg, int MBBNo,
 std::vector<std::pair<int, Value *>>
 X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo,
                                              bool AllPreds) {
-  // Always convert PhysReg to the 64-bit version.
-  unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
   std::vector<std::pair<int, Value *>> ReachingDefs;
   // Recursively walk the predecessors of current block to get
   // the reaching definition for PhysReg.
@@ -122,7 +120,7 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo,
   MachineBasicBlock *CurMBB = MF.getBlockNumbered(MBBNo);
   // Look for the most recent definition of SuperReg in current block.
   const std::pair<int, Value *> LocalDef =
-      getInBlockRegOrArgDefVal(SuperReg, MBBNo);
+      getInBlockRegOrArgDefVal(PhysReg, MBBNo);
   // Initialize a bit vector tracking visited bacic blocks.
   BitVector BlockVisited(MF.getNumBlockIDs(), false);
 
@@ -153,7 +151,7 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo,
           // Mark block as visited
           BlockVisited.set(CurPredMBBNo);
           const std::pair<int, Value *> ReachInfo =
-              getInBlockRegOrArgDefVal(SuperReg, CurPredMBBNo);
+              getInBlockRegOrArgDefVal(PhysReg, CurPredMBBNo);
 
           // if reach info found or if CurPredMBB has a definition of SuperReg,
           // record it
@@ -276,32 +274,53 @@ unsigned X86RaisedValueTracker::getInBlockPhysRegSize(unsigned int PhysReg,
 // the register is promoted to a stack slot. In other words, a stack slot is
 // created, all the reaching definitions are stored in the basic blocks that
 // define them. In the current basic block, use of this register is raised
-// as load from the the stack slot. If AllPreds is true, perform the stack
-// promotions only if PhysReg is reachable along all predecessors of MBBNo or is
-// defined in MBBNo.
+// as load from the the stack slot. If AllPreds is true (default is false),
+// perform the stack promotions only if PhysReg is reachable along all
+// predecessors of MBBNo or is defined in MBBNo. If AnySubReg is false (which is
+// the default), the return value is ensured to be of type with size of PhysReg.
 
 Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
-                                             bool AllPreds) {
+                                             bool AllPreds, bool AnySubReg) {
   MachineFunction &MF = x86MIRaiser->getMF();
   LLVMContext &Ctxt(MF.getFunction().getContext());
-  // Always convert PhysReg to the 64-bit version.
   Value *RetValue = nullptr;
 
   std::vector<std::pair<int, Value *>> ReachingDefs;
   const ModuleRaiser *MR = x86MIRaiser->getModuleRaiser();
   ReachingDefs = getGlobalReachingDefs(PhysReg, MBBNo, AllPreds);
+  int RDVecSz = ReachingDefs.size();
   // If there are more than one distinct incoming reaching defs
-  if (ReachingDefs.size() > 1) {
-    // 1. Allocate 64-bit stack slot
+  if (RDVecSz > 1) {
+    // 1. Allocate stack slot with type general enough to hold any of the
+    //    reaching values
     // 2. store each of the incoming values in that stack slot. cast the value
-    // as needed.
+    //    as needed.
     // 3. load from the stack slot
     // 4. Return loaded value - RetValue
 
-    // 1. Allocate 64-bit stack slot
+    // 1. Allocate stack slot
     const DataLayout &DL = MR->getModule()->getDataLayout();
     unsigned allocaAddrSpace = DL.getAllocaAddrSpace();
-    Type *AllocTy = Type::getInt64Ty(Ctxt);
+
+    // Get the super-type of all reaching definition values
+    Type *AllocTy = nullptr;
+    for (auto RD : ReachingDefs) {
+      if ((RD.second != nullptr) && RD.second->getType()->isIntegerTy()) {
+        Type *Ty = RD.second->getType();
+        if ((AllocTy == nullptr) ||
+            (Ty->getPrimitiveSizeInBits() > AllocTy->getPrimitiveSizeInBits()))
+          AllocTy = Ty;
+      } else {
+        // Any non-integer type or null value is stored in a 64-bit stack slot.
+        // Note that a null value implies that this is an incoming edge from a
+        // block that is not yet raised. This will be recorded and handled
+        // later. So, assume the type to be the most generic, i.e., 64-bit and
+        // no further processing of the reaching value list is needed.
+        AllocTy = Type::getInt64Ty(Ctxt);
+        break;
+      }
+    }
+
     unsigned int typeAlignment = DL.getPrefTypeAlignment(AllocTy);
 
     const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
@@ -309,7 +328,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     // Create alloca instruction to allocate stack slot
     AllocaInst *Alloca =
         new AllocaInst(AllocTy, allocaAddrSpace, 0, MaybeAlign(typeAlignment),
-                       "stk-prom-" + PhysRegName + "-");
+                       PhysRegName + "-SKT-LOC");
 
     // Create a stack slot associated with the alloca instruction of size 8
     unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(
@@ -374,24 +393,27 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo))
         ->getInstList()
         .push_back(LdReachingVal);
-    // Stack slots are always 64-bit. So, make sure that the loaded value has
-    // the type that can be represented by PhysReg.
-    Type *RegType = (isEflagBit(PhysReg))
-                        ? Type::getInt1Ty(Ctxt)
-                        : x86MIRaiser->getPhysRegType(PhysReg);
-    Type *LdReachingValType = LdReachingVal->getType();
-    assert(LdReachingValType->isIntegerTy() &&
-           "Unhandled type mismatch of reaching register definition");
-    if (RegType != LdReachingValType) {
-      // Create cast instruction
-      Instruction *CInst = CastInst::Create(
-          CastInst::getCastOpcode(LdReachingVal, false, RegType, false),
-          LdReachingVal, RegType);
-      // Insert the cast instruction
-      x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo))
-          ->getInstList()
-          .push_back(CInst);
-      LdReachingVal = CInst;
+    if (!AnySubReg) {
+      // Ensure that the loaded value has the type that can be represented by
+      // PhysReg - unless specifically not requested, such as during argument
+      // liveness discovery.
+      Type *RegType = (isEflagBit(PhysReg))
+                          ? Type::getInt1Ty(Ctxt)
+                          : x86MIRaiser->getPhysRegType(PhysReg);
+      Type *LdReachingValType = LdReachingVal->getType();
+      assert(LdReachingValType->isIntegerTy() &&
+             "Unhandled type mismatch of reaching register definition");
+      if (RegType != LdReachingValType) {
+        // Create cast instruction
+        Instruction *CInst = CastInst::Create(
+            CastInst::getCastOpcode(LdReachingVal, false, RegType, false),
+            LdReachingVal, RegType);
+        // Insert the cast instruction
+        x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo))
+            ->getInstList()
+            .push_back(CInst);
+        LdReachingVal = CInst;
+      }
     }
     RetValue = LdReachingVal;
     // Record that PhysReg is now defined as load from stack location in

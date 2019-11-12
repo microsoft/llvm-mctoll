@@ -67,6 +67,7 @@ public:
                                        int MBBNo, AllocaInst *Alloca);
   int getArgumentNumber(unsigned PReg);
   bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
+  X86RaisedValueTracker *getRaisedValues() { return raisedValues; }
 
 private:
   // Bit positions used for individual status flags of EFLAGS register.
@@ -180,7 +181,7 @@ private:
   Value *matchSSAValueToSrcRegSize(const MachineInstr &, unsigned);
 
   Type *getFunctionReturnType();
-  Type *getReturnTypeFromMBB(MachineBasicBlock &MBB, bool &HasCall);
+  Type *getReturnTypeFromMBB(const MachineBasicBlock &MBB, bool &HasCall);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
   Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,

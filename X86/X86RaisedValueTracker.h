@@ -55,7 +55,8 @@ public:
   // promotions. If AllPreds is true, perform the stack promotions only if
   // PhysReg is reachable along all predecessors of MBBNo or is defined in
   // MBBNo.
-  Value *getReachingDef(unsigned int PhysReg, int MBBNo, bool AllPreds = false);
+  Value *getReachingDef(unsigned int PhysReg, int MBBNo, bool AllPreds = false,
+                        bool AnySubReg = false);
   Value *getEflagReachingDef(unsigned Flag, int MBBNo);
 
   // Return a vector of <MBBNo, Value*> pairs denoting the defining MBB numbers

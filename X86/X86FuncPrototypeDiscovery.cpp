@@ -440,7 +440,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
               // Record MBBNo as a block with tail call
               tailCallMBBNos.insert(MBBNo);
             }
-          } else {
+          } else if (Opcode != X86::CALL64r) {
+            // Not possible to statically determine the target of register-based
+            // indirect call. Need to handle differently.
             assert(false && "Unhandled call or branch found");
           }
         }
@@ -560,8 +562,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
 // its sub-register) in MBB. Only definitions of return register after the
 // last call instruction, if one exists, in the block are considered to be
 // indicative of return value set up.
-Type *X86MachineInstructionRaiser::getReturnTypeFromMBB(MachineBasicBlock &MBB,
-                                                        bool &HasCall) {
+Type *
+X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
+                                                  bool &HasCall) {
   Type *ReturnType = nullptr;
   HasCall = false;
 

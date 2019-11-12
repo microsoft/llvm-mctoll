@@ -296,11 +296,16 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
     SrcValue = castValue(SrcValue, getPhysRegType(DstPReg),
                          getRaisedBasicBlock(MI.getParent()));
 
-    // Check if the immediate value corresponds to a global variable.
     if (SrcImm > 0) {
+      // Check if the immediate value corresponds to a global variable.
       Value *GV = getGlobalVariableValueAt(MI, SrcImm);
       if (GV != nullptr) {
         SrcValue = GV;
+      } else {
+        // Check if the immediate value corresponds to a function.
+        Value *RaisedFunc = MR->getRaisedFunctionAt(SrcImm);
+        if (RaisedFunc != nullptr)
+          SrcValue = RaisedFunc;
       }
     }
 
@@ -605,6 +610,16 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         Pred = CmpInst::Predicate::ICMP_EQ;
         // Construct a compare instruction
         CMOVCond = new ICmpInst(Pred, OFValue, TrueValue, "Cond_CMOVO");
+      } break;
+      case X86::COND_GE: {
+        // Check SF == OF
+        Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+        Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+        assert((SFValue != nullptr) && (OFValue != nullptr) &&
+               "Failed to get EFLAGS value while raising CMOVGE!");
+        // Test SF == OF
+        CMOVCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue, OFValue,
+                                "Cond_CMOVGE");
       } break;
       case X86::COND_INVALID:
         assert(false && "CMOV instruction with invalid condition found");
@@ -3954,6 +3969,58 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         RaisedBB->getInstList().push_back(UR);
       }
     }
+    Success = true;
+  } break;
+  case X86::CALL64r: {
+    const MachineBasicBlock *MBB = MI.getParent();
+    int MBBNo = MBB->getNumber();
+
+    std::vector<Type *> ArgTypeVector;
+    std::vector<Value *> ArgValueVector;
+
+    // Find all sequentially reachable argument register defintions at call site
+    for (auto Reg : GPR64ArgRegs64Bit) {
+      Value *RD = // getRegOrArgValue(Reg, MBBNo);
+          raisedValues->getReachingDef(Reg, MBBNo, true /* on all preds */,
+                                       true /* any subreg */);
+      if (RD == nullptr)
+        break;
+      else {
+        ArgTypeVector.push_back(RD->getType());
+        ArgValueVector.push_back(RD);
+      }
+    }
+
+    // Find if return register is used before the end of the block with call
+    // instruction. If so, consider that to indicate the return value of the
+    // called function.
+    bool BlockHasCall;
+    Type *ReturnType = getReturnTypeFromMBB(*MBB, BlockHasCall /* ignored*/);
+
+    // Build Function type.
+    auto FunctionType = FunctionType::get(ReturnType, ArgTypeVector, false);
+
+    // Get function pointer address.
+    unsigned int CallReg = MI.getOperand(0).getReg();
+    Value *Func = getRegOrArgValue(CallReg, MBBNo);
+
+    // Cast the function pointer address to function type pointer.
+    Type *FuncTy = FunctionType->getPointerTo();
+    if (Func->getType() != FuncTy) {
+      CastInst *CInst = CastInst::Create(
+          CastInst::getCastOpcode(Func, false, FuncTy, false), Func, FuncTy);
+      RaisedBB->getInstList().push_back(CInst);
+      Func = CInst;
+    }
+
+    // Construct call instruction.
+    CallInst *CallInst =
+        CallInst::Create(Func, ArrayRef<Value *>(ArgValueVector));
+    RaisedBB->getInstList().push_back(CallInst);
+
+    // A function call with a non-void return will modify RAX.
+    if (ReturnType)
+      raisedValues->setPhysRegSSAValue(X86::RAX, MBBNo, CallInst);
     Success = true;
   } break;
   default: {

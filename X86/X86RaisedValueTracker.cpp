@@ -13,9 +13,11 @@
 
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
+#include "llvm/Support/Debug.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
-#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "mctoll"
 
 using namespace X86RegisterUtils;
 

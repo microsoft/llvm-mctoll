@@ -20,7 +20,7 @@ jobs:
     - name: clone
       run: |
         git clone --depth 10000 -b master https://github.com/llvm/llvm-project.git .
-        git checkout eb8d85e5db
+        git checkout 506992848
         mkdir build
         git clone https://github.com/$GITHUB_REPOSITORY llvm/tools/llvm-mctoll
         cd llvm/tools/llvm-mctoll && git checkout $GITHUB_SHA

@@ -4,6 +4,8 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 
 # Current Status
 
+[![CI Status](../../workflows/CI/badge.svg)](../../actions)
+
 `Llvm-mctoll` is capable of raising X86-64 and Arm32 Linux/ELF libraries and executables to LLVM IR.
 Raising Windows, OS X and C++ binaries needs to be added. At this time X86-64 support is more mature than Arm32.
 

@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches:
+    - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: prerequisites
+      run: |
+        sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+        sudo apt update
+        sudo apt install -y ninja-build g++-9
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 900 --slave /usr/bin/g++ g++ /usr/bin/g++-9
+    - name: clone
+      run: |
+        git clone --depth 10000 -b master https://github.com/llvm/llvm-project.git .
+        git checkout eb8d85e5db
+        mkdir build
+        git clone https://github.com/$GITHUB_REPOSITORY llvm/tools/llvm-mctoll
+        cd llvm/tools/llvm-mctoll && git checkout $GITHUB_SHA
+    - name: cmake
+      working-directory: build
+      run: cmake -G Ninja -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=Release ../llvm
+    - working-directory: build
+      run: ninja llvm-mctoll opt
+    - working-directory: build
+      run: ninja check-mctoll
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v1
+      with:
+        name: llvm-mctoll
+        path: build/bin/llvm-mctoll

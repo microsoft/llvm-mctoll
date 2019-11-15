@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: [ Debug, Release ]
 
     steps:
     - name: prerequisites
@@ -28,7 +31,7 @@ jobs:
         echo "::add-matcher::$GITHUB_WORKSPACE/llvm/tools/llvm-mctoll/.github/cpp.json"
     - name: cmake
       working-directory: build
-      run: cmake -G Ninja -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=Release ../llvm
+      run: cmake -G Ninja -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=${{ matrix.config }} ../llvm
     - working-directory: build
       run: ninja llvm-mctoll opt
     - working-directory: build

@@ -23,7 +23,6 @@ jobs:
         sudo update-alternatives --install /usr/bin/cc  cc  /usr/bin/clang 200
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 200
         sudo update-alternatives --install /usr/bin/ld  ld  /usr/bin/lld 200
-        which llvm-symbolizer
     - name: clone
       run: |
         git clone --depth 10000 -b master https://github.com/llvm/llvm-project.git .
@@ -35,9 +34,11 @@ jobs:
         echo "::add-matcher::$GITHUB_WORKSPACE/llvm/tools/llvm-mctoll/.github/cpp.json"
     - name: cmake
       working-directory: build
-      run: cmake -G Ninja -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLLVM_ENABLE_MODULES=ON ../llvm
+      run: cmake -G Ninja -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLLVM_ENABLE_MODULES=ON ../llvm
     - working-directory: build
-      run: ninja llvm-mctoll opt clang lli
+      run: |
+        ninja llvm-mctoll opt clang lli
+        sudo ninja install
     - working-directory: build
       run: ninja check-mctoll
     - name: Upload artifacts

@@ -41,5 +41,5 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v1
       with:
-        name: llvm-mctoll
+        name: llvm-mctoll-${{ matrix.config }}
         path: build/bin/llvm-mctoll

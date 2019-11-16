@@ -38,7 +38,7 @@ jobs:
     - working-directory: build
       run: |
         ninja llvm-mctoll opt clang lli
-        sudo ninja install
+        sudo ninja install-llvm-symbolizer-stripped
     - working-directory: build
       run: ninja check-mctoll
     - name: Upload artifacts

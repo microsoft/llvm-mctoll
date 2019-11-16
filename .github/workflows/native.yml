@@ -17,14 +17,11 @@ jobs:
     - name: prerequisites
       run: |
         echo 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main' | sudo tee -a /etc/apt/sources.list
-        echo 'deb-src http://apt.llvm.org/bionic/ llvm-toolchain-bionic main' | sudo tee -a /etc/apt/sources.list
-        sudo add-apt-repository ppa:ubuntu-toolchain-r/test
         sudo apt update
-        sudo apt install -y ninja-build g++-9 clang lld
-        sudo update-alternatives --remove-all cc
-        sudo update-alternatives --remove-all c++
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 900 --slave /usr/bin/g++ g++ /usr/bin/g++-9
-        sudo update-alternatives --install /usr/bin/cc   cc /usr/bin/clang 200 --slave /usr/bin/c++ c++ /usr/bin/clang++ --slave   /usr/bin/ld ld /usr/bin/lld
+        sudo apt install -y ninja-build clang lld
+        sudo update-alternatives --install /usr/bin/cc  cc  /usr/bin/clang 200
+        sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 200
+        sudo update-alternatives --install /usr/bin/ld  ld  /usr/bin/lld 200
     - name: clone
       run: |
         git clone --depth 10000 -b master https://github.com/llvm/llvm-project.git .

@@ -19,7 +19,7 @@ jobs:
       run: |
         echo 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main' | sudo tee -a /etc/apt/sources.list
         sudo apt update
-        sudo apt install -y ninja-build clang lld
+        sudo apt install -y ninja-build p7zip clang lld
         sudo update-alternatives --install /usr/bin/cc  cc  /usr/bin/clang 200
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 200
         sudo update-alternatives --install /usr/bin/ld  ld  /usr/bin/lld 200
@@ -37,11 +37,12 @@ jobs:
       run: cmake -G Ninja -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLLVM_ENABLE_MODULES=ON ../llvm
     - working-directory: build
       run: ninja llvm-mctoll opt clang lli
+    - run: 7z a -mx=9 llvm-mctoll.7z build/bin/llvm-mctoll
     - name: Upload artifacts
       uses: actions/upload-artifact@v1
       with:
         name: llvm-mctoll-${{ matrix.config }}
-        path: build/bin/llvm-mctoll
+        path: llvm-mctoll.7z
     - working-directory: build
       run: |
         sudo ninja install-llvm-symbolizer-stripped

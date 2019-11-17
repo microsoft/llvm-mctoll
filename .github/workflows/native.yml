@@ -36,13 +36,13 @@ jobs:
       working-directory: build
       run: cmake -G Ninja -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_ASSERTIONS=ON -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLLVM_ENABLE_MODULES=ON ../llvm
     - working-directory: build
-      run: |
-        ninja llvm-mctoll opt clang lli
-        sudo ninja install-llvm-symbolizer-stripped
-    - working-directory: build
-      run: ninja check-mctoll
+      run: ninja llvm-mctoll opt clang lli
     - name: Upload artifacts
       uses: actions/upload-artifact@v1
       with:
         name: llvm-mctoll-${{ matrix.config }}
         path: build/bin/llvm-mctoll
+    - working-directory: build
+      run: |
+        sudo ninja install-llvm-symbolizer-stripped
+        ninja check-mctoll

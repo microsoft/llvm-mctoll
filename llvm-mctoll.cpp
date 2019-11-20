@@ -107,14 +107,14 @@ cl::list<std::string>
            cl::value_desc("a1,+a2,-a3,..."));
 
 // Output file type. Default is binary bitcode.
-cl::opt<TargetMachine::CodeGenFileType> OutputFormat(
-    "output-format", cl::init(TargetMachine::CGFT_AssemblyFile),
+cl::opt<CodeGenFileType> OutputFormat(
+    "output-format", cl::init(CGFT_AssemblyFile),
     cl::desc("Output format (default: binary bitcode):"),
-    cl::values(clEnumValN(TargetMachine::CGFT_AssemblyFile, "ll",
+    cl::values(clEnumValN(CGFT_AssemblyFile, "ll",
                           "Emit llvm text bitcode ('.ll') file"),
-               clEnumValN(TargetMachine::CGFT_ObjectFile, "bc",
+               clEnumValN(CGFT_ObjectFile, "bc",
                           "Emit llvm binary bitcode ('.bc') file"),
-               clEnumValN(TargetMachine::CGFT_Null, "null",
+               clEnumValN(CGFT_Null, "null",
                           "Emit nothing, for performance testing")),
     cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
@@ -445,15 +445,15 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
       OutputFilename = IFN;
 
     switch (OutputFormat) {
-    case TargetMachine::CGFT_AssemblyFile:
+    case CGFT_AssemblyFile:
       OutputFilename += "-dis.ll";
       break;
     // Just uses enum CGFT_ObjectFile represent llvm bitcode file type
     // provisionally.
-    case TargetMachine::CGFT_ObjectFile:
+    case CGFT_ObjectFile:
       OutputFilename += "-dis.bc";
       break;
-    case TargetMachine::CGFT_Null:
+    case CGFT_Null:
       OutputFilename += ".null";
       break;
     }
@@ -462,10 +462,10 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
   // Decide if we need "binary" output.
   bool Binary = false;
   switch (OutputFormat) {
-  case TargetMachine::CGFT_AssemblyFile:
+  case CGFT_AssemblyFile:
     break;
-  case TargetMachine::CGFT_ObjectFile:
-  case TargetMachine::CGFT_Null:
+  case CGFT_ObjectFile:
+  case CGFT_Null:
     Binary = true;
     break;
   }

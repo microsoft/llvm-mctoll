@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "FunctionFilter.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include <fstream>
 
@@ -149,7 +150,7 @@ void FunctionFilter::addExcludedFunction(StringRef &PrototypeStr) {
   if (IncludedFunctionVector.size() > 0 &&
       findFuncInfoBySymbol(Sym, FILTER_INCLUDE) != nullptr) {
     eraseFunctionBySymbol(Sym, FILTER_INCLUDE);
-    outs() << "\nWarning: " << Sym << " is both in tables"
+    dbgs() << "\nWarning: " << Sym << " is both in tables"
            << " exclude-functions and include-functions, it will not be"
            << " raised!\n";
   }
@@ -165,7 +166,7 @@ void FunctionFilter::addIncludedFunction(StringRef &PrototypeStr) {
   // otherwise.
   if (ExcludedFunctionVector.size() > 0 &&
       findFuncInfoBySymbol(Sym, FILTER_EXCLUDE) != nullptr) {
-    outs() << "\n***** Warning: Found " << Sym << " both in "
+    dbgs() << "\n***** Warning: Found " << Sym << " both in "
            << " exclude-functions and include-functions. Considering it to be "
               "an excluded function\n";
 
@@ -254,7 +255,7 @@ bool FunctionFilter::readFilterFunctionConfigFile(
   std::ifstream f;
   f.open(FunctionFilterFilename);
   if (!f.is_open()) {
-    outs() << "Warning: Can not read the configuration file of filter "
+    dbgs() << "Warning: Can not read the configuration file of filter "
               "function set!!!";
     return false;
   }
@@ -328,18 +329,18 @@ bool FunctionFilter::isFilterSetEmpty(FilterType FT) {
 /// argument is specified.
 void FunctionFilter::dump(FilterType FT) {
   if ((FT == FILTER_NONE) || (FT == FILTER_INCLUDE)) {
-    errs() << "Included functions\n";
+    dbgs() << "Included functions\n";
     std::for_each(IncludedFunctionVector.begin(), IncludedFunctionVector.end(),
                   [](const FunctionFilter::FuncInfo *FFI) {
-                    errs() << FFI->getSymName() << " ";
+                    dbgs() << FFI->getSymName() << " ";
                   });
   }
 
   if ((FT == FILTER_NONE) || (FT == FILTER_EXCLUDE)) {
-    errs() << "Excluded functions\n";
+    dbgs() << "Excluded functions\n";
     std::for_each(ExcludedFunctionVector.begin(), ExcludedFunctionVector.end(),
                   [](const FunctionFilter::FuncInfo *FFI) {
-                    errs() << FFI->getSymName() << " ";
+                    dbgs() << FFI->getSymName() << " ";
                   });
   }
 }

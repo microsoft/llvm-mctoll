@@ -19,13 +19,13 @@ bool EmitRaisedOutputPass::runOnModule(Module &M) {
   M.setDataLayout("");
   // Call the appropriate printer
   switch (OutFileType) {
-  case TargetMachine::CGFT_AssemblyFile:
+  case CGFT_AssemblyFile:
     PrintAsmPass.run(M, DummyMAM);
     break;
-  case TargetMachine::CGFT_ObjectFile:
+  case CGFT_ObjectFile:
     PrintBitCodePass.run(M, DummyMAM);
     break;
-  case TargetMachine::CGFT_Null:
+  case CGFT_Null:
     // Do nothing - corresponds to the command line option
     // -output-format=null
     break;

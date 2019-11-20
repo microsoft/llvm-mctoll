@@ -17,6 +17,7 @@
 #include "ModuleRaiser.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 

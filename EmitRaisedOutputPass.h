@@ -19,21 +19,21 @@
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
 class EmitRaisedOutputPass : public ModulePass {
-  TargetMachine::CodeGenFileType OutFileType;
+  CodeGenFileType OutFileType;
   PrintModulePass PrintAsmPass;
   BitcodeWriterPass PrintBitCodePass;
 
 public:
   static char ID;
   EmitRaisedOutputPass()
-      : ModulePass(ID), OutFileType(TargetMachine::CGFT_Null),
-        PrintBitCodePass(dbgs()) {}
-  EmitRaisedOutputPass(raw_ostream &OS, TargetMachine::CodeGenFileType CGFT,
+      : ModulePass(ID), OutFileType(CGFT_Null), PrintBitCodePass(dbgs()) {}
+  EmitRaisedOutputPass(raw_ostream &OS, CodeGenFileType CGFT,
                        const std::string &Banner = "",
                        bool ShouldPreserveUseListOrder = false)
       : ModulePass(ID), OutFileType(CGFT),

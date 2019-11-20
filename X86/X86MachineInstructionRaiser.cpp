@@ -4104,8 +4104,10 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     mbbToBBMap.insert(std::make_pair(MBBNo, CurIBB));
     // Walk MachineInsts of the MachineBasicBlock
     for (MachineInstr &MI : MBB.instrs()) {
-      // Ignore noop instructions.
-      if (isNoop(MI.getOpcode())) {
+      // Ignore padding instructions. ld uses nop and lld uses int3 for
+      // alignment padding in text section
+      auto Opcode = MI.getOpcode();
+      if (isNoop(Opcode) || (Opcode == X86::INT3)) {
         continue;
       }
       // If this is a terminator instruction, record

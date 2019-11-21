@@ -1278,7 +1278,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       for (section_iterator SecIter : Elf64LEObjFile->sections()) {
         uint64_t SecStart = SecIter->getAddress();
         uint64_t SecEnd = SecStart + SecIter->getSize();
-        if ((SecStart <= SymVirtualAddr) && (SecEnd >= SymVirtualAddr)) {
+        if ((SecStart <= SymVirtualAddr) && (SecEnd > SymVirtualAddr)) {
           // Get the initial symbol value only if this is not a bss section.
           // Else, symVal is already initialized to 0.
           if (SecIter->isBSS()) {

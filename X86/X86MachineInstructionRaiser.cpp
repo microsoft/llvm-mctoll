@@ -1723,6 +1723,9 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
   const MachineOperand &SrcOp = MI.getOperand(SrcOpIndex);
 
+  // Is this a mov instruction?
+  bool isMovInst = instrNameStartsWith(MI, "MOV");
+
   assert((SrcOp.isImm() || SrcOp.isReg()) &&
          "Register or immediate value source expected in a move to mem "
          "instruction");
@@ -1738,7 +1741,25 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   // of type memory location.
   if (SrcOp.isImm()) {
     SrcOpTy = getImmOperandType(MI, SrcOpIndex);
-    SrcValue = ConstantInt::get(SrcOpTy, SrcOp.getImm());
+    int64_t SrcImm = SrcOp.getImm();
+    if (isMovInst) {
+      if (SrcImm > 0) {
+        // Check if the immediate value corresponds to a global variable.
+        Value *GV = getGlobalVariableValueAt(MI, SrcImm);
+        if (GV != nullptr)
+          SrcValue = GV;
+        else {
+          // Check if the immediate value corresponds to a function.
+          Value *RaisedFunc = MR->getRaisedFunctionAt(SrcImm);
+          if (RaisedFunc != nullptr)
+            SrcValue = RaisedFunc;
+          else
+            SrcValue = ConstantInt::get(SrcOpTy, SrcImm);
+        }
+      } else
+        SrcValue = ConstantInt::get(SrcOpTy, SrcImm);
+    } else
+      SrcValue = ConstantInt::get(SrcOpTy, SrcImm);
   } else {
     // If it is not an immediate value, get source value
     SrcValue = getRegOperandValue(MI, SrcOpIndex);
@@ -1762,9 +1783,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     RaisedBB->getInstList().push_back(convIntToPtr);
     MemRefVal = convIntToPtr;
   }
-
-  // Is this a mov instruction?
-  bool isMovInst = instrNameStartsWith(MI, "MOV");
 
   LoadInst *LdInst = nullptr;
   if (!isMovInst) {

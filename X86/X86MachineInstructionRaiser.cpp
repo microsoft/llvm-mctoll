@@ -3608,13 +3608,37 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
+  unsigned int retReg = X86::NoRegister;
   if (!RetType->isVoidTy()) {
-    unsigned int retReg =
-        (RetType->getPrimitiveSizeInBits() == 64) ? X86::RAX : X86::EAX;
+    if (RetType->isPointerTy())
+      retReg = X86::RAX;
+    else {
+      switch (RetType->getPrimitiveSizeInBits()) {
+      case 64:
+        retReg = X86::RAX;
+        break;
+      case 32:
+        retReg = X86::EAX;
+        break;
+      case 16:
+        retReg = X86::AX;
+        break;
+      case 8:
+        retReg = X86::AL;
+        break;
+      default:
+        llvm_unreachable("Unhandled return type");
+      }
+    }
     RetValue =
         raisedValues->getReachingDef(retReg, MI.getParent()->getNumber(), true);
   }
 
+  // If RetType is a pointer type and RetValue type is 64-bit, cast RetValue
+  // appropriately.
+  if ((RetValue != nullptr) && RetType->isPointerTy() && (retReg == X86::RAX)) {
+    RetValue = castValue(RetValue, RetType, RaisedBB);
+  }
   // Create return instruction
   Instruction *retInstr =
       ReturnInst::Create(MF.getFunction().getContext(), RetValue);

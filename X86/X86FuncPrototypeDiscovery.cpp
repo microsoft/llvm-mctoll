@@ -180,8 +180,10 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
         returnType = getReturnTypeFromMBB(*MBB, BlockHasCall);
         // Check the correctness of the type, if found.
         if (returnType != nullptr) {
-          assert((returnType->getPrimitiveSizeInBits() ==
-                  DefinedPhysRegMapIter->second * 8) &&
+          uint16_t returnTypeSize = returnType->isPointerTy()
+                                        ? 64
+                                        : returnType->getPrimitiveSizeInBits();
+          assert((returnTypeSize == DefinedPhysRegMapIter->second * 8) &&
                  "Inconsistent return type found");
         }
         // If the block has a call instruction, stop looking for the instruction

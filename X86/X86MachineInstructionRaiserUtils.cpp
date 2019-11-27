@@ -303,8 +303,6 @@ Value *X86MachineInstructionRaiser::FPURegisterStackTop() {
 
 unsigned int
 X86MachineInstructionRaiser::find64BitSuperReg(unsigned int PhysReg) {
-  unsigned int SuperReg;
-  bool SuperRegFound = false;
 
   // No super register for 0 register
   if (PhysReg == X86::NoRegister) {
@@ -319,18 +317,23 @@ X86MachineInstructionRaiser::find64BitSuperReg(unsigned int PhysReg) {
     return PhysReg;
   }
 
+  // Nothing to do if PhysReg is a 64-bit register.
   if (is64BitPhysReg(PhysReg)) {
-    SuperReg = PhysReg;
-    SuperRegFound = true;
-  } else {
-    for (MCSuperRegIterator SuperRegs(PhysReg, x86RegisterInfo);
-         SuperRegs.isValid(); ++SuperRegs) {
-      SuperReg = *SuperRegs;
-      if (is64BitPhysReg(SuperReg)) {
-        assert(SuperRegFound != true &&
-               "Expect only one 64-bit super register");
-        SuperRegFound = true;
-      }
+    return PhysReg;
+  }
+
+  // The return value.
+  unsigned int SuperReg;
+
+  // Did we find it.
+  bool SuperRegFound = false;
+
+  for (MCSuperRegIterator SuperRegsIter(PhysReg, x86RegisterInfo);
+       SuperRegsIter.isValid(); ++SuperRegsIter) {
+    SuperReg = *SuperRegsIter;
+    if (is64BitPhysReg(SuperReg)) {
+      assert(SuperRegFound != true && "Expect only one 64-bit super register");
+      SuperRegFound = true;
     }
   }
 

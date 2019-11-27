@@ -22,8 +22,9 @@
 using namespace X86RegisterUtils;
 
 X86RaisedValueTracker::X86RaisedValueTracker(
-    X86MachineInstructionRaiser *MIRaiser) {
-  x86MIRaiser = MIRaiser;
+    X86MachineInstructionRaiser *MIRaiser)
+    : x86MIRaiser(MIRaiser) {
+
   // Initialize entries for function register arguments in physToValueMap
   // Only first 6 arguments are passed as registers
   unsigned RegArgCount = X86RegisterUtils::GPR64ArgRegs64Bit.size();

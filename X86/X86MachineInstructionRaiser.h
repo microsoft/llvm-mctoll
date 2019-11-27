@@ -70,17 +70,6 @@ public:
   X86RaisedValueTracker *getRaisedValues() { return raisedValues; }
 
 private:
-  // Bit positions used for individual status flags of EFLAGS register.
-  // Note : only those that are currently used are represented here.
-  enum {
-    EFLAGS_CF = 0,
-    EFLAGS_PF = 2,
-    EFLAGS_AF = 4,
-    EFLAGS_ZF = 6,
-    EFLAGS_SF = 7,
-    EFLAGS_OF = 11,
-    EFLAGS_UNDEFINED = 32
-  };
 
   X86RaisedValueTracker *raisedValues;
 

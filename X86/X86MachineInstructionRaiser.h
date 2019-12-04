@@ -70,7 +70,6 @@ public:
   X86RaisedValueTracker *getRaisedValues() { return raisedValues; }
 
 private:
-
   X86RaisedValueTracker *raisedValues;
 
   // Set of reaching definitions that were not promoted during since defining
@@ -160,8 +159,9 @@ private:
 
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
-  const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
-                                                    Type *OffsetTy);
+  const Constant *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
+                                                       Type *OffsetTy,
+                                                       BasicBlock *InsertBlock);
   Value *getMemoryAddressExprValue(const MachineInstr &);
   Value *createPCRelativeAccesssValue(const MachineInstr &);
 

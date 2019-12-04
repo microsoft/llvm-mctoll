@@ -178,20 +178,6 @@ int64_t ModuleRaiser::getTextSectionAddress() const {
   llvm_unreachable("Failed to locate text section.");
 }
 
-const Value *ModuleRaiser::getRODataValueAt(uint64_t Offset) const {
-  auto Iter = GlobalRODataValues.find(Offset);
-  if (Iter != GlobalRODataValues.end())
-    return Iter->second;
-
-  return nullptr;
-}
-
-void ModuleRaiser::addRODataValueAt(Value *V, uint64_t Offset) const {
-  assert((GlobalRODataValues.find(Offset) == GlobalRODataValues.end()) &&
-         "Attempt to insert value for already existing rodata location");
-  GlobalRODataValues.emplace(Offset, V);
-}
-
 #ifdef __cplusplus
 extern "C" {
 #endif

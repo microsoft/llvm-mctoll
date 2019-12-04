@@ -1027,126 +1027,152 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
   return CalledFunc;
 }
 
-// Return a global value corresponding to read-only  data.
-const Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
-    int64_t Offset, Type *OffsetTy1) {
+// Return the element pointer to global rodata array corresponding at Offset.
+// This returns a Value of type GetElementPtrConstantExpr. However, this type
+// can not be used explicitly since it is private to Constants.cpp (See comment
+// in llvm/lib/IR/ConstantsContext.h)
+const Constant *
+X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
+    int64_t Offset, Type *OffsetTy1, BasicBlock *InsertBB) {
   // A negative offset implies that this is not an offset into ro-data
   // section. Just return nullptr.
   if (Offset < 0) {
     return nullptr;
   }
-  const Value *RODataValue = MR->getRODataValueAt(Offset);
-  if (RODataValue == nullptr) {
-    // Only if the imm value is a positive value
-    const ELF64LEObjectFile *Elf64LEObjFile =
-        dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
-    assert(Elf64LEObjFile != nullptr &&
-           "Only 64-bit ELF binaries supported at present.");
-    LLVMContext &llvmContext(MF.getFunction().getContext());
-    // Check if this is an address in .rodata
-    for (section_iterator SecIter : Elf64LEObjFile->sections()) {
-      uint64_t SecStart = SecIter->getAddress();
-      uint64_t SecEnd = SecStart + SecIter->getSize();
-      // We know that SrcImm is a positive value. So, casting it is OK.
-      if ((SecStart <= (uint64_t)Offset) && (SecEnd >= (uint64_t)Offset)) {
-        if (SecIter->isData()) {
+  const Constant *RODataValue = nullptr;
+  const ELF64LEObjectFile *Elf64LEObjFile =
+      dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
+  assert(Elf64LEObjFile != nullptr &&
+         "Only 64-bit ELF binaries supported at present.");
+  LLVMContext &llvmContext(MF.getFunction().getContext());
+  // Check if this is an address in .rodata
+  for (section_iterator SecIter : Elf64LEObjFile->sections()) {
+    uint64_t SecStart = SecIter->getAddress();
+    uint64_t SecEnd = SecStart + SecIter->getSize();
+    // We know that Offset is a positive value. So, casting it is OK.
+    if ((SecStart <= (uint64_t)Offset) && (SecEnd >= (uint64_t)Offset)) {
+      if (SecIter->isData()) {
+        // Get the associated global value if one exists
+        uint64_t SecIndex = SecIter->getIndex();
+        std::string RODataSecValueName;
+        if (auto NameOrErr = SecIter->getName())
+          // Drop the leading '.' from section name
+          RODataSecValueName.append((*NameOrErr).substr(1).data());
+        else {
+          consumeError(NameOrErr.takeError());
+          RODataSecValueName.append("AnonDataSec");
+        }
+
+        RODataSecValueName.append("_").append(std::to_string(SecIndex));
+        Constant *RODataSecValue = MR->getModule()->getGlobalVariable(
+            RODataSecValueName, true /* AllowInternal */);
+        // If ROData Value representing the contents of this section was not
+        // materialized yet, create one.
+        if (RODataSecValue == nullptr) {
+          // Create the global variable corresponding to the content of
+          // .rodata
           StringRef SecData = unwrapOrError(SecIter->getContents(),
                                             MR->getObjectFile()->getFileName());
-          unsigned DataOffset = Offset - SecStart;
-          const unsigned char *RODataBegin = SecData.bytes_begin() + DataOffset;
-          StringRef ROStringRef(reinterpret_cast<const char *>(RODataBegin));
-          Constant *StrConstant =
-              ConstantDataArray::getString(llvmContext, ROStringRef);
+          unsigned DataSize = SecIter->getSize();
+          auto DataStr = makeArrayRef(SecData.bytes_begin(), DataSize);
+          Constant *StrConstant = ConstantDataArray::get(llvmContext, DataStr);
           auto GlobalStrConstVal = new GlobalVariable(
               *(MR->getModule()), StrConstant->getType(), true /* isConstant */,
-              GlobalValue::PrivateLinkage, StrConstant, "RO-String");
-          GlobalStrConstVal->setAlignment(MaybeAlign(1));
-          // Record the mapping between offset and global value
-          MR->addRODataValueAt(GlobalStrConstVal, Offset);
-          RODataValue = GlobalStrConstVal;
-        } else if (SecIter->isBSS()) {
-          // Get symbol name associated with the address
-          // Find symbol at Offset
-          SymbolRef GlobalDataSym;
-          for (auto Symbol : Elf64LEObjFile->symbols()) {
-            if (Symbol.getELFType() == ELF::STT_OBJECT) {
-              auto SymAddr = Symbol.getAddress();
-              assert(SymAddr && "Failed to lookup symbol for global address");
-              uint64_t SymAddrVal = SymAddr.get();
-              // We have established that Offset is not negative above.
-              // So, OK to cast. Check if the memory address Offset is
-              // SymAddrVal
-              if (SymAddrVal == (unsigned)Offset) {
-                GlobalDataSym = Symbol;
-                break;
-              }
-            }
-          }
-          assert((GlobalDataSym.getObject() != nullptr) &&
-                 "Failed to find symbol for global address.");
-          Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
-          assert(GlobalDataSymName &&
-                 "Failed to find symbol name for global address");
-          // Find if a global value associated with symbol name is
-          // already created
-          for (GlobalVariable &gv : MR->getModule()->globals()) {
-            if (gv.getName().compare(GlobalDataSymName.get()) == 0) {
-              RODataValue = &gv;
-            }
-          }
-          if (RODataValue == nullptr) {
-            auto symb =
-                Elf64LEObjFile->getSymbol(GlobalDataSym.getRawDataRefImpl());
-            uint64_t symbSize = symb->st_size;
-            GlobalValue::LinkageTypes linkage;
-            switch (symb->getBinding()) {
-            case ELF::STB_LOCAL:
-              linkage = GlobalValue::InternalLinkage;
+              GlobalValue::PrivateLinkage, StrConstant, RODataSecValueName);
+          GlobalStrConstVal->setAlignment(MaybeAlign(SecIter->getAlignment()));
+          RODataSecValue = GlobalStrConstVal;
+        }
+        unsigned DataOffset = Offset - SecStart;
+        // Construct index array for a GEP instruction that accesses
+        // byte array
+        Value *Zero32Value = ConstantInt::get(Type::getInt32Ty(llvmContext), 0);
+        Value *DataOffsetIndex =
+            ConstantInt::get(Type::getInt32Ty(llvmContext), DataOffset);
+        Constant *GetElem = ConstantExpr::getInBoundsGetElementPtr(
+            RODataSecValue->getType()->getPointerElementType(), RODataSecValue,
+            {Zero32Value, DataOffsetIndex});
+        RODataValue = GetElem;
+      } else if (SecIter->isBSS()) {
+        // Get symbol name associated with the address
+        // Find symbol at Offset
+        SymbolRef GlobalDataSym;
+        for (auto Symbol : Elf64LEObjFile->symbols()) {
+          if (Symbol.getELFType() == ELF::STT_OBJECT) {
+            auto SymAddr = Symbol.getAddress();
+            assert(SymAddr && "Failed to lookup symbol for global address");
+            uint64_t SymAddrVal = SymAddr.get();
+            // We have established that Offset is not negative above.
+            // So, OK to cast. Check if the memory address Offset is
+            // SymAddrVal
+            if (SymAddrVal == (unsigned)Offset) {
+              GlobalDataSym = Symbol;
               break;
-            case ELF::STB_GLOBAL:
-              // Note that this is a symbol in BSS
-              linkage = GlobalValue::CommonLinkage;
-              break;
-            default:
-              assert(false && "Unhandled global symbol binding type");
             }
-            // By default, the symbol alignment is the symbol section
-            // alignment. Will be adjusted as needed based on the size of
-            // the symbol later.
-            auto GlobalDataSymSection = GlobalDataSym.getSection();
-            assert(GlobalDataSymSection &&
-                   "No section for global symbol found");
-            uint64_t GlobDataSymSectionAlignment =
-                GlobalDataSymSection.get()->getAlignment();
-            // Make sure the alignment is a power of 2
-            assert(((GlobDataSymSectionAlignment &
-                     (GlobDataSymSectionAlignment - 1)) == 0) &&
-                   "Section alignment not a power of 2");
-            // If symbol size is less than symbol section size, set
-            // alignment to symbol size.
-            if (symbSize < GlobDataSymSectionAlignment) {
-              GlobDataSymSectionAlignment = symbSize;
-            }
-            // symbSize is in number of bytes
-            Type *GlobalValTy =
-                Type::getIntNTy(llvmContext, GlobDataSymSectionAlignment * 8);
-            Constant *GlobalInit = nullptr;
-            if (symbSize > GlobDataSymSectionAlignment) {
-              GlobalValTy = ArrayType::get(GlobalValTy, symbSize);
-              GlobalInit = ConstantAggregateZero::get(GlobalValTy);
-            } else {
-              GlobalInit = ConstantInt::get(GlobalValTy, 0);
-            }
-            auto GlobalVal = new GlobalVariable(
-                *(MR->getModule()), GlobalValTy, false /* isConstant */,
-                linkage, GlobalInit, GlobalDataSymName.get());
-            GlobalVal->setAlignment(MaybeAlign(GlobDataSymSectionAlignment));
-            GlobalVal->setDSOLocal(true);
-            RODataValue = GlobalVal;
           }
         }
-        break;
+        assert((GlobalDataSym.getObject() != nullptr) &&
+               "Failed to find symbol for global address.");
+        Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
+        assert(GlobalDataSymName &&
+               "Failed to find symbol name for global address");
+        // Find if a global value associated with symbol name is
+        // already created
+        for (GlobalVariable &gv : MR->getModule()->globals()) {
+          if (gv.getName().compare(GlobalDataSymName.get()) == 0) {
+            RODataValue = &gv;
+          }
+        }
+        if (RODataValue == nullptr) {
+          auto symb =
+              Elf64LEObjFile->getSymbol(GlobalDataSym.getRawDataRefImpl());
+          uint64_t symbSize = symb->st_size;
+          GlobalValue::LinkageTypes linkage;
+          switch (symb->getBinding()) {
+          case ELF::STB_LOCAL:
+            linkage = GlobalValue::InternalLinkage;
+            break;
+          case ELF::STB_GLOBAL:
+            // Note that this is a symbol in BSS
+            linkage = GlobalValue::CommonLinkage;
+            break;
+          default:
+            assert(false && "Unhandled global symbol binding type");
+          }
+          // By default, the symbol alignment is the symbol section
+          // alignment. Will be adjusted as needed based on the size of
+          // the symbol later.
+          auto GlobalDataSymSection = GlobalDataSym.getSection();
+          assert(GlobalDataSymSection && "No section for global symbol found");
+          uint64_t GlobDataSymSectionAlignment =
+              GlobalDataSymSection.get()->getAlignment();
+          // Make sure the alignment is a power of 2
+          assert(((GlobDataSymSectionAlignment &
+                   (GlobDataSymSectionAlignment - 1)) == 0) &&
+                 "Section alignment not a power of 2");
+          // If symbol size is less than symbol section size, set
+          // alignment to symbol size.
+          if (symbSize < GlobDataSymSectionAlignment) {
+            GlobDataSymSectionAlignment = symbSize;
+          }
+          // symbSize is in number of bytes
+          Type *GlobalValTy =
+              Type::getIntNTy(llvmContext, GlobDataSymSectionAlignment * 8);
+          Constant *GlobalInit = nullptr;
+          if (symbSize > GlobDataSymSectionAlignment) {
+            GlobalValTy = ArrayType::get(GlobalValTy, symbSize);
+            GlobalInit = ConstantAggregateZero::get(GlobalValTy);
+          } else {
+            GlobalInit = ConstantInt::get(GlobalValTy, 0);
+          }
+          auto GlobalVal = new GlobalVariable(
+              *(MR->getModule()), GlobalValTy, false /* isConstant */, linkage,
+              GlobalInit, GlobalDataSymName.get());
+          GlobalVal->setAlignment(MaybeAlign(GlobDataSymSectionAlignment));
+          GlobalVal->setDSOLocal(true);
+          RODataValue = GlobalVal;
+        }
       }
+      break;
     }
   }
   return RODataValue;
@@ -1198,8 +1224,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
     // If Offset does not correspond to a global symbol, get the corresponding
     // rodata value.
     GlobalVariableValue =
-        const_cast<Value *>(getOrCreateGlobalRODataValueAtOffset(
-            Offset, Type::getInt64Ty(MF.getFunction().getContext())));
+        const_cast<Constant *>(getOrCreateGlobalRODataValueAtOffset(
+            Offset, Type::getInt64Ty(MF.getFunction().getContext()), RaisedBB));
   } else {
     // If Offset corresponds to a global symbol, materialize a global
     // variable.
@@ -1272,8 +1298,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       // get symbol value - this is the virtual address of symbol's value
       uint64_t SymVirtualAddr = Symb->st_value;
 
-      // get the initial value of the global data symbol at symVirtualAddr
-      // from the section that contains the virtual address symVirtualAddr.
+      // get the initial value of the global data symbol at SymVirtualAddr
+      // from the section that contains the virtual address SymVirtualAddr.
       // In executable and shared object files, st_value holds a virtual
       // address.
       SmallVector<Constant *, 32> ConstantVec;
@@ -1294,7 +1320,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             const char *beg =
                 reinterpret_cast<const char *>(SecData.bytes_begin() + Index);
 
-            // Symbol size should atleast be the same as memory access size of
+            // Symbol size should at least be the same as memory access size of
             // the instruction.
             assert(MemAccessSizeInBytes <= SymbSize &&
                    "Inconsistent values of memory access size and symbol size");
@@ -1310,27 +1336,23 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                 // Finish reading one symbol data item of size.
                 SymArrayElem |= B << (MemAccessSizeInBytes - 1) * 8;
                 // if this is an address in .rodata section
-                const Value *RoDataValue = getOrCreateGlobalRODataValueAtOffset(
-                    SymArrayElem, Type::getIntNTy(Ctx, MemAccessSizeInBytes));
+                const Constant *RODataValue =
+                    getOrCreateGlobalRODataValueAtOffset(
+                        SymArrayElem,
+                        Type::getIntNTy(Ctx, MemAccessSizeInBytes), RaisedBB);
                 // If the SymArrElem does not correspond to an .rodata address
                 // consider it to be data.
-                if (RoDataValue == nullptr) {
+                if (RODataValue == nullptr) {
                   Constant *ConstVal = ConstantInt::get(
                       Ctx, APInt(MemAccessSizeInBytes * 8, SymArrayElem));
                   ConstantVec.push_back(ConstVal);
                 } else {
-                  // If SymArrElem corresponds to an .rodata address,
-                  // prepare the indices to this value to be used in the array
-                  // representing the symbol value.
-                  Value *GVValue = const_cast<Value *>(RoDataValue);
-                  GlobalVariable *GV = dyn_cast<GlobalVariable>(GVValue);
-                  Constant *Idx[2] = {
-                      ConstantInt::get(Ctx, APInt(MemAccessSizeInBytes * 8, 0)),
-                      ConstantInt::get(Ctx, APInt(MemAccessSizeInBytes * 8, 0)),
-                  };
-                  Constant *GEP = ConstantExpr::getInBoundsGetElementPtr(
-                      GV->getValueType(), GV, Idx);
-                  ConstantVec.push_back(GEP);
+                  // SymArrElem corresponds to an .rodata address,
+                  if (isa<ConstantExpr>(RODataValue)) {
+                    ConstantVec.push_back(const_cast<Constant *>(RODataValue));
+                  } else {
+                    assert(false && "Unhandled global value");
+                  }
                 }
                 // Clear symbol element value
                 SymArrayElem = 0;
@@ -1344,6 +1366,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
           break;
         }
       }
+
       // If symbol size is greater than memory access size of the instruction,
       // the symbol must be referencing an array whose elements were collected
       Constant *GlobalInit = nullptr;
@@ -1389,8 +1412,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             SV = CIV->getValue().getSExtValue();
             GlobalInit = ConstantInt::get(GlobalValTy, SV);
           } else if (CVType->isPointerTy()) {
-            // ConstantVec[0] is the initial global value and global value type
-            // is its type.
+            // ConstantVec[0] is the initial global value and global value
+            // type is its type.
             GlobalInit = ConstantVec[0];
             GlobalValTy = CVType;
           } else {
@@ -1513,8 +1536,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   // IndexReg * ScaleAmt
   // Generate mul scaleAmt, IndexRegVal, if IndexReg is not 0.
   if (IndexReg != X86::NoRegister) {
-    Value *IndexRegVal =
-        getRegOrArgValue(IndexReg, MI.getParent()->getNumber());
+    Value *IndexRegVal = matchSSAValueToSrcRegSize(MI, IndexReg);
     switch (ScaleAmt) {
     case 0:
       break;
@@ -1626,18 +1648,21 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                       GetElementPtrInst::CreateInBounds(
                           ByteArrValTy, CastToArrInst,
                           ArrayRef<Value *>(ByteAccessGEPIdxArr), "", RaisedBB);
-                  // Cast the byte access GEP to MemrefValue type as needed
-                  // Using dyn_cast<Instruction> to cast the result of castValue
-                  // is correct as we know that ByteAccessGEP is an instruction;
-                  // castValue returns ByteAccessGEP (an Instruction) if no cast
-                  // is done or a value of type CastInst, if cast is done.
-                  ByteAccessGEP = dyn_cast<Instruction>(castValue(
-                      ByteAccessGEP, MemrefValue->getType(), RaisedBB));
                   DispValue = ByteAccessGEP;
                 } else {
                   // Global GEP is already a byte array.
                   DispValue = GlobGEP;
                 }
+                assert(isa<Instruction>(DispValue) &&
+                       "Expect Instruction - memory address expression "
+                       "abstraction");
+                // Cast the byte access GEP to MemrefValue type as needed
+                // Using dyn_cast<Instruction> to cast the result of castValue
+                // is correct as we know that DispValue is an instruction;
+                // castValue returns ByteAccessGEP (an Instruction) if no cast
+                // is done or a value of type CastInst, if cast is done.
+                DispValue = dyn_cast<Instruction>(
+                    castValue(DispValue, MemrefValue->getType(), RaisedBB));
               } else {
                 assert(false && "Unhandled situation where global symbol GEP "
                                 "is not an array");
@@ -1646,6 +1671,49 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
               assert(false && "Unhandled situation where global symbol GEP is "
                               "not inbounds");
             }
+          }
+        } else if (GV->getType()->isPointerTy()) {
+          Type *GVArrayTy = GV->getType()->getPointerElementType();
+          if (GVArrayTy->isArrayTy()) {
+            // If it is not a byte-array
+            Type *ByteTy = Type::getInt8Ty(Ctx);
+            // Create global byte array type based on the size of
+            // GlobalGEPSrc.
+            unsigned int GVArraySzInBytes =
+                GVArrayTy->getArrayElementType()->getScalarSizeInBits() / 8;
+            uint64_t SymbSize =
+                GVArrayTy->getArrayNumElements() * GVArraySzInBytes;
+            Type *ByteArrValTy = ArrayType::get(ByteTy, SymbSize);
+
+            if (GVArrayTy->getArrayElementType() != ByteTy) {
+              // Cast array operand of GlobalGEP to ByteArrTy
+              PointerType *ByteArrValPtrTy = ByteArrValTy->getPointerTo();
+              CastInst *CastToArrInst = CastInst::Create(
+                  CastInst::getCastOpcode(GV, false, ByteArrValPtrTy, false),
+                  GV, ByteArrValPtrTy);
+              RaisedBB->getInstList().push_back(CastToArrInst);
+              GV = CastToArrInst;
+            }
+            // Construct index array for a GEP instruction that accesses
+            // byte array
+            Value *Zero32Value = ConstantInt::get(Type::getInt32Ty(Ctx), 0);
+            std::vector<Value *> ByteAccessGEPIdxArr = {Zero32Value,
+                                                        Zero32Value};
+            // Create new GEP.
+            Instruction *ByteAccessGEP = GetElementPtrInst::CreateInBounds(
+                ByteArrValTy, GV, ArrayRef<Value *>(ByteAccessGEPIdxArr), "",
+                RaisedBB);
+            // Cast the byte access GEP to MemrefValue type as needed
+            // Using dyn_cast<Instruction> to cast the result of castValue
+            // is correct as we know that ByteAccessGEP is an instruction;
+            // castValue returns ByteAccessGEP (an Instruction) if no cast
+            // is done or a value of type CastInst, if cast is done.
+            ByteAccessGEP = dyn_cast<Instruction>(
+                castValue(ByteAccessGEP, MemrefValue->getType(), RaisedBB));
+            DispValue = ByteAccessGEP;
+          } else {
+            assert(false && "Unhandled situation where global symbol GEP "
+                            "is not an array");
           }
         } else {
           assert(

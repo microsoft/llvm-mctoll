@@ -1374,7 +1374,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an effective address value.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue)) &&
+          isa<GlobalValue>(MemRefValue) || isa<ConstantExpr>(MemRefValue)) &&
          "Unexpected type of memory reference in FPU load op instruction");
 
   LLVMContext &llvmContext(MF.getFunction().getContext());
@@ -1390,9 +1390,6 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
       Type *MemRefValPtrElementTy = MemRefValueTy->getPointerElementType();
       switch (MemRefValPtrElementTy->getTypeID()) {
       case Type::ArrayTyID: {
-        assert(MemRefValPtrElementTy->getArrayNumElements() == 1 &&
-               "Unexpected number of array elements in value being cast to "
-               "float");
         // Make sure the array element type is integer or floating point
         // type.
         Type *ArrElemTy = MemRefValPtrElementTy->getArrayElementType();
@@ -1619,15 +1616,18 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   } else {
     // If it is an effective address value or a select instruction, convert it
     // to a pointer to load register type.
+    PointerType *PtrTy =
+        PointerType::get(getPhysRegOperandType(MI, LoadOpIndex), 0);
     if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
-      PointerType *PtrTy =
-          PointerType::get(getPhysRegOperandType(MI, LoadOpIndex), 0);
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
       RaisedBB->getInstList().push_back(ConvIntToPtr);
       MemRefValue = ConvIntToPtr;
     }
     assert(MemRefValue->getType()->isPointerTy() &&
            "Pointer type expected in load instruction");
+    // Cast the pointer to match the size of memory being accessed by the
+    // instruction, as needed.
+    MemRefValue = castValue(MemRefValue, PtrTy, RaisedBB);
     // Load the value from memory location
     LoadInst *LdInst = new LoadInst(MemRefValue);
     unsigned int MemAlignment = MemRefValue->getType()
@@ -1706,12 +1706,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       // Update PhysReg to Value map
       raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
                                        ExtInst);
-    } else {
-      // This is a normal mov instruction
-      // Update PhysReg to Value map
-      raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
-                                       LdInst);
-    }
+    } // else PhysReg is already updated in the default case of the above switch
+      // statement
   }
 
   return true;
@@ -3934,9 +3930,9 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         if (isa<ConstantInt>(ArgVal)) {
           ConstantInt *Address = dyn_cast<ConstantInt>(ArgVal);
           if (!Address->isNegative()) {
-            Value *RefVal =
-                const_cast<Value *>(getOrCreateGlobalRODataValueAtOffset(
-                    Address->getSExtValue(), Address->getType()));
+            Constant *RefVal =
+                const_cast<Constant *>(getOrCreateGlobalRODataValueAtOffset(
+                    Address->getSExtValue(), Address->getType(), RaisedBB));
             if (RefVal != nullptr) {
               assert(RefVal->getType()->isPointerTy() &&
                      "Non-pointer type of global value abstracted from "

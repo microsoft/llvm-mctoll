@@ -1673,52 +1673,19 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
             }
           }
         } else if (GV->getType()->isPointerTy()) {
-          Type *GVArrayTy = GV->getType()->getPointerElementType();
-          if (GVArrayTy->isArrayTy()) {
-            // If it is not a byte-array
-            Type *ByteTy = Type::getInt8Ty(Ctx);
-            // Create global byte array type based on the size of
-            // GlobalGEPSrc.
-            unsigned int GVArraySzInBytes =
-                GVArrayTy->getArrayElementType()->getScalarSizeInBits() / 8;
-            uint64_t SymbSize =
-                GVArrayTy->getArrayNumElements() * GVArraySzInBytes;
-            Type *ByteArrValTy = ArrayType::get(ByteTy, SymbSize);
+          // Global value is expected to be an pointer type to an integer type.
+          // Cast GV in accordance with the type of MemrefValue to facilitate
+          // the addition performed later to construct the address expression.
+          if (GV->getType()->getPointerElementType()->isIntegerTy()) {
 
-            if (GVArrayTy->getArrayElementType() != ByteTy) {
-              // Cast array operand of GlobalGEP to ByteArrTy
-              PointerType *ByteArrValPtrTy = ByteArrValTy->getPointerTo();
-              CastInst *CastToArrInst = CastInst::Create(
-                  CastInst::getCastOpcode(GV, false, ByteArrValPtrTy, false),
-                  GV, ByteArrValPtrTy);
-              RaisedBB->getInstList().push_back(CastToArrInst);
-              GV = CastToArrInst;
-            }
-            // Construct index array for a GEP instruction that accesses
-            // byte array
-            Value *Zero32Value = ConstantInt::get(Type::getInt32Ty(Ctx), 0);
-            std::vector<Value *> ByteAccessGEPIdxArr = {Zero32Value,
-                                                        Zero32Value};
-            // Create new GEP.
-            Instruction *ByteAccessGEP = GetElementPtrInst::CreateInBounds(
-                ByteArrValTy, GV, ArrayRef<Value *>(ByteAccessGEPIdxArr), "",
-                RaisedBB);
-            // Cast the byte access GEP to MemrefValue type as needed
-            // Using dyn_cast<Instruction> to cast the result of castValue
-            // is correct as we know that ByteAccessGEP is an instruction;
-            // castValue returns ByteAccessGEP (an Instruction) if no cast
-            // is done or a value of type CastInst, if cast is done.
-            ByteAccessGEP = dyn_cast<Instruction>(
-                castValue(ByteAccessGEP, MemrefValue->getType(), RaisedBB));
-            DispValue = ByteAccessGEP;
+            DispValue = castValue(GV, MemrefValue->getType(), RaisedBB);
           } else {
-            assert(false && "Unhandled situation where global symbol GEP "
-                            "is not an array");
+            assert(false && "Unhandled non-integer pointer global symbol type "
+                            "while computing memory address expression");
           }
         } else {
-          assert(
-              false &&
-              "Unhandled situation where global symbol not accessed via GEP");
+          assert(false && "Unhandled global symbol type while computing "
+                          "memory address expression");
         }
       }
       // Generate add memrefVal, Disp.

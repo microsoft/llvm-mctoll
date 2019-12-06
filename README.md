@@ -55,7 +55,7 @@ git checkout <hash from LLVMVersion.txt>
 ```sh
 mkdir build && cd build
 cmake -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=Release ../llvm
-ninja llvm-mctoll
+ninja llvm-mctoll && ninja lld
 ```
 
 5. Run the unit tests (Linux only)

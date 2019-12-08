@@ -354,7 +354,8 @@ const Value *ARMMIRevising::getGlobalValueByOffset(int64_t MCInstOffset,
         Align = 8;
         break;
       }
-      GlobVar->setAlignment(Align);
+      MaybeAlign MA(Align);
+      GlobVar->setAlignment(MA);
       GlobVar->setDSOLocal(true);
       GlobVal = GlobVar;
     }
@@ -422,7 +423,8 @@ const Value *ARMMIRevising::getGlobalValueByOffset(int64_t MCInstOffset,
             auto GlobVar = new GlobalVariable(*M, ty, /* isConstant */ true,
                                               GlobalValue::PrivateLinkage,
                                               GlobInit, LocalNameRef);
-            GlobVar->setAlignment(4);
+            MaybeAlign MA(32);
+            GlobVar->setAlignment(MA);
             GlobVar->setDSOLocal(true);
             GlobVal = GlobVar;
           }

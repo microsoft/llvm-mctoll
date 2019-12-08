@@ -1,11 +1,25 @@
-// RUN: clang -o %t-opt %s -O2 -mno-sse
-// RUN: llvm-mctoll -d %t-opt
-// RUN: clang -o %t-opt-dis %t-opt-dis.ll
-// RUN: %t-opt-dis 2>&1 | FileCheck %s
-// CHECK: Array[0]: 3
-// CHECK: Array[4]: 3
-// CHECK: Array[8]: 3
-// CHECK: Array[12]: 3
+// REQUIRES: system-linux
+// Test code generated using default system linker (typically ld)
+// RUN: clang -o %t-ld-opt %s -O2 -mno-sse -fuse-ld=ld
+// RUN: llvm-mctoll -d %t-ld-opt
+// RUN: clang -o %t-ld-opt-dis %t-ld-opt-dis.ll
+// RUN: %t-ld-opt-dis 2>&1 | FileCheck %s -check-prefix=CHECK-LD
+// CHECK-LD: Array[0]: 3
+// CHECK-LD: Array[4]: 3
+// CHECK-LD: Array[8]: 3
+// CHECK-LD: Array[12]: 3
+// CHECK-EMPTY
+
+// Test code generated using lld linker
+// RUN: clang -o %t-lld-opt %s -O2 -mno-sse -fuse-ld=lld
+// RUN: llvm-mctoll -d %t-lld-opt
+// RUN: clang -o %t-lld-opt-dis %t-lld-opt-dis.ll
+// RUN: %t-lld-opt-dis 2>&1 | FileCheck %s -check-prefix=CHECK-LLD
+// CHECK-LLD: Array[0]: 3
+// CHECK-LLD: Array[4]: 3
+// CHECK-LLD: Array[8]: 3
+// CHECK-LLD: Array[12]: 3
+// CHECK-EMPTY
 
 /* matrix_loop() will check the instructon of LEA64_32 which miss the add
  * instruction. The insturction such as $edx = LEA64_32r $r8, 1, $rsi, 0, $noreg

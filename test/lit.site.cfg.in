@@ -5,6 +5,7 @@ config.llvm_mctoll_obj_root = "@LLVM_MCTOLL_BINARY_DIR@"
 config.llvm_mctoll_tools_dir = "@LLVM_MCTOLL_TOOLS_DIR@"
 config.lit_tools_dir = "@LLVM_LIT_TOOLS_DIR@"
 config.target_triple = "@TARGET_TRIPLE@"
+config.enable_assertions = @ENABLE_ASSERTIONS@
 
 # Support substitution of the tools and build_mode with user parameters.
 # This is used when we can't determine the tool dir at configuration time.

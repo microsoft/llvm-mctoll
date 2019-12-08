@@ -20,6 +20,7 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
         {"memset", {"i8*", {"i8*", "i32", "i64"}, false}},
         {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
+        {"strncpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
         {"__isoc99_scanf", {"i32", {"i8*"}, true}},
         {"clock_gettime", {"i32", {"i64", "i64*"}, false}},
         {"time", {"i64", {"i64*"}, false}},
@@ -27,36 +28,30 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"putchar", {"i32", {"i32"}, false}},
         {"puts", {"i32", {"i8*"}, false}},
         {"free", {"void", {"i8*"}, false}},
-        {"atoi", {"i32", {"i8*"}, false}}};
-
-// Return the Type* corresponding to a primitive type's string representation
-Type *ExternalFunctions::getPrimitiveType(const StringRef &TypeStr,
-                                          LLVMContext &Context) {
-  if (TypeStr.equals("void"))
-    return Type::getVoidTy(Context);
-  if (TypeStr.equals("i8"))
-    return Type::getInt8Ty(Context);
-  if (TypeStr.equals("i16"))
-    return Type::getInt16Ty(Context);
-  if (TypeStr.equals("i32"))
-    return Type::getInt32Ty(Context);
-  if (TypeStr.equals("i64"))
-    return Type::getInt64Ty(Context);
-  if (TypeStr.equals("i8*"))
-    return Type::getInt8PtrTy(Context);
-  if (TypeStr.equals("i16*"))
-    return Type::getInt16PtrTy(Context);
-  if (TypeStr.equals("i32*"))
-    return Type::getInt32PtrTy(Context);
-  if (TypeStr.equals("i64*"))
-    return Type::getInt64PtrTy(Context);
-
-  llvm_unreachable("Unsupported primitive type in known function prototype");
-}
+        {"atoi", {"i32", {"i8*"}, false}},
+        {"calloc", {"i8*", {"i64", "i64"}, false}},
+        {"__assert_fail", {"void", {"i8*","i8*","i32", "i8*"}, false}},
+        {"fopen", {"%struct._IO_FILE*", {"i8*","i8*"}, false}},
+        {"exp", {"float", {"float"}, false}},
+        {"realloc", {"i8*", {"i8*", "i64"}, false}},
+        {"tanh", {"float", {"float"}, false}},
+        {"lgamma", {"float", {"float"}, false}},
+        {"floor", {"float", {"float"}, false}},
+        {"strtol", {"i64", {"i8*", "i8**", "i32"}, false}},
+        {"strlen", {"i64", {"i8*"},false}},
+        {"round", {"float", {"float"}, false}},
+        {"feof", {"i32", {"%struct._IO_FILE*"}, false}},
+        {"pow", {"float", {"float", "float"}, false}},
+        {"exit", {"void", {"i32"}, false}}};
 
 // Construct and return a Function* corresponding to a known external function
-Function *ExternalFunctions::Create(StringRef &CFuncName, Module &M) {
-  llvm::LLVMContext &Context(M.getContext());
+Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
+  Module *M = MR.getModule();
+  assert(M != nullptr && "Uninitialized ModuleRaiser!");
+
+  Function *Func = M->getFunction(CFuncName);
+  if (Func != nullptr)
+    return Func;
 
   auto iter = ExternalFunctions::GlibcFunctions.find(CFuncName);
   if (iter == ExternalFunctions::GlibcFunctions.end()) {
@@ -64,23 +59,19 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, Module &M) {
     llvm_unreachable("Unsupported undefined function");
   }
 
-  Function *Func = M.getFunction(CFuncName);
-  if (Func != nullptr)
-    return Func;
-
   const ExternalFunctions::RetAndArgs &retAndArgs = iter->second;
   Type *RetType =
-      ExternalFunctions::getPrimitiveType(retAndArgs.ReturnType, Context);
+      MR.getFunctionFilter()->getPrimitiveDataType(retAndArgs.ReturnType);
   std::vector<Type *> ArgVec;
   for (StringRef arg : retAndArgs.Arguments) {
-    Type *argType = ExternalFunctions::getPrimitiveType(arg, Context);
+    Type *argType = MR.getFunctionFilter()->getPrimitiveDataType(arg);
     ArgVec.push_back(argType);
   }
 
   ArrayRef<Type *> Args(ArgVec);
   if (FunctionType *FuncType =
           FunctionType::get(RetType, Args, retAndArgs.isVariadic)) {
-    FunctionCallee FunCallee = M.getOrInsertFunction(CFuncName, FuncType);
+    FunctionCallee FunCallee = M->getOrInsertFunction(CFuncName, FuncType);
     assert(isa<Function>(FunCallee.getCallee()) && "Expect Function");
     Func = reinterpret_cast<Function *>(FunCallee.getCallee());
     Func->setCallingConv(CallingConv::C);

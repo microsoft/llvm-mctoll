@@ -1,5 +1,5 @@
 # RUN: clang -target arm -mfloat-abi=soft -c -o %t.o %s
-# RUN: llvm-mctoll -d -print-after-all %t.o 2>&1 | FileCheck %s
+# RUN: llvm-mctoll -d -debug -print-after-all %t.o 2>&1 | FileCheck %s
 
 # CHECK: ARMInstructionSplitting start
 # CHECK: $r2 = ADDrr $r2, $r1

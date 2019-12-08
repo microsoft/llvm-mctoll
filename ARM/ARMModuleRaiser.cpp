@@ -30,8 +30,8 @@ bool ARMModuleRaiser::collectDynamicRelocations() {
     return false;
   }
 
+  // Collect all relocation records from various relocation sections
   std::vector<SectionRef> DynRelSec = Obj->dynamic_relocation_sections();
-
   for (const SectionRef &Section : DynRelSec) {
     for (const RelocationRef &Reloc : Section.relocations()) {
       DynRelocs.push_back(Reloc);

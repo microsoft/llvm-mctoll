@@ -48,16 +48,21 @@ public:
   X86RaisedValueTracker() = delete;
   X86RaisedValueTracker(X86MachineInstructionRaiser *);
   bool setPhysRegSSAValue(unsigned int PhysReg, int MBBNo, Value *Val);
-  bool testAndSetEflagSSAValue(unsigned Flag, int MBBNo, Value *);
+  bool testAndSetEflagSSAValue(unsigned Flag, const MachineInstr &MI, Value *);
   bool setEflagValue(unsigned FlagBit, int MBBNo, bool Set);
 
-  Value *getReachingDef(unsigned int PhysReg, int MBBNo);
+  // Get the reaching definition of PhysReg. Perform any necessary stack
+  // promotions. If AllPreds is true, perform the stack promotions only if
+  // PhysReg is reachable along all predecessors of MBBNo or is defined in
+  // MBBNo.
+  Value *getReachingDef(unsigned int PhysReg, int MBBNo, bool AllPreds = false,
+                        bool AnySubReg = false);
   Value *getEflagReachingDef(unsigned Flag, int MBBNo);
 
   // Return a vector of <MBBNo, Value*> pairs denoting the defining MBB numbers
   // and Values defined for PhysReg in the predecessors of MBBNo.
   std::vector<std::pair<int, Value *>>
-  getGlobalReachingDefs(unsigned int PhysReg, int MBBNo);
+  getGlobalReachingDefs(unsigned int PhysReg, int MBBNo, bool AllPreds = false);
 
   std::pair<int, Value *> getInBlockRegOrArgDefVal(unsigned int PhysReg,
                                                    int MBBNo);

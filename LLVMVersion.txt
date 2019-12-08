@@ -5,13 +5,11 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 9fd495be1fb1470bfefa59938904a8f38920e0f1
-Author: Alexey Bataev <a.bataev@hotmail.com>
-Date:   Tue Aug 20 19:50:13 2019 +0000
+commit a9bb669e59f4b2270caa8a35128ca3b2de0595fe
+Author: Jonas Devlieghere <jonas@devlieghere.com>
+Date:   Wed Nov 20 10:38:55 2019 -0800
 
-    [OPENMP]Fix delayed diagnostics for standalone declare target directive.
+    [FileCollector] Ignore empty paths.
     
-    If the function is marked as declare target in a standalone directive,
-    the delayed diagnostics is not emitted. Patch fixes this problem.
-    
-    llvm-svn: 369432
+    Don't insert empty strings into the StringSet<> because that triggers an
+    assert in its implementation.

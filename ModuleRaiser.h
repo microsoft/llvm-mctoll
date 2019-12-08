@@ -9,6 +9,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_MODULERAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_MODULERAISER_H
 
+#include "FunctionFilter.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
@@ -45,7 +46,7 @@ public:
   ModuleRaiser()
       : M(nullptr), TM(nullptr), MMI(nullptr), MIA(nullptr), MII(nullptr),
         Obj(nullptr), DisAsm(nullptr), TextSectionIndex(-1),
-        Arch(Triple::ArchType::UnknownArch), InfoSet(false) {}
+        Arch(Triple::ArchType::UnknownArch), FFT(nullptr), InfoSet(false) {}
 
   static void InitializeAllModuleRaisers();
 
@@ -62,6 +63,7 @@ public:
     this->MII = MII;
     this->Obj = Obj;
     this->DisAsm = DisAsm;
+    this->FFT = new FunctionFilter(*M);
     InfoSet = true;
   }
 
@@ -106,8 +108,9 @@ public:
   bool runMachineFunctionPasses();
 
   // Return the Function * corresponding to input binary function with
-  // start offset equal to that specified as argument.
-  Function *getFunctionAt(uint64_t) const;
+  // start offset equal to that specified as argument. This returns the pointer
+  // to raised function, if one was constructed; else returns nullptr.
+  Function *getRaisedFunctionAt(uint64_t) const;
 
   // Return the Function * corresponding to input binary function from
   // text relocation record with off set in the range [Loc, Loc+Size].
@@ -126,7 +129,12 @@ public:
 
   void addRODataValueAt(Value *V, uint64_t Offset) const;
 
-  virtual ~ModuleRaiser() {}
+  virtual ~ModuleRaiser() {
+    if (FFT != nullptr)
+      delete FFT;
+  }
+  // Get the function filter for current Module.
+  FunctionFilter *getFunctionFilter() const { return FFT; }
   Triple::ArchType getArch() const { return Arch; }
 
 protected:
@@ -162,6 +170,7 @@ protected:
   // Index of text section whose instructions are raised
   int64_t TextSectionIndex;
   Triple::ArchType Arch;
+  FunctionFilter *FFT;
   // Flag to indicate that fields are set. Resetting is not allowed/expected.
   bool InfoSet;
 };

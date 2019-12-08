@@ -11,6 +11,7 @@
 
 #include "MCInstOrData.h"
 #include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include <map>
 #include <set>
@@ -25,7 +26,7 @@ public:
   using const_mcinst_iter = std::map<uint64_t, MCInstOrData>::const_iterator;
 
   MCInstRaiser(uint64_t Start, uint64_t End)
-      : FuncStart(Start), FuncEnd(End), dataInCode(false) {};
+      : FuncStart(Start), FuncEnd(End), dataInCode(false){};
 
   void addTarget(uint64_t targetIndex) {
     // Add targetIndex only if it falls within the function start and end

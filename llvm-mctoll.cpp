@@ -45,6 +45,7 @@
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/COFFImportFile.h"
@@ -75,6 +76,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <fstream>
 #include <set>
 #include <system_error>
 #include <unordered_map>
@@ -105,14 +107,14 @@ cl::list<std::string>
            cl::value_desc("a1,+a2,-a3,..."));
 
 // Output file type. Default is binary bitcode.
-cl::opt<TargetMachine::CodeGenFileType> OutputFormat(
-    "output-format", cl::init(TargetMachine::CGFT_AssemblyFile),
+cl::opt<CodeGenFileType> OutputFormat(
+    "output-format", cl::init(CGFT_AssemblyFile),
     cl::desc("Output format (default: binary bitcode):"),
-    cl::values(clEnumValN(TargetMachine::CGFT_AssemblyFile, "ll",
+    cl::values(clEnumValN(CGFT_AssemblyFile, "ll",
                           "Emit llvm text bitcode ('.ll') file"),
-               clEnumValN(TargetMachine::CGFT_ObjectFile, "bc",
+               clEnumValN(CGFT_ObjectFile, "bc",
                           "Emit llvm binary bitcode ('.bc') file"),
-               clEnumValN(TargetMachine::CGFT_Null, "null",
+               clEnumValN(CGFT_Null, "null",
                           "Emit nothing, for performance testing")),
     cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
@@ -139,6 +141,16 @@ cl::opt<std::string>
     llvm::ArchName("arch-name", cl::desc("Target arch to disassemble for, "
                                          "see -version for available targets"));
 
+cl::opt<std::string> llvm::FilterFunctionSet(
+    "filter-functions-file",
+    cl::desc("Specify which functions to raise via a configuration file."),
+    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+
+cl::alias static FilterFunctionSetF(
+    "f", cl::desc("Alias for --filter-functions-file"),
+    cl::aliasopt(llvm::FilterFunctionSet), cl::cat(LLVMMCToLLCategory),
+    cl::NotHidden);
+
 cl::opt<bool> llvm::SectionHeaders("section-headers",
                                    cl::desc("Display summaries of the "
                                             "headers for each section."));
@@ -153,10 +165,6 @@ cl::list<std::string>
     llvm::FilterSections("section",
                          cl::desc("Operate on the specified sections only. "
                                   "With -macho dump segment,section"));
-cl::list<std::string>
-    llvm::FilterFunctions("function",
-                          cl::desc("Operate on the specified functions only. "),
-                          cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::alias static FilterSectionsj("j", cl::desc("Alias for --section"),
                                  cl::aliasopt(llvm::FilterSections));
@@ -441,15 +449,15 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
       OutputFilename = IFN;
 
     switch (OutputFormat) {
-    case TargetMachine::CGFT_AssemblyFile:
+    case CGFT_AssemblyFile:
       OutputFilename += "-dis.ll";
       break;
     // Just uses enum CGFT_ObjectFile represent llvm bitcode file type
     // provisionally.
-    case TargetMachine::CGFT_ObjectFile:
+    case CGFT_ObjectFile:
       OutputFilename += "-dis.bc";
       break;
-    case TargetMachine::CGFT_Null:
+    case CGFT_Null:
       OutputFilename += ".null";
       break;
     }
@@ -458,10 +466,10 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
   // Decide if we need "binary" output.
   bool Binary = false;
   switch (OutputFormat) {
-  case TargetMachine::CGFT_AssemblyFile:
+  case CGFT_AssemblyFile:
     break;
-  case TargetMachine::CGFT_ObjectFile:
-  case TargetMachine::CGFT_Null:
+  case CGFT_ObjectFile:
+  case CGFT_Null:
     Binary = true;
     break;
   }
@@ -839,9 +847,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     report_error(Obj->getFileName(),
                  "no register info for target " + TripleName);
 
+  MCTargetOptions MCOptions;
   // Set up disassembler.
   std::unique_ptr<const MCAsmInfo> AsmInfo(
-      TheTarget->createMCAsmInfo(*MRI, TripleName));
+      TheTarget->createMCAsmInfo(*MRI, TripleName, MCOptions));
   if (!AsmInfo)
     report_error(Obj->getFileName(),
                  "no assembly info for target " + TripleName);
@@ -884,7 +893,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   assert(Target && "Could not allocate target machine!");
 
   LLVMTargetMachine &llvmTgtMach = static_cast<LLVMTargetMachine &>(*Target);
-  MachineModuleInfo *machineModuleInfo = new MachineModuleInfo(&llvmTgtMach);
+  MachineModuleInfoWrapperPass *machineModuleInfo =
+      new MachineModuleInfoWrapperPass(&llvmTgtMach);
   /* New Module instance with file name */
   Module module(Obj->getFileName(), llvmCtx);
   /* Set datalayout of the module to be the same as LLVMTargetMachine */
@@ -897,8 +907,9 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   ModuleRaiser *moduleRaiser = RaiserContext::getModuleRaiser(Target.get());
   assert((moduleRaiser != nullptr) && "Failed to build module raiser");
   // Set data of module raiser
-  moduleRaiser->setModuleRaiserInfo(&module, Target.get(), machineModuleInfo,
-                                    MIA.get(), MII.get(), Obj, DisAsm.get());
+  moduleRaiser->setModuleRaiserInfo(&module, Target.get(),
+                                    &machineModuleInfo->getMMI(), MIA.get(),
+                                    MII.get(), Obj, DisAsm.get());
 
   // Collect dynamic relocations.
   moduleRaiser->collectDynamicRelocations();
@@ -908,7 +919,11 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   std::error_code EC;
   std::map<SectionRef, SmallVector<SectionRef, 1>> SectionRelocMap;
   for (const SectionRef &Section : ToolSectionFilter(*Obj)) {
-    section_iterator Sec2 = Section.getRelocatedSection();
+    Expected<section_iterator> SecOrErr = Section.getRelocatedSection();
+    if (!SecOrErr) {
+      break;
+    }
+    section_iterator Sec2 = *SecOrErr;
     if (Sec2 != Obj->section_end())
       SectionRelocMap[*Sec2].push_back(Section);
   }
@@ -1085,11 +1100,14 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     uint64_t Size;
     uint64_t Index;
 
-    // Build a set of function symbol names to operate on,
-    // if specified on the command-line.
-    std::set<StringRef> filterFunctionSet;
-    for (unsigned i = 0; i < FilterFunctions.size(); ++i) {
-      filterFunctionSet.insert(FilterFunctions[i]);
+    FunctionFilter *FuncFilter = moduleRaiser->getFunctionFilter();
+    if (cl::getRegisteredOptions()["filter-functions-file"]
+            ->getNumOccurrences() > 0) {
+      if (!FuncFilter->readFilterFunctionConfigFile(
+              FilterFunctionSet.getValue())) {
+        dbgs() << "Unable to read function filter configuration file "
+               << FilterFunctionSet.getValue() << ". Ignoring\n";
+      }
     }
 
     // Build a map of relocations (if they exist in the binary) of text
@@ -1152,18 +1170,30 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 #endif
 
       if (isAFunctionSymbol(Obj, Symbols[si])) {
-        if (!((FilterFunctions.getNumOccurrences() == 0) ||
-              (filterFunctionSet.find(std::get<1>(Symbols[si])) !=
-               filterFunctionSet.end()))) {
-          // This symbol is part of the filter symbols specified.
-          continue;
+        auto &SymStr = std::get<1>(Symbols[si]);
+
+        if ((FilterFunctionSet.getNumOccurrences() != 0)) {
+          // Check the symbol name whether it should be excluded or not.
+          if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_EXCLUDE)) {
+            FunctionFilter::FuncInfo *FI = FuncFilter->findFuncInfoBySymbol(
+                SymStr, FunctionFilter::FILTER_EXCLUDE);
+            if (FI != nullptr) {
+              // Record the function start index.
+              FI->StartIdx = Start;
+              continue;
+            }
+          }
+
+          // Check the symbol name whether it should be included or not.
+          if (FuncFilter->findFuncInfoBySymbol(
+                  SymStr, FunctionFilter::FILTER_INCLUDE) == nullptr)
+            continue;
         }
+
         // If Symbol is in the ELFCRTSymbol list return this is a symbol of a
         // function we are not interested in disassembling and raising.
-        if (ELFCRTSymbols.find(std::get<1>(Symbols[si])) !=
-            ELFCRTSymbols.end()) {
+        if (ELFCRTSymbols.find(SymStr) != ELFCRTSymbols.end())
           continue;
-        }
 
         // Note that since LLVM infrastructure was built to be used to build a
         // conventional compiler pipeline, MachineFunction is built well after
@@ -1408,7 +1438,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
           }
         }
       }
-      filterFunctionSet.erase(std::get<1>(Symbols[si]));
+      FuncFilter->eraseFunctionBySymbol(std::get<1>(Symbols[si]),
+                                        FunctionFilter::FILTER_INCLUDE);
     }
 
     // Record all targets of the last function parsed
@@ -1418,14 +1449,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     moduleRaiser->runMachineFunctionPasses();
 
-    if (filterFunctionSet.size() > 0) {
-      errs() << "***** WARNING: The following specified symbol(s) are not "
-                "found :\n\t";
-      for (std::set<StringRef>::iterator it = filterFunctionSet.begin();
-           it != filterFunctionSet.end(); it++) {
-        errs() << *it << " ";
-      }
-      errs() << "\n";
+    if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_INCLUDE)) {
+      errs() << "***** WARNING: The following include filter symbol(s) are not "
+                "found :\n";
+      FuncFilter->dump(FunctionFilter::FILTER_INCLUDE);
     }
   }
 

@@ -16,6 +16,9 @@
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
 
@@ -200,8 +203,8 @@ Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
   BasicBlock::Create(pnfn->getContext(), "EntryBlock", pnfn);
 
   if (PrintPass) {
-    mf.dump();
-    pnfn->dump();
+    LLVM_DEBUG(MF->dump());
+    LLVM_DEBUG(pnfn->dump());
     dbgs() << "ARMFunctionPrototype end.\n";
   }
 

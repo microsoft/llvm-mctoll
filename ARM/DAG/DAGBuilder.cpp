@@ -88,8 +88,6 @@ void DAGBuilder::visit(const MachineInstr &mi) {
     } else {
       dbgs() << "Warning: visit. An unmatch type! = "
              << (unsigned)(mo.getType()) << "\n";
-      mi.dump();
-      mo.dump();
     }
   }
 

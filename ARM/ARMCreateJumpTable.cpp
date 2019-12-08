@@ -30,6 +30,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
+#define DEBUG_TYPE "mctoll"
+
 using namespace llvm;
 
 char ARMCreateJumpTable::ID = 0;
@@ -100,7 +102,7 @@ bool ARMCreateJumpTable::UpdatetheBranchInst(MachineBasicBlock &MBB) {
 
     if (curMI.getOpcode() == ARM::Bcc) {
       for (unsigned int i = 0; i < curMI.getNumOperands(); i++) {
-        curMI.getOperand(i).dump();
+        LLVM_DEBUG(curMI.getOperand(i).dump());
       }
       BuildMI(&MBB, DebugLoc(), TII->get(ARM::B)).add(curMI.getOperand(0));
       Instrs.push_back(&curMI);
@@ -342,15 +344,15 @@ bool ARMCreateJumpTable::getJTlist(std::vector<JumpTableInfo> &List) {
 
 bool ARMCreateJumpTable::create() {
   if (PrintPass)
-    dbgs() << "ARMCreateJumpTable start.\n";
+    LLVM_DEBUG(dbgs() << "ARMCreateJumpTable start.\n");
 
   raiseMaichineJumpTable(*MF);
 
   // For debugging.
   if (PrintPass) {
-    MF->dump();
-    getCRF()->dump();
-    dbgs() << "ARMCreateJumpTable end.\n";
+    LLVM_DEBUG(MF->dump());
+    LLVM_DEBUG(getCRF()->dump());
+    LLVM_DEBUG(dbgs() << "ARMCreateJumpTable end.\n");
   }
 
   return false;

@@ -16,6 +16,8 @@
 #include "llvm/ADT/DepthFirstIterator.h"
 #include <vector>
 
+#define DEBUG_TYPE "mctoll"
+
 using namespace llvm;
 
 char ARMArgumentRaiser::ID = 0;
@@ -145,32 +147,29 @@ void ARMArgumentRaiser::updateParameterInstr(MachineFunction &mf) {
   }
 }
 
-int ARMArgumentRaiser::genStackObject(int idx) {
-  return MFI->CreateStackObject(1, idx, false, nullptr);
-}
-
 bool ARMArgumentRaiser::raiseArgs() {
   if (PrintPass)
-    dbgs() << "ARMArgumentRaiser start.\n";
+    LLVM_DEBUG(dbgs() << "ARMArgumentRaiser start.\n");
 
   Function *fn = getCRF();
 
   int argidx = 1;
   for (Function::arg_iterator argi = fn->arg_begin(), arge = fn->arg_end();
-       argi != arge; ++argi) {
+       argi != arge; ++argi)
     argi->setName("arg." + std::to_string(argidx++));
-  }
 
-  for (unsigned i = 0, e = fn->arg_size() + 1; i < e; ++i)
-    genStackObject(i);
+  for (unsigned i = 0, e = fn->arg_size() + 1; i < e; ++i) {
+    Align ALG(32);
+    MFI->CreateStackObject(32, ALG, false);
+  }
 
   updateParameterInstr(*MF);
 
   // For debugging.
   if (PrintPass) {
-    MF->dump();
-    getCRF()->dump();
-    dbgs() << "ARMArgumentRaiser end.\n";
+    LLVM_DEBUG(MF->dump());
+    LLVM_DEBUG(getCRF()->dump());
+    LLVM_DEBUG(dbgs() << "ARMArgumentRaiser end.\n");
   }
 
   return true;

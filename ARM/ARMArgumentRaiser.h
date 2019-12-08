@@ -35,7 +35,6 @@ public:
   bool runOnMachineFunction(MachineFunction &mf) override;
 
 private:
-  int genStackObject(int idx);
   /// Change all return relative register operands to stack 0.
   void updateReturnRegister(MachineFunction &mf);
   /// Change all function arguments of registers into stack elements with

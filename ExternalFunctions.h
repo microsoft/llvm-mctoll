@@ -13,6 +13,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_EXTERNALFUNCTIONS_H
 #define LLVM_TOOLS_LLVM_MCTOLL_EXTERNALFUNCTIONS_H
 
+#include "ModuleRaiser.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 
@@ -29,8 +30,7 @@ class ExternalFunctions {
   } RetAndArgs;
 
 public:
-  static Function *Create(StringRef &CFuncName, Module &M);
-  static Type *getPrimitiveType(const StringRef &TypeStr, LLVMContext &Context); 
+  static Function *Create(StringRef &CFuncName, ModuleRaiser &MR);
   // Table of known glibc function prototypes
   static const std::map<StringRef, ExternalFunctions::RetAndArgs>
       GlibcFunctions;

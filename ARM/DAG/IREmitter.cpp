@@ -545,7 +545,7 @@ void IREmitter::emitSDNode(SDNode *Node) {
       if (GlobalVariable::classof(Ptr))
         Inst = IRB.CreatePtrToInt(Ptr, getDefaultType());
       else
-        Inst = IRB.CreateAlignedLoad(Ptr, DLT->getPointerPrefAlignment());
+        Inst = IRB.CreateAlignedLoad(Ptr, Log2(DLT->getPointerPrefAlignment()));
 
       PHINode *Phi = createAndEmitPHINode(Node, BB, IfBB, ElseBB,
                                           dyn_cast<Instruction>(Inst));
@@ -559,7 +559,7 @@ void IREmitter::emitSDNode(SDNode *Node) {
         // Inst = IRB.CreatePtrToInt(Ptr, getDefaultType());
         Inst = new PtrToIntInst(Ptr, getDefaultType(), "", BB);
       } else {
-        Inst = IRB.CreateAlignedLoad(Ptr, DLT->getPointerPrefAlignment());
+        Inst = IRB.CreateAlignedLoad(Ptr, Log2(DLT->getPointerPrefAlignment()));
 
         // TODO:
         // Temporary method for this.
@@ -604,12 +604,12 @@ void IREmitter::emitSDNode(SDNode *Node) {
       emitCondCode(CondValue, BB, IfBB, ElseBB);
       IRB.SetInsertPoint(IfBB);
 
-      IRB.CreateAlignedStore(Val, Ptr, DLT->getPointerPrefAlignment());
+      IRB.CreateAlignedStore(Val, Ptr, Log2(DLT->getPointerPrefAlignment()));
 
       IRB.CreateBr(ElseBB);
       IRB.SetInsertPoint(ElseBB);
     } else {
-      IRB.CreateAlignedStore(Val, Ptr, DLT->getPointerPrefAlignment());
+      IRB.CreateAlignedStore(Val, Ptr, Log2(DLT->getPointerPrefAlignment()));
     }
   } break;
   case ICmp: {
@@ -688,7 +688,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     // Get the function call Index.
     uint64_t Index = Node->getConstantOperandVal(0);
     // Get function from ModuleRaiser.
-    Function *CallFunc = MR->getFunctionAt(Index);
+    Function *CallFunc = MR->getRaisedFunctionAt(Index);
     unsigned IFFuncArgNum = 0; // The argument number which gets from analyzing
                                // variadic function prototype.
     bool IsSyscall = false;
@@ -730,7 +730,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
           const Value *StackAlloc =
               MFI.getObjectAllocation(StackArg - i - 4 + 1);
           ArgVal = IRB.CreateAlignedLoad(const_cast<Value *>(StackAlloc),
-                                         DLT->getPointerPrefAlignment());
+                                         Log2(DLT->getPointerPrefAlignment()));
         }
         if (IsSyscall && i < CallFunc->arg_size() &&
             ArgVal->getType() != CalledFuncArgs[i].getType()) {

@@ -8,9 +8,11 @@ if(NOT LLVM_MCTOLL_BUILT_STANDALONE)
   set(LLVM_MCTOLL_DEPS intrinsics_gen X86CommonTableGen)
 endif()
 
-add_llvm_library(X86Raiser
+llvm_add_library(X86Raiser STATIC
+  X86AdditionalInstrInfo.cpp
   X86ModuleRaiser.cpp
   X86MachineInstructionRaiser.cpp
+  X86MachineInstructionRaiserUtils.cpp
   X86JumpTables.cpp
   X86RaisedValueTracker.cpp
   X86RegisterUtils.cpp

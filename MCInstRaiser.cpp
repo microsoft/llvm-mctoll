@@ -8,7 +8,12 @@
 
 #include "MCInstRaiser.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "mctoll"
 
 void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
                             const MCInstrInfo *MII) {
@@ -154,7 +159,7 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
   // MachineBasicBlocks.
   if (PrintAll) {
     outs() << "Generated CFG\n";
-    MF.dump();
+    LLVM_DEBUG(MF.dump());
   }
 }
 
@@ -195,7 +200,7 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
         builder.addUse(mcOperand.getReg());
     } else {
       outs() << "**** Unhandled Operand : ";
-      mcOperand.dump();
+      LLVM_DEBUG(mcOperand.dump());
     }
   }
 

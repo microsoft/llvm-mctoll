@@ -13,6 +13,9 @@
 
 #include "ARMEliminatePrologEpilog.h"
 #include "ARMSubtarget.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
 
@@ -338,8 +341,8 @@ bool ARMEliminatePrologEpilog::eliminate() {
 
   // For debugging.
   if (PrintPass) {
-    MF->dump();
-    getCRF()->dump();
+    LLVM_DEBUG(MF->dump());
+    LLVM_DEBUG(getCRF()->dump());
     dbgs() << "ARMEliminatePrologEpilog end.\n";
   }
 

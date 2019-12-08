@@ -1,3 +1,4 @@
+// REQUIRES: system-linux
 // RUN: clang -o %t.so %S/Inputs/test-2.c -shared -fPIC
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll

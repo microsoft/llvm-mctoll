@@ -17,6 +17,8 @@
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/CodeGen/MachineOperand.h"
 
+#define DEBUG_TYPE "mctoll"
+
 using namespace llvm;
 
 char ARMInstructionSplitting::ID = 0;
@@ -1122,7 +1124,7 @@ MachineInstr *ARMInstructionSplitting::splitCS(MachineBasicBlock &MBB,
 
 bool ARMInstructionSplitting::split() {
   if (PrintPass)
-    dbgs() << "ARMInstructionSplitting start.\n";
+    LLVM_DEBUG(dbgs() << "ARMInstructionSplitting start.\n");
 
   std::vector<MachineInstr *> removelist;
   for (MachineBasicBlock &MBB : *MF) {
@@ -1202,9 +1204,9 @@ bool ARMInstructionSplitting::split() {
 
   // For debugging.
   if (PrintPass) {
-    MF->dump();
-    getCRF()->dump();
-    dbgs() << "ARMInstructionSplitting end.\n";
+    LLVM_DEBUG(MF->dump());
+    LLVM_DEBUG(getCRF()->dump());
+    LLVM_DEBUG(dbgs() << "ARMInstructionSplitting end.\n");
   }
 
   return true;

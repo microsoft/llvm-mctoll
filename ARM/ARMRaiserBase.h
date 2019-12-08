@@ -15,6 +15,7 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMRAISERBASE_H
 
 #include "ARMModuleRaiser.h"
+#include "llvm-mctoll.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/Pass.h"
 

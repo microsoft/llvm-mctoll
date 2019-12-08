@@ -21,6 +21,8 @@
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 
+#define DEBUG_TYPE "mctoll"
+
 using namespace llvm;
 using namespace llvm::object;
 
@@ -165,7 +167,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
         // Set CallTargetIndex for plt offset to map undefined function symbol
         // for emit CallInst use.
         Function *CalledFunc =
-            ExternalFunctions::Create(*CalledFuncSymName, *M);
+            ExternalFunctions::Create(*CalledFuncSymName, *MR);
 
         MR->setSyscallMapping(PLTEndOff, CalledFunc);
         MR->fillInstAddrFuncMap(CallAddr, CalledFunc);
@@ -200,7 +202,7 @@ void ARMMIRevising::relocateBranch(MachineInstr &MInst) {
       Function *CalledFunc = nullptr;
       uint64_t MCInstSize = MCIR->getMCInstSize(MCInstOffset);
       uint64_t Index = 1;
-      CalledFunc = MR->getFunctionAt(CallTargetIndex);
+      CalledFunc = MR->getRaisedFunctionAt(CallTargetIndex);
       if (CalledFunc == nullptr) {
         CalledFunc =
             MR->getCalledFunctionUsingTextReloc(MCInstOffset, MCInstSize);
@@ -538,7 +540,7 @@ bool ARMMIRevising::reviseMI(MachineInstr &MInst) {
 bool ARMMIRevising::revise() {
   bool rtn = false;
   if (PrintPass)
-    dbgs() << "ARMMIRevising start.\n";
+    LLVM_DEBUG(dbgs() << "ARMMIRevising start.\n");
 
   vector<MachineInstr *> RMVec;
   for (MachineFunction::iterator mbbi = MF->begin(), mbbe = MF->end();
@@ -558,9 +560,9 @@ bool ARMMIRevising::revise() {
 
   // For debugging.
   if (PrintPass) {
-    MF->dump();
-    getCRF()->dump();
-    dbgs() << "ARMMIRevising end.\n";
+    LLVM_DEBUG(MF->dump());
+    LLVM_DEBUG(getCRF()->dump());
+    LLVM_DEBUG(dbgs() << "ARMMIRevising end.\n");
   }
 
   return rtn;

@@ -15,6 +15,8 @@
 #include "ARMSubtarget.h"
 #include "llvm/ADT/DenseMap.h"
 
+#define DEBUG_TYPE "mctoll"
+
 using namespace llvm;
 
 char ARMFrameBuilder::ID = 0;
@@ -82,7 +84,7 @@ unsigned ARMFrameBuilder::getBitCount(unsigned opcode) {
 
   switch (opcode) {
   default:
-    ret = DLT->getStackAlignment();
+    ret = Log2(DLT->getStackAlignment());
     break;
   case ARM::LDRi12:
   case ARM::STRi12:
@@ -259,8 +261,9 @@ void ARMFrameBuilder::searchStackObjects(MachineFunction &mf) {
   for (auto ii = SPOffElementMap.begin(), ie = SPOffElementMap.end(); ii != ie;
        ++ii) {
     StackElement *sem = ii->second;
+    MaybeAlign MALG(sem->Size);
     AllocaInst *alc =
-        new AllocaInst(getStackType(sem->Size), 0, nullptr, sem->Size, "", pBB);
+        new AllocaInst(getStackType(sem->Size), 0, nullptr, MALG, "", pBB);
     int idx = MFI->CreateStackObject(sem->Size, 4, false, alc);
     alc->setName("stack." + std::to_string(idx));
     MFI->setObjectOffset(idx, sem->SPOffset);
@@ -286,15 +289,15 @@ void ARMFrameBuilder::searchStackObjects(MachineFunction &mf) {
 
 bool ARMFrameBuilder::build() {
   if (PrintPass)
-    dbgs() << "ARMFrameBuilder start.\n";
+    LLVM_DEBUG(dbgs() << "ARMFrameBuilder start.\n");
 
   searchStackObjects(*MF);
 
   // For debugging.
   if (PrintPass) {
-    MF->dump();
-    getCRF()->dump();
-    dbgs() << "ARMFrameBuilder end.\n";
+    LLVM_DEBUG(MF->dump());
+    LLVM_DEBUG(getCRF()->dump());
+    LLVM_DEBUG(dbgs() << "ARMFrameBuilder end.\n");
   }
 
   return true;

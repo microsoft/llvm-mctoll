@@ -1374,7 +1374,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an effective address value.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue)) &&
+          isa<GlobalValue>(MemRefValue) || isa<ConstantExpr>(MemRefValue)) &&
          "Unexpected type of memory reference in FPU load op instruction");
 
   LLVMContext &llvmContext(MF.getFunction().getContext());
@@ -1390,9 +1390,6 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
       Type *MemRefValPtrElementTy = MemRefValueTy->getPointerElementType();
       switch (MemRefValPtrElementTy->getTypeID()) {
       case Type::ArrayTyID: {
-        assert(MemRefValPtrElementTy->getArrayNumElements() == 1 &&
-               "Unexpected number of array elements in value being cast to "
-               "float");
         // Make sure the array element type is integer or floating point
         // type.
         Type *ArrElemTy = MemRefValPtrElementTy->getArrayElementType();
@@ -1619,15 +1616,18 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   } else {
     // If it is an effective address value or a select instruction, convert it
     // to a pointer to load register type.
+    PointerType *PtrTy =
+        PointerType::get(getPhysRegOperandType(MI, LoadOpIndex), 0);
     if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
-      PointerType *PtrTy =
-          PointerType::get(getPhysRegOperandType(MI, LoadOpIndex), 0);
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
       RaisedBB->getInstList().push_back(ConvIntToPtr);
       MemRefValue = ConvIntToPtr;
     }
     assert(MemRefValue->getType()->isPointerTy() &&
            "Pointer type expected in load instruction");
+    // Cast the pointer to match the size of memory being accessed by the
+    // instruction, as needed.
+    MemRefValue = castValue(MemRefValue, PtrTy, RaisedBB);
     // Load the value from memory location
     LoadInst *LdInst = new LoadInst(MemRefValue);
     unsigned int MemAlignment = MemRefValue->getType()
@@ -1706,12 +1706,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       // Update PhysReg to Value map
       raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
                                        ExtInst);
-    } else {
-      // This is a normal mov instruction
-      // Update PhysReg to Value map
-      raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
-                                       LdInst);
-    }
+    } // else PhysReg is already updated in the default case of the above switch
+      // statement
   }
 
   return true;
@@ -2089,7 +2085,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   // Is this a sub instruction?
   bool isSUBInst = instrNameStartsWith(MI, "SUB");
 
-  SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
+  SmallVector<Value *, 2> OpValues{nullptr, nullptr};
 
   // Get operand indices
   if (isMemCompare) {
@@ -2416,36 +2412,37 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   // Now that we have all necessary information about memory reference and
   // the load/store operand, we can raise the memory referencing instruction
   // according to the opcode.
-  bool success = false;
+
   switch (getInstructionKind(Opcode)) {
     // Move register or immediate to memory
   case InstructionKind::MOV_TO_MEM: {
-    success = raiseMoveToMemInstr(MI, MemoryRefValue);
-  } break;
-  case InstructionKind::INPLACE_MEM_OP:
-    success = raiseInplaceMemOpInstr(MI, MemoryRefValue);
-    break;
+    return raiseMoveToMemInstr(MI, MemoryRefValue);
+  }
+  case InstructionKind::INPLACE_MEM_OP: {
+    return raiseInplaceMemOpInstr(MI, MemoryRefValue);
+  }
   // Move register from memory
   case InstructionKind::MOV_FROM_MEM: {
-    success = raiseMoveFromMemInstr(MI, MemoryRefValue);
-  } break;
-  case InstructionKind::BINARY_OP_RM: {
-    success = raiseBinaryOpMemToRegInstr(MI, MemoryRefValue);
-  } break;
-  case InstructionKind::DIVIDE_MEM_OP: {
-    success = raiseDivideInstr(MI, MemoryRefValue);
-  } break;
-  case InstructionKind::LOAD_FPU_REG:
-    success = raiseLoadIntToFloatRegInstr(MI, MemoryRefValue);
-    break;
-  case InstructionKind::STORE_FPU_REG:
-    success = raiseStoreIntToFloatRegInstr(MI, MemoryRefValue);
-    break;
-  default:
-    outs() << "Unhandled memory referencing instruction.\n";
-    LLVM_DEBUG(MI.dump());
+    return raiseMoveFromMemInstr(MI, MemoryRefValue);
   }
-  return success;
+  case InstructionKind::BINARY_OP_RM: {
+    return raiseBinaryOpMemToRegInstr(MI, MemoryRefValue);
+  }
+  case InstructionKind::DIVIDE_MEM_OP: {
+    return raiseDivideInstr(MI, MemoryRefValue);
+  }
+  case InstructionKind::LOAD_FPU_REG: {
+    return raiseLoadIntToFloatRegInstr(MI, MemoryRefValue);
+  }
+  case InstructionKind::STORE_FPU_REG: {
+    return raiseStoreIntToFloatRegInstr(MI, MemoryRefValue);
+  }
+  default: {
+    LLVM_DEBUG(MI.dump());
+    assert(false && "Unhandled memory referencing instruction");
+  }
+  }
+  return false;
 }
 
 bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
@@ -3608,13 +3605,37 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
+  unsigned int retReg = X86::NoRegister;
   if (!RetType->isVoidTy()) {
-    unsigned int retReg =
-        (RetType->getPrimitiveSizeInBits() == 64) ? X86::RAX : X86::EAX;
+    if (RetType->isPointerTy())
+      retReg = X86::RAX;
+    else {
+      switch (RetType->getPrimitiveSizeInBits()) {
+      case 64:
+        retReg = X86::RAX;
+        break;
+      case 32:
+        retReg = X86::EAX;
+        break;
+      case 16:
+        retReg = X86::AX;
+        break;
+      case 8:
+        retReg = X86::AL;
+        break;
+      default:
+        llvm_unreachable("Unhandled return type");
+      }
+    }
     RetValue =
         raisedValues->getReachingDef(retReg, MI.getParent()->getNumber(), true);
   }
 
+  // If RetType is a pointer type and RetValue type is 64-bit, cast RetValue
+  // appropriately.
+  if ((RetValue != nullptr) && RetType->isPointerTy() && (retReg == X86::RAX)) {
+    RetValue = castValue(RetValue, RetType, RaisedBB);
+  }
   // Create return instruction
   Instruction *retInstr =
       ReturnInst::Create(MF.getFunction().getContext(), RetValue);
@@ -3909,9 +3930,9 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         if (isa<ConstantInt>(ArgVal)) {
           ConstantInt *Address = dyn_cast<ConstantInt>(ArgVal);
           if (!Address->isNegative()) {
-            Value *RefVal =
-                const_cast<Value *>(getOrCreateGlobalRODataValueAtOffset(
-                    Address->getSExtValue(), Address->getType()));
+            Constant *RefVal =
+                const_cast<Constant *>(getOrCreateGlobalRODataValueAtOffset(
+                    Address->getSExtValue(), Address->getType(), RaisedBB));
             if (RefVal != nullptr) {
               assert(RefVal->getType()->isPointerTy() &&
                      "Non-pointer type of global value abstracted from "

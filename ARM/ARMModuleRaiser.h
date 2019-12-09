@@ -56,6 +56,10 @@ public:
 
   Function *getSyscallFunc(uint64_t idx) { return SyscallMap[idx]; }
 
+  const Value *getRODataValueAt(uint64_t Offset) const;
+
+  void addRODataValueAt(Value *V, uint64_t Offset) const;
+
 private:
   // Commonly used data structures for ARM.
   // This is for call instruction. (BL instruction)
@@ -67,6 +71,13 @@ private:
   std::vector<uint64_t> InstArgCollect;
   // Map index to its corresponding function.
   std::map<uint64_t, Function *> SyscallMap;
+  // Map of read-only data (i.e., from .rodata) to its corresponding global
+  // value.
+  // NOTE: A const version of ModuleRaiser object is constructed during the
+  // raising process. Making this map mutable since this map is expected to be
+  // updated throughout the raising process.
+  mutable std::map<uint64_t, Value *> GlobalRODataValues;
+
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H

@@ -125,10 +125,6 @@ public:
 
   int64_t getTextSectionAddress() const;
 
-  const Value *getRODataValueAt(uint64_t Offset) const;
-
-  void addRODataValueAt(Value *V, uint64_t Offset) const;
-
   virtual ~ModuleRaiser() {
     if (FFT != nullptr)
       delete FFT;
@@ -152,12 +148,6 @@ protected:
   std::vector<RelocationRef> TextRelocs;
   // Vector of dynamic relocation records
   std::vector<RelocationRef> DynRelocs;
-  // Map of read-only data (i.e., from .rodata) to its corresponding global
-  // value.
-  // NOTE: A const version of ModuleRaiser object is constructed during the
-  // raising process. Making this map mutable since this map is expected to be
-  // updated throughout the raising process.
-  mutable std::map<uint64_t, Value *> GlobalRODataValues;
 
   // Commonly used data structures
   Module *M;

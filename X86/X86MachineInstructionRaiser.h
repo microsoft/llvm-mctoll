@@ -70,18 +70,6 @@ public:
   X86RaisedValueTracker *getRaisedValues() { return raisedValues; }
 
 private:
-  // Bit positions used for individual status flags of EFLAGS register.
-  // Note : only those that are currently used are represented here.
-  enum {
-    EFLAGS_CF = 0,
-    EFLAGS_PF = 2,
-    EFLAGS_AF = 4,
-    EFLAGS_ZF = 6,
-    EFLAGS_SF = 7,
-    EFLAGS_OF = 11,
-    EFLAGS_UNDEFINED = 32
-  };
-
   X86RaisedValueTracker *raisedValues;
 
   // Set of reaching definitions that were not promoted during since defining
@@ -171,8 +159,9 @@ private:
 
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
-  const Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
-                                                    Type *OffsetTy);
+  const Constant *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
+                                                       Type *OffsetTy,
+                                                       BasicBlock *InsertBlock);
   Value *getMemoryAddressExprValue(const MachineInstr &);
   Value *createPCRelativeAccesssValue(const MachineInstr &);
 

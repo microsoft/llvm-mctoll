@@ -1124,7 +1124,7 @@ MachineInstr *ARMInstructionSplitting::splitCS(MachineBasicBlock &MBB,
 
 bool ARMInstructionSplitting::split() {
   if (PrintPass)
-    LLVM_DEBUG(dbgs() << "ARMInstructionSplitting start.\n");
+    dbgs() << "ARMInstructionSplitting start.\n";
 
   std::vector<MachineInstr *> removelist;
   for (MachineBasicBlock &MBB : *MF) {
@@ -1206,7 +1206,7 @@ bool ARMInstructionSplitting::split() {
   if (PrintPass) {
     LLVM_DEBUG(MF->dump());
     LLVM_DEBUG(getCRF()->dump());
-    LLVM_DEBUG(dbgs() << "ARMInstructionSplitting end.\n");
+    dbgs() << "ARMInstructionSplitting end.\n";
   }
 
   return true;

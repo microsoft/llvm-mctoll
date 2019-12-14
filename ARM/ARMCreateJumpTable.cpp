@@ -344,7 +344,7 @@ bool ARMCreateJumpTable::getJTlist(std::vector<JumpTableInfo> &List) {
 
 bool ARMCreateJumpTable::create() {
   if (PrintPass)
-    LLVM_DEBUG(dbgs() << "ARMCreateJumpTable start.\n");
+    dbgs() << "ARMCreateJumpTable start.\n";
 
   raiseMaichineJumpTable(*MF);
 
@@ -352,7 +352,7 @@ bool ARMCreateJumpTable::create() {
   if (PrintPass) {
     LLVM_DEBUG(MF->dump());
     LLVM_DEBUG(getCRF()->dump());
-    LLVM_DEBUG(dbgs() << "ARMCreateJumpTable end.\n");
+    dbgs() << "ARMCreateJumpTable end.\n";
   }
 
   return false;

@@ -149,7 +149,7 @@ void ARMArgumentRaiser::updateParameterInstr(MachineFunction &mf) {
 
 bool ARMArgumentRaiser::raiseArgs() {
   if (PrintPass)
-    LLVM_DEBUG(dbgs() << "ARMArgumentRaiser start.\n");
+    dbgs() << "ARMArgumentRaiser start.\n";
 
   Function *fn = getCRF();
 
@@ -169,7 +169,7 @@ bool ARMArgumentRaiser::raiseArgs() {
   if (PrintPass) {
     LLVM_DEBUG(MF->dump());
     LLVM_DEBUG(getCRF()->dump());
-    LLVM_DEBUG(dbgs() << "ARMArgumentRaiser end.\n");
+    dbgs() << "ARMArgumentRaiser end.\n";
   }
 
   return true;

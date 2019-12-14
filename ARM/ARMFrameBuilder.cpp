@@ -289,7 +289,7 @@ void ARMFrameBuilder::searchStackObjects(MachineFunction &mf) {
 
 bool ARMFrameBuilder::build() {
   if (PrintPass)
-    LLVM_DEBUG(dbgs() << "ARMFrameBuilder start.\n");
+    dbgs() << "ARMFrameBuilder start.\n";
 
   searchStackObjects(*MF);
 
@@ -297,7 +297,7 @@ bool ARMFrameBuilder::build() {
   if (PrintPass) {
     LLVM_DEBUG(MF->dump());
     LLVM_DEBUG(getCRF()->dump());
-    LLVM_DEBUG(dbgs() << "ARMFrameBuilder end.\n");
+    dbgs() << "ARMFrameBuilder end.\n";
   }
 
   return true;

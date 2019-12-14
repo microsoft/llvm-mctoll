@@ -542,7 +542,7 @@ bool ARMMIRevising::reviseMI(MachineInstr &MInst) {
 bool ARMMIRevising::revise() {
   bool rtn = false;
   if (PrintPass)
-    LLVM_DEBUG(dbgs() << "ARMMIRevising start.\n");
+    dbgs() << "ARMMIRevising start.\n";
 
   vector<MachineInstr *> RMVec;
   for (MachineFunction::iterator mbbi = MF->begin(), mbbe = MF->end();
@@ -564,7 +564,7 @@ bool ARMMIRevising::revise() {
   if (PrintPass) {
     LLVM_DEBUG(MF->dump());
     LLVM_DEBUG(getCRF()->dump());
-    LLVM_DEBUG(dbgs() << "ARMMIRevising end.\n");
+    dbgs() << "ARMMIRevising end.\n";
   }
 
   return rtn;

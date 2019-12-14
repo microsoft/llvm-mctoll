@@ -77,7 +77,6 @@ private:
   // raising process. Making this map mutable since this map is expected to be
   // updated throughout the raising process.
   mutable std::map<uint64_t, Value *> GlobalRODataValues;
-
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H

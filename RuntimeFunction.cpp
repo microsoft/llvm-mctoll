@@ -25,12 +25,13 @@ Function *RuntimeFunction::getOrCreateSecOffsetCalcFunction(Module &M) {
     Type *Int64Ty = Type::getInt64Ty(Ctx);
     Value *Zero64BitValue = ConstantInt::get(Int64Ty, 0, false /* isSigned */);
 
-    ArrayRef<Type *> argTypeVector({
+    SmallVector<Type *, 4> argTypes = {
         Int64Ty /* RODAddr */,
         Int64Ty /* SecStAddr */,
         Int64Ty /*SecSize */,
         Int64Ty /* Runtime ROData GV */,
-    });
+    };
+    ArrayRef<Type *> argTypeVector(argTypes);
 
     FunctionType *FuncType =
         FunctionType::get(Int64Ty, argTypeVector, false /* isVarArg*/);

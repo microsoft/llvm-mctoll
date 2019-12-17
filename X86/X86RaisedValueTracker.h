@@ -67,6 +67,20 @@ public:
   std::pair<int, Value *> getInBlockRegOrArgDefVal(unsigned int PhysReg,
                                                    int MBBNo);
   unsigned getInBlockPhysRegSize(unsigned int PhysReg, int MBBNo);
+  // Cast SrcVal to type DstTy, if the type of SrcVal is different from DstTy.
+  // Return the cast instruction upon inserting it at the end of InsertBlock
+  Value *castValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock);
+
+  // If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of
+  // Inst; if SrcValue is an instruction with rodata index metadata, copy it to
+  // Inst.
+  bool setInstMetadataRODataIndex(Value *SrcValue, Instruction *Inst);
+  // Set metadata of the load instruction if it loads from a value abstracting
+  // the content of rodata section.
+  LoadInst *setInstMetadataRODataContent(LoadInst *Inst);
+  // Associate metadata with rodata section start address in the source binary
+  bool setGVMetadataRODataInfo(GlobalVariable *, uint64_t RODataSecStart);
+  Value *getRelocOffsetForRODataAddress(Value *SrcRODataAddr);
 
   enum { INVALID_MBB = -1 };
 

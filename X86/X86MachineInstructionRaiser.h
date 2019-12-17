@@ -159,9 +159,8 @@ private:
 
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
-  const Constant *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
-                                                       Type *OffsetTy,
-                                                       BasicBlock *InsertBlock);
+  Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset, Type *OffsetTy,
+                                              BasicBlock *InsertBlock);
   Value *getMemoryAddressExprValue(const MachineInstr &);
   Value *createPCRelativeAccesssValue(const MachineInstr &);
 
@@ -188,9 +187,6 @@ private:
   int64_t getBranchTargetMBBNumber(const MachineInstr &MI);
   Function *getCalledFunction(const MachineInstr &MI);
 
-  // Cast SrcVal to type DstTy, if the type of SrcVal is different from DstTy.
-  // Return the cast instruction upon inserting it at the end of InsertBlock
-  Value *castValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock);
   Type *getImmOperandType(const MachineInstr &MI, unsigned int OpIndex);
   uint8_t getPhysRegOperandSize(const MachineInstr &MI, unsigned int OpIndex);
   Type *getPhysRegOperandType(const MachineInstr &MI, unsigned int OpIndex);

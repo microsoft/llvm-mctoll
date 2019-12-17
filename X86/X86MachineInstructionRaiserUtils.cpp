@@ -25,21 +25,6 @@ using namespace llvm;
 using namespace mctoll;
 using namespace X86RegisterUtils;
 
-// Cast SrcVal to the type of DstVal, if their types are different.
-// Return the cast instruction upon inserting it at the end of InsertBlock
-Value *X86MachineInstructionRaiser::castValue(Value *SrcValue, Type *DstTy,
-                                              BasicBlock *InsertBlock) {
-  if (SrcValue->getType() != DstTy) {
-    Instruction *CInst =
-        CastInst::Create(CastInst::getCastOpcode(SrcValue, false, DstTy, false),
-                         SrcValue, DstTy);
-    // Add the cast instruction RaisedBB.
-    InsertBlock->getInstList().push_back(CInst);
-    return CInst;
-  } else
-    return SrcValue;
-}
-
 // Delete noop instructions
 bool X86MachineInstructionRaiser::deleteNOOPInstrMI(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) {
@@ -1031,15 +1016,14 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
 // This returns a Value of type GetElementPtrConstantExpr. However, this type
 // can not be used explicitly since it is private to Constants.cpp (See comment
 // in llvm/lib/IR/ConstantsContext.h)
-const Constant *
-X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
+Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
     int64_t Offset, Type *OffsetTy1, BasicBlock *InsertBB) {
   // A negative offset implies that this is not an offset into ro-data
   // section. Just return nullptr.
   if (Offset < 0) {
     return nullptr;
   }
-  const Constant *RODataValue = nullptr;
+  Value *RODataValue = nullptr;
   const ELF64LEObjectFile *Elf64LEObjFile =
       dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
   assert(Elf64LEObjFile != nullptr &&
@@ -1080,6 +1064,11 @@ X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
               *(MR->getModule()), StrConstant->getType(), true /* isConstant */,
               GlobalValue::PrivateLinkage, StrConstant, RODataSecValueName);
           GlobalStrConstVal->setAlignment(MaybeAlign(SecIter->getAlignment()));
+          // Address is not significant
+          GlobalStrConstVal->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+          // Add metadata that indicates the section start
+          getRaisedValues()->setGVMetadataRODataInfo(GlobalStrConstVal,
+                                                     SecStart);
           RODataSecValue = GlobalStrConstVal;
         }
         unsigned DataOffset = Offset - SecStart;
@@ -1144,9 +1133,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
   if (!GlobalDataSymFound) {
     // If Offset does not correspond to a global symbol, get the corresponding
     // rodata value.
-    GlobalVariableValue =
-        const_cast<Constant *>(getOrCreateGlobalRODataValueAtOffset(
-            Offset, Type::getInt64Ty(MF.getFunction().getContext()), RaisedBB));
+    GlobalVariableValue = getOrCreateGlobalRODataValueAtOffset(
+        Offset, Type::getInt64Ty(MF.getFunction().getContext()), RaisedBB);
   } else {
     // If Offset corresponds to a global symbol, materialize a global
     // variable.
@@ -1257,10 +1245,9 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                 // Finish reading one symbol data item of size.
                 SymArrayElem |= B << (MemAccessSizeInBytes - 1) * 8;
                 // if this is an address in .rodata section
-                const Constant *RODataValue =
-                    getOrCreateGlobalRODataValueAtOffset(
-                        SymArrayElem,
-                        Type::getIntNTy(Ctx, MemAccessSizeInBytes), RaisedBB);
+                Value *RODataValue = getOrCreateGlobalRODataValueAtOffset(
+                    SymArrayElem, Type::getIntNTy(Ctx, MemAccessSizeInBytes),
+                    RaisedBB);
                 // If the SymArrElem does not correspond to an .rodata address
                 // consider it to be data.
                 if (RODataValue == nullptr) {
@@ -1270,7 +1257,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                 } else {
                   // SymArrElem corresponds to an .rodata address,
                   if (isa<ConstantExpr>(RODataValue)) {
-                    ConstantVec.push_back(const_cast<Constant *>(RODataValue));
+                    ConstantVec.push_back(dyn_cast<Constant>(RODataValue));
                   } else {
                     assert(false && "Unhandled global value");
                   }
@@ -1441,6 +1428,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
   llvm::LLVMContext &Ctx(MF.getFunction().getContext());
+  X86RaisedValueTracker *RVT = getRaisedValues();
   // Construct non-stack memory referencing value
   unsigned BaseReg = MemRef.Base.Reg;
   unsigned IndexReg = MemRef.IndexReg;
@@ -1485,8 +1473,11 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
              "Unexpected null value of base reg while constructing memory "
              "address expression");
       // Ensure the type of BaseRegVal matched that of MemrefValue.
-      BaseRegVal = castValue(BaseRegVal, MemrefValue->getType(), RaisedBB);
+      BaseRegVal = getRaisedValues()->castValue(
+          BaseRegVal, MemrefValue->getType(), RaisedBB);
       Instruction *AddInst = BinaryOperator::CreateAdd(BaseRegVal, MemrefValue);
+      // Propagate rodata related metadata
+      RVT->setInstMetadataRODataIndex(BaseRegVal, AddInst);
       RaisedBB->getInstList().push_back(AddInst);
       MemrefValue = AddInst;
     } else {
@@ -1535,6 +1526,8 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                       CastInst::getCastOpcode(GlobGEP->getPointerOperand(),
                                               false, ByteArrValPtrTy, false),
                       GlobGEP->getPointerOperand(), ByteArrValPtrTy);
+                  // Propagate rodata related metadata
+                  RVT->setInstMetadataRODataIndex(GV, CastToArrInst);
                   RaisedBB->getInstList().push_back(CastToArrInst);
 
                   // Construct index array for a GEP instruction that accesses
@@ -1582,8 +1575,8 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                 // is correct as we know that DispValue is an instruction;
                 // castValue returns ByteAccessGEP (an Instruction) if no cast
                 // is done or a value of type CastInst, if cast is done.
-                DispValue = dyn_cast<Instruction>(
-                    castValue(DispValue, MemrefValue->getType(), RaisedBB));
+                DispValue = dyn_cast<Instruction>(getRaisedValues()->castValue(
+                    DispValue, MemrefValue->getType(), RaisedBB));
               } else {
                 assert(false && "Unhandled situation where global symbol GEP "
                                 "is not an array");
@@ -1599,7 +1592,8 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
           // the addition performed later to construct the address expression.
           if (GV->getType()->getPointerElementType()->isIntegerTy()) {
 
-            DispValue = castValue(GV, MemrefValue->getType(), RaisedBB);
+            DispValue = getRaisedValues()->castValue(GV, MemrefValue->getType(),
+                                                     RaisedBB);
           } else {
             assert(false && "Unhandled non-integer pointer global symbol type "
                             "while computing memory address expression");
@@ -1611,9 +1605,10 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
       }
       // Generate add memrefVal, Disp.
       Instruction *AddInst = BinaryOperator::CreateAdd(MemrefValue, DispValue);
+      getRaisedValues()->setInstMetadataRODataIndex(MemrefValue, AddInst);
+      getRaisedValues()->setInstMetadataRODataIndex(DispValue, AddInst);
       RaisedBB->getInstList().push_back(AddInst);
       MemrefValue = AddInst;
-      //}
     } else {
       // Check that this is an instruction of the kind
       // mov %rax, 0x605798 which in reality is
@@ -1684,7 +1679,7 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
     Type *PRegTy = getPhysRegOperandType(MI, OpIndex);
     // Get the BasicBlock corresponding to MachineBasicBlock of MI.
     BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-    PRegValue = castValue(PRegValue, PRegTy, RaisedBB);
+    PRegValue = getRaisedValues()->castValue(PRegValue, PRegTy, RaisedBB);
   }
   return PRegValue;
 }
@@ -1700,8 +1695,8 @@ int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
 
 bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(
     Instruction *alloca) {
-  // Avoid using BasicBlock InstrList iterators so that the tool can
-  // use LLVM built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
+  // Avoid using BasicBlock InstrList iterators so that the tool can use LLVM
+  // built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
   BasicBlock &EntryBlock = getRaisedFunction()->getEntryBlock();
 
   BasicBlock::InstListType &InstList = EntryBlock.getInstList();

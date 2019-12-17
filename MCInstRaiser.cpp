@@ -221,7 +221,6 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
   // Create ConstantAsMetadata
   ConstantAsMetadata *CMD =
       ConstantAsMetadata::get(ConstantInt::get(C, ArbPrecInt));
-  // MDNode* temp_N = MDNode::get(C, CMD);
   MDNode *N = MDNode::get(C, CMD);
   builder.addMetadata(N);
   return builder.getInstr();

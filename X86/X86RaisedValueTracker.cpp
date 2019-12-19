@@ -12,15 +12,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86RaisedValueTracker.h"
+#include "InstMetadata.h"
+#include "RuntimeFunction.h"
 #include "X86RegisterUtils.h"
 #include "llvm/Support/Debug.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
-#include "../RuntimeFunction.h"
 
 #define DEBUG_TYPE "mctoll"
 
 using namespace X86RegisterUtils;
+using namespace mctoll;
 
 X86RaisedValueTracker::X86RaisedValueTracker(
     X86MachineInstructionRaiser *MIRaiser)
@@ -387,7 +389,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
         x86MIRaiser->recordDefsToPromote(PhysReg, MBBVal.first, Alloca);
       } else {
         Instruction *I = dyn_cast<Instruction>(MBBVal.second);
-        if (!Alloca->hasMetadata() && (I != nullptr)) {
+        if (!hasRODataAccess(Alloca) && (I != nullptr)) {
           Alloca->copyMetadata(*I);
         }
         StoreInst *StInst = x86MIRaiser->promotePhysregToStackSlot(
@@ -956,10 +958,6 @@ Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
   return SrcValue;
 }
 
-#define RODATA_INDEX_MD_STR "ROData_Index"
-#define RODATA_CONTENT_MD_STR "ROData_Content"
-#define RODATA_SEC_INFO_MD_STR "ROData_SecInfo"
-
 // If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of
 // Inst; if SrcValue is an instruction with rodata index metadata, copy it to
 // Inst.
@@ -972,7 +970,7 @@ bool X86RaisedValueTracker::setInstMetadataRODataIndex(Value *SrcValue,
     std::string OpcodeName(RODataIndex->getOpcodeName());
     if (OpcodeName.compare("getelementptr") == 0) {
       if (RODataIndex->getOperand(0)->getName().startswith("rodata_")) {
-        assert(!Inst->hasMetadata() && "Instruction already has metadata");
+        assert(!hasRODataAccess(Inst) && "ROData annotation already exists");
         // Add metadata to indicate that this instruction uses rodata index.
         auto ROMD = ValueAsMetadata::get(SrcValue);
         Inst->setMetadata(
@@ -981,8 +979,8 @@ bool X86RaisedValueTracker::setInstMetadataRODataIndex(Value *SrcValue,
       }
     }
   } else if (auto InstUsingROData = dyn_cast<Instruction>(SrcValue)) {
-    if (InstUsingROData->hasMetadata()) {
-      assert(!Inst->hasMetadata() && "Instruction already has metadata");
+    if (hasRODataAccess(InstUsingROData)) {
+      assert(!hasRODataAccess(Inst) && "ROData annotation already exists");
       Inst->copyMetadata(*InstUsingROData);
     }
   }
@@ -1007,7 +1005,7 @@ X86RaisedValueTracker::setInstMetadataRODataContent(LoadInst *LdInst) {
     std::string OpcodeName(RODataIndex->getOpcodeName());
     if (OpcodeName.compare("getelementptr") == 0) {
       if (RODataIndex->getOperand(0)->getName().startswith("rodata_")) {
-        assert(!LdInst->hasMetadata() && "Instruction already has metadata");
+        assert(!hasRODataAccess(LdInst) && "ROData annotation already exists");
         // Get metadata representing the rodata index. Note that this may NOT be
         // the rodata index represented by SrcValue. SrcValue may be an
         // expression representing the address computation based on this rodata
@@ -1021,8 +1019,8 @@ X86RaisedValueTracker::setInstMetadataRODataContent(LoadInst *LdInst) {
       }
     }
   } else if (auto SrcValueAsInst = dyn_cast<Instruction>(SrcValue)) {
-    if (SrcValueAsInst->hasMetadata()) {
-      assert(!LdInst->hasMetadata() && "Instruction already has metadata");
+    if (hasRODataAccess(SrcValueAsInst)) {
+      assert(!hasRODataAccess(LdInst) && "ROData annotation already exists");
       // Get metadata representing the rodata index. Note that this may NOT be
       // the rodata index represented by SrcValue. SrcValue may be an
       // instruction representing the address computation based on this rodata

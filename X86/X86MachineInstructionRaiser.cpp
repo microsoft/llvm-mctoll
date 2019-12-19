@@ -1108,7 +1108,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     Instruction *BinOpInst = BinaryOperator::CreateAnd(Src1Value, Src2Value);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
-    raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+    if (Src1Value != Src2Value)
+      raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
     RaisedBB->getInstList().push_back(BinOpInst);
     dstValue = BinOpInst;
     // Clear OF and CF

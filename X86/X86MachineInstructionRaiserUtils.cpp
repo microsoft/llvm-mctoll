@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ExternalFunctions.h"
+#include "InstMetadata.h"
 #include "X86MachineInstructionRaiser.h"
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
@@ -779,6 +780,11 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   // sp reference and there is already a stack allocation, just return that
   // value
   if ((MemRef.Disp == 0) && (CurSPVal != nullptr)) {
+    if (Instruction *I = dyn_cast<Instruction>(CurSPVal)) {
+      if (hasRODataAccess(I))
+        // Refers to rodata; so has no sp allocation;
+        return nullptr;
+    }
     return CurSPVal;
   }
   // At this point, the stack offset specified in the memory opernad is
@@ -796,6 +802,9 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
       // Check if this is an instruction that loads from stack (i.e., alloc)
       LoadInst *LoadAllocInst = dyn_cast<LoadInst>(CurSPVal);
       if (LoadAllocInst) {
+        if (hasRODataAccess(LoadAllocInst))
+          // Refers to rodata; so has no sp allocation;
+          return nullptr;
         // Set current SP value to be the alloc being loaded from.
         CurSPVal = LoadAllocInst->getPointerOperand();
       } else {

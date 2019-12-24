@@ -680,24 +680,22 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
 
 // Promote any reaching definitions that remained unpromoted.
 bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
-  if (reachingDefsToPromote.size() > 0) {
-    for (auto RDToFix : reachingDefsToPromote) {
-      unsigned PReg = std::get<0>(RDToFix);
-      unsigned int SuperReg = find64BitSuperReg(PReg);
-      unsigned int DefiningMBBNo = std::get<1>(RDToFix);
-      Value *Val = std::get<2>(RDToFix);
-      assert((isa<AllocaInst>(Val)) &&
-             "Found value that is not a stack location "
-             "during reaching definition fixup");
-      AllocaInst *Alloca = dyn_cast<AllocaInst>(Val);
-      Value *ReachingDef =
-          raisedValues->getInBlockRegOrArgDefVal(PReg, DefiningMBBNo).second;
-      assert((ReachingDef != nullptr) &&
-             "Null reaching definition found during reaching definition fixup");
-      StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,
-                                                    DefiningMBBNo, Alloca);
-      assert(StInst != nullptr && "Failed to promote register to memory");
-    }
+  for (auto RDToFix : reachingDefsToPromote) {
+    unsigned PReg = std::get<0>(RDToFix);
+    unsigned int SuperReg = find64BitSuperReg(PReg);
+    unsigned int DefiningMBBNo = std::get<1>(RDToFix);
+    Value *Val = std::get<2>(RDToFix);
+    assert((isa<AllocaInst>(Val)) &&
+           "Found value that is not a stack location "
+           "during reaching definition fixup");
+    AllocaInst *Alloca = dyn_cast<AllocaInst>(Val);
+    Value *ReachingDef =
+        raisedValues->getInBlockRegOrArgDefVal(PReg, DefiningMBBNo).second;
+    assert((ReachingDef != nullptr) &&
+           "Null reaching definition found during reaching definition fixup");
+    StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,
+                                                  DefiningMBBNo, Alloca);
+    assert(StInst != nullptr && "Failed to promote register to memory");
   }
   return true;
 }

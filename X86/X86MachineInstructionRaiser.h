@@ -18,10 +18,8 @@
 #include "X86AdditionalInstrInfo.h"
 #include "llvm/IR/Instructions.h"
 
-/*
- * Type alias for Map of MBBNo -> BasicBlock * used to keep track of
- * MachineBasicBlock and corresponding raised BasicBlock
- */
+// Type alias for Map of MBBNo -> BasicBlock * used to keep track of
+// MachineBasicBlock and corresponding raised BasicBlock
 using MBBNumToBBMap = std::map<unsigned int, BasicBlock *>;
 
 // Tuple of <PhysReg, DefiningMBBNo, Alloca>
@@ -214,4 +212,4 @@ private:
   std::set<int> tailCallMBBNos;
 };
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ELIMINATEPROLOGEPILOG_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MACHINEINSTRUCTIONRAISER_H

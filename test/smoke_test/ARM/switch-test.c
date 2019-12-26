@@ -2,6 +2,7 @@
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s
+// XFAIL: *
 // CHECK: Switch 1
 // CHECK-NEXT: Return 15
 // CHECK-NEXT: Switch 2

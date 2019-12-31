@@ -55,6 +55,7 @@ add_llvm_tool(llvm-mctoll
   MCInstOrData.cpp
   MCInstRaiser.cpp
   EmitRaisedOutputPass.cpp
+  RuntimeFunction.cpp
 )
 
 # Link against LLVM libraries and target-specific Raiser libraries

@@ -297,8 +297,8 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
     Type *ImmTy = getImmOperandType(MI, 1);
     Value *SrcValue = ConstantInt::get(ImmTy, SrcImm);
 
-    SrcValue = castValue(SrcValue, getPhysRegType(DstPReg),
-                         getRaisedBasicBlock(MI.getParent()));
+    SrcValue = getRaisedValues()->castValue(
+        SrcValue, getPhysRegType(DstPReg), getRaisedBasicBlock(MI.getParent()));
 
     if (SrcImm > 0) {
       // Check if the immediate value corresponds to a global variable.
@@ -635,11 +635,12 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
       RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CMOVCond));
 
       // Ensure that the types of SrcValue and DstValue match.
-      DstValue = castValue(DstValue, SrcValue->getType(), RaisedBB);
+      DstValue =
+          getRaisedValues()->castValue(DstValue, SrcValue->getType(), RaisedBB);
 
       // Generate SelectInst for CMOV instruction
-      SelectInst *SI = SelectInst::Create(CMOVCond, SrcValue, DstValue, "CMOV");
-      RaisedBB->getInstList().push_back(SI);
+      SelectInst *SI =
+          SelectInst::Create(CMOVCond, SrcValue, DstValue, "CMOV", RaisedBB);
 
       // Update the value mapping of DstPReg
       raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SI);
@@ -751,7 +752,8 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
   // Cast the result as needed
-  EffectiveAddrValue = castValue(EffectiveAddrValue, DstTy, RaisedBB);
+  EffectiveAddrValue =
+      getRaisedValues()->castValue(EffectiveAddrValue, DstTy, RaisedBB);
 
   // Update the value mapping of DestReg
   raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
@@ -839,22 +841,26 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   switch (opc) {
   case X86::ADD8rr:
   case X86::ADD32rr:
-  case X86::ADD64rr:
+  case X86::ADD64rr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
     // Verify the def operand is a register.
     assert(MI.getOperand(DestOpIndex).isReg() &&
            "Expecting destination of add instruction to be a register "
            "operand");
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected number of defines in an add instruction");
-    assert((ExplicitSrcValues.at(0) != nullptr) &&
-           (ExplicitSrcValues.at(1) != nullptr) &&
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
            "Unhandled situation: register is used before initialization in "
            "add");
     dstReg = MI.getOperand(DestOpIndex).getReg();
-    dstValue = BinaryOperator::CreateNSWAdd(ExplicitSrcValues.at(0),
-                                            ExplicitSrcValues.at(1));
-    if (isa<Instruction>(dstValue))
-      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    // Create add instruction
+    Instruction *BinOpInst = BinaryOperator::CreateNSWAdd(Src1Value, Src2Value);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
     // Set SF and ZF based on dstValue; technically OF, AF, CF and PF also
     // needs to be set but ignoring for now.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
@@ -862,29 +868,33 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
-    break;
+  } break;
   case X86::IMUL16rr:
   case X86::IMUL32rr:
-  case X86::IMUL64rr:
+  case X86::IMUL64rr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
     // Verify the def operand is a register.
     assert(MI.getOperand(DestOpIndex).isReg() &&
            "Expecting destination of mul instruction to be a register "
            "operand");
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected number of defines in a mul instruction");
-    assert((ExplicitSrcValues.at(0) != nullptr) &&
-           (ExplicitSrcValues.at(1) != nullptr) &&
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
            "Unhandled situation: register is used before initialization in "
            "mul");
     dstReg = MI.getOperand(DestOpIndex).getReg();
-    dstValue = BinaryOperator::CreateNSWMul(ExplicitSrcValues.at(0),
-                                            ExplicitSrcValues.at(1));
-    if (isa<Instruction>(dstValue))
-      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    Instruction *BinOpInst = BinaryOperator::CreateNSWMul(Src1Value, Src2Value);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+
+    dstValue = BinOpInst;
     // Setting EFLAG bits does not seem to matter, so not setting
     // Set the dstReg value
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
-    break;
+  } break;
   case X86::IMUL64r: {
     assert(MCID.getNumDefs() == 0 && MCID.getNumImplicitDefs() == 3 &&
            MCID.getNumImplicitUses() == 1 &&
@@ -918,20 +928,27 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            Src2Value->getType()->isIntegerTy() &&
            "Unexpected non-integer type source operands in imul instruction");
     LLVMContext &Ctx(MF.getFunction().getContext());
-    // Widen the source values since the result of th emultiplication
+    // Widen the source values since the result of the multiplication
     Type *WideTy = Type::getIntNTy(Ctx, SrcOpSize * 2);
     CastInst *Src1ValueDT =
         CastInst::Create(CastInst::getCastOpcode(Src1Value, true, WideTy, true),
                          Src1Value, WideTy);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, Src1ValueDT);
     RaisedBB->getInstList().push_back(Src1ValueDT);
 
     CastInst *Src2ValueDT =
         CastInst::Create(CastInst::getCastOpcode(Src2Value, true, WideTy, true),
                          Src2Value, WideTy);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src2Value, Src2ValueDT);
     RaisedBB->getInstList().push_back(Src2ValueDT);
     // Multiply the values
     Instruction *FullProductValue =
         BinaryOperator::CreateNSWMul(Src1ValueDT, Src2ValueDT);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1ValueDT, FullProductValue);
+    raisedValues->setInstMetadataRODataIndex(Src2ValueDT, FullProductValue);
     RaisedBB->getInstList().push_back(FullProductValue);
     // Shift amount equal to size of source operand
     Value *ShiftAmountVal =
@@ -943,14 +960,20 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Compute shr of FullProductValue
     Instruction *ShrDT =
         BinaryOperator::CreateLShr(FullProductValue, ShiftAmountVal);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(FullProductValue, ShrDT);
     RaisedBB->getInstList().push_back(ShrDT);
     // Now generate ShrDT OR 0
     Instruction *OrDT = BinaryOperator::CreateOr(ShrDT, ZeroValueDT);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(ShrDT, OrDT);
     RaisedBB->getInstList().push_back(OrDT);
     // Cast OrValDT to SrcOpSize
     Type *SrcValTy = Src1Value->getType();
     CastInst *ProductUpperValue = CastInst::Create(
         CastInst::getCastOpcode(OrDT, true, SrcValTy, true), OrDT, SrcValTy);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(OrDT, ProductUpperValue);
     RaisedBB->getInstList().push_back(ProductUpperValue);
     // Set the value of ImplicitDef[0] as ProductLowreHalfValue
     raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[0], MBBNo,
@@ -965,11 +988,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     Instruction *AndValDT =
         BinaryOperator::CreateAnd(FullProductValue, MaskValDT);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(FullProductValue, AndValDT);
     RaisedBB->getInstList().push_back(AndValDT);
     // Cast AndValDT to SrcOpSize
     CastInst *ProductLowerHalfValue = CastInst::Create(
         CastInst::getCastOpcode(AndValDT, true, SrcValTy, true), AndValDT,
         SrcValTy);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(AndValDT, ProductLowerHalfValue);
     RaisedBB->getInstList().push_back(ProductLowerHalfValue);
     // Set the value of ImplicitDef[1] as ProductLowerHalfValue
     raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[1], MBBNo,
@@ -1020,37 +1047,40 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->setEflagValue(EFLAGS::SF, MBBNo, false);
       raisedValues->setEflagValue(EFLAGS::ZF, MBBNo, true);
     } else {
-      assert((ExplicitSrcValues.at(0) != nullptr) &&
-             (ExplicitSrcValues.at(1) != nullptr) &&
+      Value *Src1Value = ExplicitSrcValues.at(0);
+      Value *Src2Value = ExplicitSrcValues.at(1);
+      assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
              "Unhandled situation: register used before initialization in "
              "xor");
+      Instruction *BinOpInst = nullptr;
       switch (opc) {
       case X86::AND8rr:
       case X86::AND16rr:
       case X86::AND32rr:
       case X86::AND64rr:
-        dstValue = BinaryOperator::CreateAnd(ExplicitSrcValues.at(0),
-                                             ExplicitSrcValues.at(1));
+        BinOpInst = BinaryOperator::CreateAnd(Src1Value, Src2Value);
         break;
       case X86::OR8rr:
       case X86::OR16rr:
       case X86::OR32rr:
       case X86::OR64rr:
-        dstValue = BinaryOperator::CreateOr(ExplicitSrcValues.at(0),
-                                            ExplicitSrcValues.at(1));
+        BinOpInst = BinaryOperator::CreateOr(Src1Value, Src2Value);
         break;
       case X86::XOR8rr:
       case X86::XOR16rr:
       case X86::XOR32rr:
       case X86::XOR64rr:
-        dstValue = BinaryOperator::CreateXor(ExplicitSrcValues.at(0),
-                                             ExplicitSrcValues.at(1));
+        BinOpInst = BinaryOperator::CreateXor(Src1Value, Src2Value);
         break;
       default:
         assert(false && "Reached unexpected location");
       }
-      if (isa<Instruction>(dstValue))
-        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+      // Copy any necessary rodata related metadata
+      raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+      raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+
+      RaisedBB->getInstList().push_back(BinOpInst);
+      dstValue = BinOpInst;
       // Set SF and ZF based on dstValue; technically PF also needs
       // to be set but ignoring for now.
       raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
@@ -1065,19 +1095,23 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::TEST8rr:
   case X86::TEST16rr:
   case X86::TEST32rr:
-  case X86::TEST64rr:
+  case X86::TEST64rr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
     assert((MCID.getNumDefs() == 0) &&
            MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            "Unexpected defines in a test instruction");
-    assert((ExplicitSrcValues.at(0) != nullptr) &&
-           (ExplicitSrcValues.at(1) != nullptr) &&
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
            "Unhandled situation: register is used before initialization in "
            "test");
     dstReg = X86::EFLAGS;
-    dstValue = BinaryOperator::CreateAnd(ExplicitSrcValues.at(0),
-                                         ExplicitSrcValues.at(1));
-    if (isa<Instruction>(dstValue))
-      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    Instruction *BinOpInst = BinaryOperator::CreateAnd(Src1Value, Src2Value);
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    if (Src1Value != Src2Value)
+      raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
     // Clear OF and CF
     raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
     raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
@@ -1085,7 +1119,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // to be set but ignoring for now.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
-    break;
+  } break;
   case X86::NEG8r:
   case X86::NEG16r:
   case X86::NEG32r:
@@ -1100,14 +1134,16 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            "Unexpected defines in a neg instruction");
     dstReg = DestOp.getReg();
-    Value *SrcOp = ExplicitSrcValues.at(0);
-    dstValue = BinaryOperator::CreateNeg(SrcOp);
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Instruction *BinOpInst = BinaryOperator::CreateNeg(Src1Value);
+    dstValue = BinOpInst;
     // Set CF to 0 if source operand is 0
     // Note: Add this instruction _before_ adding the result of neg
     raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, dstValue);
     // Now add the neg instruction
-    if (isa<Instruction>(dstValue))
-      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
     // Now set up the flags according to the result
     // Set SF and ZF based on dstValue; technically PF also needs
     // to be set but ignoring for now.
@@ -1129,12 +1165,14 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     assert((MCID.getNumDefs() == 1) &&
            "Unexpected defines in a not instruction");
     dstReg = DestOp.getReg();
-    Value *SrcOp = ExplicitSrcValues.at(0);
-    dstValue = BinaryOperator::CreateNot(SrcOp);
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Instruction *BinOpInst = BinaryOperator::CreateNot(Src1Value);
     // No EFLAGS are effected
     // Add the not instruction
-    if (isa<Instruction>(dstValue))
-      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
@@ -1163,7 +1201,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     else {
       // cast CountValue as needed
       Type *SrcOpValueTy = SrcOpValue->getType();
-      CountValue = castValue(CountValue, SrcOpValueTy, RaisedBB);
+      CountValue =
+          getRaisedValues()->castValue(CountValue, SrcOpValueTy, RaisedBB);
       // Count is masked to 5 bits (6 bits if 64-bit register)
       bool Is64Bit = (SrcOpValue->getType()->getPrimitiveSizeInBits() == 64);
       Value *CountMask = Is64Bit ? ConstantInt::get(SrcOpValueTy, 0x1f)
@@ -1172,11 +1211,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       CountValue = BinaryOperator::CreateAnd(CountValue, CountMask,
                                              "shl-cnt-msk", RaisedBB);
 
-      dstValue = BinaryOperator::CreateShl(SrcOpValue, CountValue);
+      Instruction *BinOpInst =
+          BinaryOperator::CreateShl(SrcOpValue, CountValue);
 
+      // Copy any necessary rodata related metadata
+      raisedValues->setInstMetadataRODataIndex(SrcOpValue, BinOpInst);
+      raisedValues->setInstMetadataRODataIndex(CountValue, BinOpInst);
       // Add the shl instruction
-      if (isa<Instruction>(dstValue))
-        RaisedBB->getInstList().push_back(dyn_cast<Instruction>(dstValue));
+      RaisedBB->getInstList().push_back(BinOpInst);
+      dstValue = BinOpInst;
 
       // Affected EFLAGS
       raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, dstValue);
@@ -1244,6 +1287,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
       // Cast it to a pointer of type of destination operand.
       PointerType *PtrTy = PointerType::get(DestopTy, 0);
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
+      getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
       RaisedBB->getInstList().push_back(ConvIntToPtr);
       MemRefValue = ConvIntToPtr;
     }
@@ -1254,11 +1298,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     LoadInst *LdInst =
         new LoadInst(dyn_cast<LoadInst>(MemRefValue)->getPointerOperand());
     LdInst->setAlignment(MaybeAlign(MemAlignment));
-    LoadValue = LdInst;
+    LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
   } else {
     LoadInst *LdInst = new LoadInst(MemRefValue);
     LdInst->setAlignment(MaybeAlign(MemAlignment));
-    LoadValue = LdInst;
+    LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
   }
   // Insert the instruction that loads memory reference
   RaisedBB->getInstList().push_back(dyn_cast<Instruction>(LoadValue));
@@ -1266,7 +1310,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
 
   // Generate cast instruction to ensure source and destination types are
   // consistent, as needed.
-  LoadValue = castValue(LoadValue, DestValue->getType(), RaisedBB);
+  LoadValue =
+      getRaisedValues()->castValue(LoadValue, DestValue->getType(), RaisedBB);
 
   switch (Opcode) {
   case X86::ADD64rm:
@@ -1333,6 +1378,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     assert(false && "Unhandled binary op mem to reg instruction ");
   }
   // Add instruction to block
+  getRaisedValues()->setInstMetadataRODataIndex(LoadValue, BinOpInst);
   RaisedBB->getInstList().push_back(BinOpInst);
 
   // Clear EFLAGS if any
@@ -1620,6 +1666,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
         PointerType::get(getPhysRegOperandType(MI, LoadOpIndex), 0);
     if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
+      // Set or copy rodata metadata, if any
+      getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
       RaisedBB->getInstList().push_back(ConvIntToPtr);
       MemRefValue = ConvIntToPtr;
     }
@@ -1627,14 +1675,14 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
            "Pointer type expected in load instruction");
     // Cast the pointer to match the size of memory being accessed by the
     // instruction, as needed.
-    MemRefValue = castValue(MemRefValue, PtrTy, RaisedBB);
+    MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
     // Load the value from memory location
-    LoadInst *LdInst = new LoadInst(MemRefValue);
-    unsigned int MemAlignment = MemRefValue->getType()
-                                    ->getPointerElementType()
-                                    ->getPrimitiveSizeInBits() /
-                                8;
-    LdInst->setAlignment(MaybeAlign(MemAlignment));
+    Type *LdTy = MemRefValue->getType()->getPointerElementType();
+    unsigned int MemAlignment = LdTy->getPrimitiveSizeInBits() / 8;
+    LoadInst *LdInst =
+        new LoadInst(LdTy, MemRefValue, "", false /* isVolatile */,
+                     MaybeAlign(MemAlignment));
+    LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
     RaisedBB->getInstList().push_back(LdInst);
 
     LLVMContext &Ctx(MF.getFunction().getContext());
@@ -1690,18 +1738,22 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
              "Unhandled move from memory instruction");
 
       // Load value of type memTy
-      Value *CInst = castValue(LdInst, MemTy, RaisedBB);
+      Value *CInstValue = getRaisedValues()->castValue(LdInst, MemTy, RaisedBB);
 
-      Instruction *ExtInst;
+      Instruction *ExtInst = nullptr;
 
       // Now extend the value accordingly
       if (IsSextInst) {
         // Sign extend
-        ExtInst = new SExtInst(CInst, ExtTy);
+        ExtInst = new SExtInst(CInstValue, ExtTy);
       } else {
         // Zero extend
-        ExtInst = new ZExtInst(CInst, ExtTy);
+        ExtInst = new ZExtInst(CInstValue, ExtTy);
       }
+      Instruction *CInst = dyn_cast<Instruction>(CInstValue);
+      assert(CInst != nullptr && "Expect cast value to be and instruction");
+      ExtInst->copyMetadata(*CInst);
+
       RaisedBB->getInstList().push_back(ExtInst);
       // Update PhysReg to Value map
       raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
@@ -1794,7 +1846,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   // same, it is the source value that needs to be cast to match the type of
   // destination (i.e., memory). It needs to be sign extended as needed.
   Type *MatchTy = MemRefVal->getType()->getPointerElementType();
-  SrcValue = castValue(SrcValue, MatchTy, RaisedBB);
+  SrcValue = getRaisedValues()->castValue(SrcValue, MatchTy, RaisedBB);
 
   StoreInst *StInst = nullptr;
   if (!isMovInst) {
@@ -2263,7 +2315,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
       // destination (i.e., memory). It needs to be sign extended as needed.
       Type *MatchTy = MemRefValue->getType()->getPointerElementType();
       if (!MatchTy->isArrayTy()) {
-        SubInst = castValue(SubInst, MatchTy, RaisedBB);
+        SubInst = getRaisedValues()->castValue(SubInst, MatchTy, RaisedBB);
       }
 
       // Store SubInst to MemRefValue only if this is a sub MI or MR
@@ -2703,7 +2755,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
     CountValue =
         ConstantInt::get(getImmOperandType(MI, SrcOp3Index), SrcOp3.getImm());
     // cast CountValue as needed
-    CountValue = castValue(CountValue, SrcOp1Value->getType(), RaisedBB);
+    CountValue = getRaisedValues()->castValue(CountValue,
+                                              SrcOp1Value->getType(), RaisedBB);
   } break;
   case X86::SHLD16rrCL:
   case X86::SHLD32rrCL:
@@ -2719,7 +2772,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
     // Check for undefined use
     if (CountValue != nullptr)
       // cast CountValue as needed
-      CountValue = castValue(CountValue, SrcOp1Value->getType(), RaisedBB);
+      CountValue = getRaisedValues()->castValue(
+          CountValue, SrcOp1Value->getType(), RaisedBB);
     else
       success = false;
   } break;
@@ -3188,6 +3242,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       break;
     }
 
+    // propagate rodata metadata
+    raisedValues->setInstMetadataRODataIndex(SrcOp1Value, BinOpInstr);
+    raisedValues->setInstMetadataRODataIndex(SrcOp2Value, BinOpInstr);
     // Insert the binary operation instruction
     RaisedBB->getInstList().push_back(BinOpInstr);
     // Test and set affected flags
@@ -3634,7 +3691,7 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   // If RetType is a pointer type and RetValue type is 64-bit, cast RetValue
   // appropriately.
   if ((RetValue != nullptr) && RetType->isPointerTy() && (retReg == X86::RAX)) {
-    RetValue = castValue(RetValue, RetType, RaisedBB);
+    RetValue = getRaisedValues()->castValue(RetValue, RetType, RaisedBB);
   }
   // Create return instruction
   Instruction *retInstr =
@@ -3930,9 +3987,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         if (isa<ConstantInt>(ArgVal)) {
           ConstantInt *Address = dyn_cast<ConstantInt>(ArgVal);
           if (!Address->isNegative()) {
-            Constant *RefVal =
-                const_cast<Constant *>(getOrCreateGlobalRODataValueAtOffset(
-                    Address->getSExtValue(), Address->getType(), RaisedBB));
+            Value *RefVal = getOrCreateGlobalRODataValueAtOffset(
+                Address->getSExtValue(), Address->getType(), RaisedBB);
             if (RefVal != nullptr) {
               assert(RefVal->getType()->isPointerTy() &&
                      "Non-pointer type of global value abstracted from "
@@ -3941,7 +3997,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
             }
           }
         }
-        ArgVal = castValue(ArgVal, FuncArg.getType(), RaisedBB);
+        ArgVal =
+            getRaisedValues()->castValue(ArgVal, FuncArg.getType(), RaisedBB);
       }
       assert(ArgVal != nullptr && "Unexpected null argument value");
       CallInstFuncArgs.push_back(ArgVal);

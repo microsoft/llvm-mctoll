@@ -18,10 +18,8 @@
 #include "X86AdditionalInstrInfo.h"
 #include "llvm/IR/Instructions.h"
 
-/*
- * Type alias for Map of MBBNo -> BasicBlock * used to keep track of
- * MachineBasicBlock and corresponding raised BasicBlock
- */
+// Type alias for Map of MBBNo -> BasicBlock * used to keep track of
+// MachineBasicBlock and corresponding raised BasicBlock
 using MBBNumToBBMap = std::map<unsigned int, BasicBlock *>;
 
 // Tuple of <PhysReg, DefiningMBBNo, Alloca>
@@ -159,9 +157,8 @@ private:
 
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
-  const Constant *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
-                                                       Type *OffsetTy,
-                                                       BasicBlock *InsertBlock);
+  Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset, Type *OffsetTy,
+                                              BasicBlock *InsertBlock);
   Value *getMemoryAddressExprValue(const MachineInstr &);
   Value *createPCRelativeAccesssValue(const MachineInstr &);
 
@@ -188,9 +185,6 @@ private:
   int64_t getBranchTargetMBBNumber(const MachineInstr &MI);
   Function *getCalledFunction(const MachineInstr &MI);
 
-  // Cast SrcVal to type DstTy, if the type of SrcVal is different from DstTy.
-  // Return the cast instruction upon inserting it at the end of InsertBlock
-  Value *castValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock);
   Type *getImmOperandType(const MachineInstr &MI, unsigned int OpIndex);
   uint8_t getPhysRegOperandSize(const MachineInstr &MI, unsigned int OpIndex);
   Type *getPhysRegOperandType(const MachineInstr &MI, unsigned int OpIndex);
@@ -204,4 +198,4 @@ private:
   std::set<int> tailCallMBBNos;
 };
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ELIMINATEPROLOGEPILOG_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MACHINEINSTRUCTIONRAISER_H

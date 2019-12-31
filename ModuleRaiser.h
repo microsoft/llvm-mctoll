@@ -131,6 +131,7 @@ public:
   }
   // Get the function filter for current Module.
   FunctionFilter *getFunctionFilter() const { return FFT; }
+
   Triple::ArchType getArch() const { return Arch; }
 
 protected:

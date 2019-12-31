@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86RaisedValueTracker.h"
+#include "InstMetadata.h"
+#include "RuntimeFunction.h"
 #include "X86RegisterUtils.h"
 #include "llvm/Support/Debug.h"
 #include <X86InstrBuilder.h>
@@ -20,6 +22,7 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace X86RegisterUtils;
+using namespace mctoll;
 
 X86RaisedValueTracker::X86RaisedValueTracker(
     X86MachineInstructionRaiser *MIRaiser)
@@ -385,6 +388,10 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
         // be handled after all blocks are raised.
         x86MIRaiser->recordDefsToPromote(PhysReg, MBBVal.first, Alloca);
       } else {
+        Instruction *I = dyn_cast<Instruction>(MBBVal.second);
+        if (!hasRODataAccess(Alloca) && (I != nullptr)) {
+          Alloca->copyMetadata(*I);
+        }
         StoreInst *StInst = x86MIRaiser->promotePhysregToStackSlot(
             PhysReg, MBBVal.second, MBBVal.first, Alloca);
         assert(StInst != nullptr &&
@@ -393,6 +400,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     }
     // 3. load from the stack slot for use in current block
     Instruction *LdReachingVal = new LoadInst(Alloca);
+    LdReachingVal =
+        setInstMetadataRODataContent(dyn_cast<LoadInst>(LdReachingVal));
     // Insert load instruction
     x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo))
         ->getInstList()
@@ -929,4 +938,253 @@ Value *X86RaisedValueTracker::getEflagReachingDef(unsigned int FlagBit,
          (FlagBit < X86RegisterUtils::EFLAGS::UNDEFINED) &&
          "Unknown EFLAGS bit specified");
   return getReachingDef(FlagBit, MBBNo);
+}
+
+// Cast SrcVal to the type of DstVal, if their types are different.
+// Return the cast instruction upon inserting it at the end of InsertBlock
+Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
+                                        BasicBlock *InsertBlock) {
+  if (SrcValue->getType() != DstTy) {
+    Instruction *CInst =
+        CastInst::Create(CastInst::getCastOpcode(SrcValue, false, DstTy, false),
+                         SrcValue, DstTy);
+    // Set RODataIndex metadata
+    setInstMetadataRODataIndex(SrcValue, CInst);
+    // Add the cast instruction RaisedBB.
+    InsertBlock->getInstList().push_back(CInst);
+    return CInst;
+  }
+
+  return SrcValue;
+}
+
+// If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of
+// Inst; if SrcValue is an instruction with rodata index metadata, copy it to
+// Inst.
+bool X86RaisedValueTracker::setInstMetadataRODataIndex(Value *SrcValue,
+                                                       Instruction *Inst) {
+  // String denoting rodata index metadata.
+  // std::string RODataMDKindStr(RODATA_INDEX_MD_STR);
+  // Check if SrcValue is an index into rodata
+  if (auto RODataIndex = dyn_cast<ConstantExpr>(SrcValue)) {
+    std::string OpcodeName(RODataIndex->getOpcodeName());
+    if (OpcodeName.compare("getelementptr") == 0) {
+      if (RODataIndex->getOperand(0)->getName().startswith("rodata_")) {
+        assert(!hasRODataAccess(Inst) && "ROData annotation already exists");
+        // Add metadata to indicate that this instruction uses rodata index.
+        auto ROMD = ValueAsMetadata::get(SrcValue);
+        Inst->setMetadata(
+            RODATA_INDEX_MD_STR,
+            MDNode::get(Inst->getContext(), ArrayRef<Metadata *>{ROMD}));
+      }
+    }
+  } else if (auto InstUsingROData = dyn_cast<Instruction>(SrcValue)) {
+    if (hasRODataAccess(InstUsingROData)) {
+      assert(!hasRODataAccess(Inst) && "ROData annotation already exists");
+      Inst->copyMetadata(*InstUsingROData);
+    }
+  }
+  // TODO : Handle metadata propagation for other types as needed.
+  // else {
+  //  assert(false &&
+  //         "Unhandled source type while setting rodata index metadata");
+  // }
+  return true;
+}
+
+// Set metadata of load instruction LdInst based on its source operand. If it is
+// rodata content, return a new instruction that loads from appropriately
+// relocated memory reference. If no relocation is needed, just return LdInst.
+LoadInst *
+X86RaisedValueTracker::setInstMetadataRODataContent(LoadInst *LdInst) {
+  LoadInst *NewLdInst = LdInst;
+  // Get the load address.
+  Value *SrcValue = LdInst->getOperand(0);
+  // Check if SrcValue is an index into rodata
+  if (auto RODataIndex = dyn_cast<ConstantExpr>(SrcValue)) {
+    std::string OpcodeName(RODataIndex->getOpcodeName());
+    if (OpcodeName.compare("getelementptr") == 0) {
+      if (RODataIndex->getOperand(0)->getName().startswith("rodata_")) {
+        assert(!hasRODataAccess(LdInst) && "ROData annotation already exists");
+        // Get metadata representing the rodata index. Note that this may NOT be
+        // the rodata index represented by SrcValue. SrcValue may be an
+        // expression representing the address computation based on this rodata
+        // index.
+        // Add metadata to indicate that this instruction abstracts rodata
+        // content.
+        auto ROMD = ValueAsMetadata::get(SrcValue);
+        LdInst->setMetadata(
+            RODATA_CONTENT_MD_STR,
+            MDNode::get(LdInst->getContext(), ArrayRef<Metadata *>{ROMD}));
+      }
+    }
+  } else if (auto SrcValueAsInst = dyn_cast<Instruction>(SrcValue)) {
+    if (hasRODataAccess(SrcValueAsInst)) {
+      assert(!hasRODataAccess(LdInst) && "ROData annotation already exists");
+      // Get metadata representing the rodata index. Note that this may NOT be
+      // the rodata index represented by SrcValue. SrcValue may be an
+      // instruction representing the address computation based on this rodata
+      // index.
+      auto ROMD = SrcValueAsInst->getMetadata(RODATA_INDEX_MD_STR);
+      if (ROMD != nullptr) {
+        // Set the metadata kind to rodata content
+        LdInst->setMetadata(
+            RODATA_CONTENT_MD_STR,
+            MDNode::get(LdInst->getContext(), ArrayRef<Metadata *>{ROMD}));
+      } else if ((ROMD = SrcValueAsInst->getMetadata(RODATA_CONTENT_MD_STR))) {
+        // If SrcValue is itself rodata content, relocate the value by adjusting
+        // the offset appropriately.
+        Value *RODataRebaseOffset = getRelocOffsetForRODataAddress(SrcValue);
+        // Add the rebase value to SrcValue;
+        BasicBlock *RaisedBB = SrcValueAsInst->getParent();
+        assert(SrcValue->getType()->isPointerTy() &&
+               "Expect source of load instruction to be of pointer type");
+        // Cast the pointer type to integer type to facilitate addition of
+        // offset
+        Value *ModSrcValue =
+            castValue(SrcValue, RODataRebaseOffset->getType(), RaisedBB);
+        ModSrcValue = BinaryOperator::CreateAdd(ModSrcValue, RODataRebaseOffset,
+                                                "rodata-rebase", RaisedBB);
+        // Note LdInst is a load instruction and is not yet inserted into
+        // the raised basic block. So, simply create a new one in its place and
+        // delete the old one. Cast the relocated value to the same type of
+        // LdInst. Cast the relocated SrcValue.
+        Type *LdPtrTy = SrcValue->getType();
+        ModSrcValue = castValue(ModSrcValue, LdPtrTy, RaisedBB);
+        // NOTE: Do not insert the new instruction as the caller of this
+        // function is expected to do so.
+        NewLdInst = new LoadInst(LdPtrTy->getPointerElementType(), ModSrcValue,
+                                 "rodata-reloc", LdInst->isVolatile(),
+                                 MaybeAlign(LdInst->getAlignment()));
+        // Copy metadata of the new load instruction to indicate that the loaded
+        // value is content of rodata by propagating the metadata from
+        // SrcValueAsInst.
+        NewLdInst->copyMetadata(*SrcValueAsInst);
+        LdInst->deleteValue();
+      } else {
+        assert(false && "Unexpected metadata kind found");
+      }
+    }
+  }
+  // TODO : Handle metadata propagation for other types as needed.
+  // else {
+  //  assert(false &&
+  //         "Unhandled source type while setting rodata content metadata");
+  // }
+
+  return NewLdInst;
+}
+
+// Annotate GlobalVariable GV with rodata section start value in source binary
+bool X86RaisedValueTracker::setGVMetadataRODataInfo(GlobalVariable *GV,
+                                                    uint64_t RODataSecStart) {
+  // Create ConstantAsMetadata
+  LLVMContext &Ctx(GV->getContext());
+  ConstantAsMetadata *CMD = ConstantAsMetadata::get(
+      ConstantInt::get(Type::getInt64Ty(Ctx), RODataSecStart));
+  GV->setMetadata(RODATA_SEC_INFO_MD_STR,
+                  MDNode::get(Ctx, ArrayRef<Metadata *>{CMD}));
+  return true;
+}
+
+// Generate code to return offset value if rodata address falls within rodata
+// section. Else return zero value
+Value *X86RaisedValueTracker::getRelocOffsetForRODataAddress(
+    Value *RaisedRODataAddrVal) {
+  LLVMContext &Ctx(RaisedRODataAddrVal->getContext());
+  Value *Zero64BitValue =
+      ConstantInt::get(Type::getInt64Ty(Ctx), 0, false /* isSigned */);
+  // Set the default offset value to be zero.
+  Value *RelocRODataAddrVal = Zero64BitValue;
+
+  if (Instruction *RaisedRODataAddrAsInst =
+          dyn_cast<Instruction>(RaisedRODataAddrVal)) {
+    // Get rodata related metadata associated with RaisedRODataAddrAsInst to
+    // find the rodata information associated with this abstracted value.
+    MDNode *RaisedRODataInstMD =
+        RaisedRODataAddrAsInst->getMetadata(RODATA_CONTENT_MD_STR);
+    assert(RaisedRODataInstMD != nullptr &&
+           "Expect metadata assocated with rodata - not found");
+    assert(RaisedRODataInstMD->getNumOperands() == 1 &&
+           "Expect one operand of rodata metadata");
+    // Get the metadata as MetadataAsvalue
+    auto RaisedRODataMDAsVal =
+        MetadataAsValue::get(RaisedRODataAddrAsInst->getContext(),
+                             RaisedRODataInstMD->getOperand(0).get());
+    assert(RaisedRODataMDAsVal != nullptr && "Failed to get metadata as value");
+
+    // Get the Value encapsulated by metadata.
+    Value *RaisedRODataExprValue =
+        cast<ValueAsMetadata>(RaisedRODataMDAsVal->getMetadata())->getValue();
+    ConstantExpr *RaisedRODataIndex =
+        dyn_cast<ConstantExpr>(RaisedRODataExprValue);
+    assert(RaisedRODataIndex != nullptr &&
+           "Not found expected expected metadata of type constant expression");
+    std::string OpcodeName(RaisedRODataIndex->getOpcodeName());
+    // Note that metadata contains the reference to the value that indexes into
+    // rodata section content of the source binary abstracted (i.e., raised) as
+    // a global array of bytes.
+    if (OpcodeName.compare("getelementptr") == 0) {
+      if (RaisedRODataIndex->getOperand(0)->getName().startswith("rodata_")) {
+        auto RaisedRODataArrValue = RaisedRODataIndex->getOperand(0);
+        // Get the global variable corresponding to constant expression
+        // representing abstracted rodata array.
+        if (GlobalVariable *RaisedRODataArrGV =
+                dyn_cast<GlobalVariable>(RaisedRODataArrValue)) {
+          Function *Func = RuntimeFunction::getOrCreateSecOffsetCalcFunction(
+              *RaisedRODataAddrAsInst->getParent()->getModule());
+
+          // Global variable representing rodata array is annotated with
+          // rodata section start value of the source binary.
+          auto RaisedRODataSecInfoMD =
+              RaisedRODataArrGV->getMetadata(RODATA_SEC_INFO_MD_STR);
+          assert(RaisedRODataSecInfoMD != nullptr &&
+                 "Expected rodata section info - not found");
+          assert(RaisedRODataArrGV->getNumOperands() == 1 &&
+                 RaisedRODataArrGV->getOperand(0)->getType()->isArrayTy() &&
+                 RaisedRODataArrGV->getOperand(0)
+                     ->getType()
+                     ->getArrayElementType()
+                     ->isIntegerTy(8) &&
+                 "Expect rodata to be abstracted as an array of bytes - not "
+                 "found");
+          // Construct a value representing rodata section start in source
+          // binary
+          Value *SrcBinaryRODataSecStartValue = cast<ConstantInt>(
+              cast<ConstantAsMetadata>(RaisedRODataSecInfoMD->getOperand(0))
+                  ->getValue());
+          // Construct a value representing rodata section size in source
+          // binary
+          uint64_t SrcBinaryRODataSecSz = RaisedRODataArrGV->getOperand(0)
+                                              ->getType()
+                                              ->getArrayNumElements();
+          Type *Int64Ty = Type::getInt64Ty(Ctx);
+          Value *SrcBinaryRODataSecSzVal =
+              ConstantInt::get(Int64Ty, SrcBinaryRODataSecSz);
+          // Create arguments to call rodata address relocation function.
+          // Get the block to add code to.
+          BasicBlock *RaisedBB = RaisedRODataAddrAsInst->getParent();
+          // Cast RaisedRODataAddrVal to 64-bit value to facilitate
+          // comparison
+          Value *InVal = castValue(RaisedRODataAddrVal, Int64Ty, RaisedBB);
+          // Cast global variable address
+          auto RaisedRODataArrGVAddrVal =
+              castValue(RaisedRODataArrGV, Int64Ty, RaisedBB);
+
+          // Call the relocation function
+          RelocRODataAddrVal = CallInst::Create(
+              Func,
+              {InVal, SrcBinaryRODataSecStartValue, SrcBinaryRODataSecSzVal,
+               RaisedRODataArrGVAddrVal},
+              "rodata-translate", RaisedBB);
+        } else {
+          assert(
+              false &&
+              "Expected global variable corresponding to rodata - not found");
+        }
+      }
+    } else
+      llvm_unreachable("Unhandled type of rodata found");
+  }
+  return RelocRODataAddrVal;
 }

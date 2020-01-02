@@ -5,11 +5,13 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit a9bb669e59f4b2270caa8a35128ca3b2de0595fe
-Author: Jonas Devlieghere <jonas@devlieghere.com>
-Date:   Wed Nov 20 10:38:55 2019 -0800
+commit 781b78a3610886e265f08d6de625bfe19e3dd8cf
+Author: Nemanja Ivanovic <nemanja.i.ibm@gmail.com>
+Date:   Thu Jan 2 13:37:34 2020 -0600
 
-    [FileCollector] Ignore empty paths.
+    [PowerPC] Only legalize FNEARBYINT with unsafe fp math
     
-    Don't insert empty strings into the StringSet<> because that triggers an
-    assert in its implementation.
+    Commit 0f0330a78709 legalized these nodes on PPC without consideration of
+    unsafe math which means that we get inexact exceptions raised for nearbyint.
+    Since this doesn't conform to the standard, switch this legalization to depend
+    on unsafe fp math.

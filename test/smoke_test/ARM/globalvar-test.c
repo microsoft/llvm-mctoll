@@ -2,6 +2,7 @@
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %s %t-dis.ll -mx32
 // RUN: %t1 2>&1 | FileCheck %s
+// RUN: false
 // XFAIL: *
 // CHECK: GlobalVar Initial value = 42
 // CHECK-NEXT: myglobal_func returns 72

@@ -1783,9 +1783,24 @@ static void DumpInput(StringRef file) {
 
   if (Archive *a = dyn_cast<Archive>(&Binary))
     DumpArchive(a);
-  else if (ObjectFile *o = dyn_cast<ObjectFile>(&Binary))
-    DumpObject(o);
-  else
+  else if (ObjectFile *o = dyn_cast<ObjectFile>(&Binary)) {
+    if (o->getArch() == Triple::x86_64) {
+      const ELF64LEObjectFile *Elf64LEObjFile = dyn_cast<ELF64LEObjectFile>(o);
+      // Raise x86_64 relocatable binaries (.o files) is not supported.
+      auto EType = Elf64LEObjFile->getELFFile()->getHeader()->e_type;
+      if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC))
+        DumpObject(o);
+      else {
+        errs() << "Raising x64 relocatable (.o) x64 binaries not supported\n";
+        exit(1);
+      }
+    } else if (o->getArch() == Triple::arm)
+      DumpObject(o);
+    else {
+      errs() << "No support to raise Binaries other than x64 and ARM\n";
+      exit(1);
+    }
+  } else
     report_error(errorCodeToError(object_error::invalid_file_type), file);
 }
 

@@ -2428,7 +2428,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     if (BaseSupReg == x86RegisterInfo->getStackRegister() ||
         BaseSupReg == x86RegisterInfo->getFramePtr())
       MemoryRefValue = getStackAllocatedValue(MI, MemRef, false);
-    
+
     // Handle PC-relative addressing.
 
     // NOTE: This tool now raises only shared libraries and executables -
@@ -3359,7 +3359,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     BasicBlock *FTBB = (*mapIter).second;
     // Get the condition value
     assert(CTRec->RegValues.size() == EFlagBits.size() &&
-           "Unexpected number of ELFAGS bit values in conditional branch not "
+           "Unexpected number of EFLAGS bit values in conditional branch not "
            "handled");
 
     // Branch condition value

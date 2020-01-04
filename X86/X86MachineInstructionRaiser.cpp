@@ -2426,18 +2426,18 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
 
     uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
     if (BaseSupReg == x86RegisterInfo->getStackRegister() ||
-        BaseSupReg == x86RegisterInfo->getFramePtr()) {
+        BaseSupReg == x86RegisterInfo->getFramePtr())
       MemoryRefValue = getStackAllocatedValue(MI, MemRef, false);
-    }
+    
     // Handle PC-relative addressing.
 
     // NOTE: This tool now raises only shared libraries and executables -
     // NOT object files. So, instructions with 0 register (which typically
     // are seen in a relocatable object file for the linker to patch) are
     // not expected to be encountered.
-    else if (BaseSupReg == X86::RIP) {
+    else if (BaseSupReg == X86::RIP)
       MemoryRefValue = createPCRelativeAccesssValue(MI);
-    }
+
     // If this is neither a stack reference nor a pc-relative access, get the
     // associated memory address expression value.
     if (MemoryRefValue == nullptr) {
@@ -2457,9 +2457,8 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
          "Unable to construct memory referencing value");
 
   // Raise a memory compare instruction
-  if (MI.isCompare()) {
+  if (MI.isCompare())
     return raiseCompareMachineInstr(MI, true /* isMemRef */, MemoryRefValue);
-  }
 
   // Now that we have all necessary information about memory reference and
   // the load/store operand, we can raise the memory referencing instruction
@@ -2467,32 +2466,24 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
 
   switch (getInstructionKind(Opcode)) {
     // Move register or immediate to memory
-  case InstructionKind::MOV_TO_MEM: {
+  case InstructionKind::MOV_TO_MEM:
     return raiseMoveToMemInstr(MI, MemoryRefValue);
-  }
-  case InstructionKind::INPLACE_MEM_OP: {
+  case InstructionKind::INPLACE_MEM_OP:
     return raiseInplaceMemOpInstr(MI, MemoryRefValue);
-  }
   // Move register from memory
-  case InstructionKind::MOV_FROM_MEM: {
+  case InstructionKind::MOV_FROM_MEM:
     return raiseMoveFromMemInstr(MI, MemoryRefValue);
-  }
-  case InstructionKind::BINARY_OP_RM: {
+  case InstructionKind::BINARY_OP_RM:
     return raiseBinaryOpMemToRegInstr(MI, MemoryRefValue);
-  }
-  case InstructionKind::DIVIDE_MEM_OP: {
+  case InstructionKind::DIVIDE_MEM_OP:
     return raiseDivideInstr(MI, MemoryRefValue);
-  }
-  case InstructionKind::LOAD_FPU_REG: {
+  case InstructionKind::LOAD_FPU_REG:
     return raiseLoadIntToFloatRegInstr(MI, MemoryRefValue);
-  }
-  case InstructionKind::STORE_FPU_REG: {
+  case InstructionKind::STORE_FPU_REG:
     return raiseStoreIntToFloatRegInstr(MI, MemoryRefValue);
-  }
-  default: {
+  default:
     LLVM_DEBUG(MI.dump());
     assert(false && "Unhandled memory referencing instruction");
-  }
   }
   return false;
 }

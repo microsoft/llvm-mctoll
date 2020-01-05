@@ -101,7 +101,7 @@ bool ARMSelectionDAGISel::doSelection() {
     dbgs() << "ARMSelectionDAGISel start.\n";
 
   MachineFunction &mf = *MF;
-  CurDAG->init(mf, *ORE.get(), this, nullptr, nullptr);
+  CurDAG->init(mf, *ORE.get(), this, nullptr, nullptr, nullptr, nullptr);
   FuncInfo->set(*MR, *getCRF(), mf, CurDAG);
 
   initEntryBasicBlock();

@@ -121,7 +121,7 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
   std::vector<MachineBasicBlock *> MBBsToBeErased;
 
   std::map<uint64_t, MCInstOrData> mcInstMapData;
-  std::map<uint64_t, MCInstOrData>::iterator iter_in;
+  MCInstRaiser::const_mcinst_iter iter_in;
 
   // Save the ADDri and Calculate the start address of data.
   for (MachineBasicBlock &JmpTblBaseCalcMBB : MF) {
@@ -154,9 +154,8 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
         assert(
             MCIR != nullptr &&
             "Current function machine instruction raiser wasn't initialized!");
-        mcInstMapData = MCIR->getMCInstMap();
-        for (iter_in = mcInstMapData.begin(); iter_in != mcInstMapData.end();
-             iter_in++) {
+        for (iter_in = MCIR->const_mcinstr_begin();
+             iter_in != MCIR->const_mcinstr_end(); iter_in++) {
           MCInstOrData mcInstorData = iter_in->second;
           if (mcInstorData.isData() && mcInstorData.getData() > 0) {
             // The 16 is 8 + 8. The first 8 is the PC offset, the second 8 is

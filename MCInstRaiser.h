@@ -72,6 +72,7 @@ public:
     return mcInstMap.find(Offset);
   }
 
+  const_mcinst_iter const_mcinstr_begin() const { return mcInstMap.begin(); }
   const_mcinst_iter const_mcinstr_end() const { return mcInstMap.end(); }
 
   // Get the size of instruction
@@ -107,8 +108,6 @@ public:
     APInt ArbPrecInt = CI->getValue();
     return ArbPrecInt.getSExtValue();
   }
-
-  std::map<uint64_t, MCInstOrData> &getMCInstMap() { return mcInstMap; }
 
 private:
   // NOTE: The following data structures are implemented to record instruction

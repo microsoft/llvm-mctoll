@@ -46,7 +46,6 @@ private:
   FunctionRaisingInfo *FuncInfo;
   DAGBuilder *SDB;
   InstSelector *SLT;
-  IREmitter *IMT;
 
   SelectionDAG *CurDAG;
   DAGRaisingInfo *DAGInfo;

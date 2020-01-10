@@ -683,6 +683,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       IRB.CreateBr(BrDest);
       break;
     }
+    LLVM_FALLTHROUGH;
   }
   case EXT_ARMISD::BRD: {
     // Get the function call Index.

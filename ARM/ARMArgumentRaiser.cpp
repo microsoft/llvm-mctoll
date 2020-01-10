@@ -134,14 +134,19 @@ void ARMArgumentRaiser::updateParameterInstr(MachineFunction &mf) {
   switch (fn->arg_size()) {
   default:
     updateParameterFrame(mf);
+    LLVM_FALLTHROUGH;
   case 4:
     moveArgumentToRegister(ARM::R3, EntryMBB);
+    LLVM_FALLTHROUGH;
   case 3:
     moveArgumentToRegister(ARM::R2, EntryMBB);
+    LLVM_FALLTHROUGH;
   case 2:
     moveArgumentToRegister(ARM::R1, EntryMBB);
+    LLVM_FALLTHROUGH;
   case 1:
     moveArgumentToRegister(ARM::R0, EntryMBB);
+    LLVM_FALLTHROUGH;
   case 0:
     break;
   }

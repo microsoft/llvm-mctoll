@@ -131,8 +131,6 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo,
   // Look for the most recent definition of SuperReg in current block.
   const std::pair<int, Value *> LocalDef =
       getInBlockRegOrArgDefVal(PhysReg, MBBNo);
-  // Initialize a bit vector tracking visited bacic blocks.
-  BitVector BlockVisited(MF.getNumBlockIDs(), false);
 
   if (LocalDef.second != nullptr) {
     assert((LocalDef.first == MBBNo) && "Inconsistent local def info found");
@@ -142,6 +140,8 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo,
     // reach tree.
     bool RDFound = true;
     for (auto P : CurMBB->predecessors()) {
+      // Initialize a bit vector tracking visited bacic blocks.
+      BitVector BlockVisited(MF.getNumBlockIDs(), false);
       SmallVector<MachineBasicBlock *, 8> WorkList;
 
       if (AllPreds && !RDFound)
@@ -483,7 +483,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
 
     // Create the instruction
     //      and SubInst, ShiftLeft
-    Instruction *AndInst = BinaryOperator::CreateAnd(ShiftLeft, TestResultVal, "highbit");
+    Instruction *AndInst =
+        BinaryOperator::CreateAnd(ShiftLeft, TestResultVal, "highbit");
     RaisedBB->getInstList().push_back(AndInst);
     // Compare result of logical and operation to find if bit 31 is set SF
     // accordingly

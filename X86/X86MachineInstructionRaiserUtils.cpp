@@ -196,7 +196,8 @@ bool X86MachineInstructionRaiser::hasPhysRegDefInBlock(
   // Walk backwards starting from the instruction before StartMI
   HasStopInst = false; // default value
   unsigned SuperReg = find64BitSuperReg(PhysReg);
-  auto InstIter = (StartMI == nullptr) ? MBB->rend() : StartMI->getReverseIterator();
+  auto InstIter =
+      (StartMI == nullptr) ? MBB->rend() : StartMI->getReverseIterator();
   for (const MachineInstr &MI : make_range(++InstIter, MBB->rend())) {
     // Stop after the instruction with the specified property in the block
     if (MI.hasProperty(StopAtInstProp)) {
@@ -682,16 +683,15 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
     unsigned int SuperReg = find64BitSuperReg(PReg);
     unsigned int DefiningMBBNo = std::get<1>(RDToFix);
     Value *Val = std::get<2>(RDToFix);
-    assert((isa<AllocaInst>(Val)) &&
-           "Found value that is not a stack location "
-           "during reaching definition fixup");
+    assert((isa<AllocaInst>(Val)) && "Found value that is not a stack location "
+                                     "during reaching definition fixup");
     AllocaInst *Alloca = dyn_cast<AllocaInst>(Val);
     Value *ReachingDef =
         raisedValues->getInBlockRegOrArgDefVal(PReg, DefiningMBBNo).second;
     assert((ReachingDef != nullptr) &&
            "Null reaching definition found during reaching definition fixup");
-    StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,
-                                                  DefiningMBBNo, Alloca);
+    StoreInst *StInst =
+        promotePhysregToStackSlot(SuperReg, ReachingDef, DefiningMBBNo, Alloca);
     assert(StInst != nullptr && "Failed to promote register to memory");
   }
   return true;
@@ -912,8 +912,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       MCInst Inst;
       uint64_t InstSz;
       bool Success = MR->getMCDisassembler()->getInstruction(
-          Inst, InstSz, Bytes.slice(pltEntOff - SecStart), pltEntOff, nulls(),
-          nulls());
+          Inst, InstSz, Bytes.slice(pltEntOff - SecStart), pltEntOff, nulls());
       assert(Success && "Failed to disassemble instruction in PLT");
       unsigned int Opcode = Inst.getOpcode();
       MCInstrDesc MCID = MR->getMCInstrInfo()->get(Opcode);
@@ -1459,8 +1458,8 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
     default: {
       Type *MulValTy = IndexRegVal->getType();
       Value *ScaleAmtValue = ConstantInt::get(MulValTy, ScaleAmt);
-      Instruction *MulInst =
-          BinaryOperator::CreateMul(ScaleAmtValue, IndexRegVal, "memref-idxreg");
+      Instruction *MulInst = BinaryOperator::CreateMul(
+          ScaleAmtValue, IndexRegVal, "memref-idxreg");
       RaisedBB->getInstList().push_back(MulInst);
       MemrefValue = MulInst;
     } break;
@@ -1479,7 +1478,8 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
       // Ensure the type of BaseRegVal matched that of MemrefValue.
       BaseRegVal = getRaisedValues()->castValue(
           BaseRegVal, MemrefValue->getType(), RaisedBB);
-      Instruction *AddInst = BinaryOperator::CreateAdd(BaseRegVal, MemrefValue, "memref-basereg");
+      Instruction *AddInst =
+          BinaryOperator::CreateAdd(BaseRegVal, MemrefValue, "memref-basereg");
       // Propagate rodata related metadata
       RVT->setInstMetadataRODataIndex(BaseRegVal, AddInst);
       RaisedBB->getInstList().push_back(AddInst);
@@ -1608,7 +1608,8 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
         }
       }
       // Generate add memrefVal, Disp.
-      Instruction *AddInst = BinaryOperator::CreateAdd(MemrefValue, DispValue, "memref-disp");
+      Instruction *AddInst =
+          BinaryOperator::CreateAdd(MemrefValue, DispValue, "memref-disp");
       getRaisedValues()->setInstMetadataRODataIndex(MemrefValue, AddInst);
       getRaisedValues()->setInstMetadataRODataIndex(DispValue, AddInst);
       RaisedBB->getInstList().push_back(AddInst);

@@ -539,7 +539,7 @@ public:
       dumpBytes(Bytes, OS);
     }
     if (MI)
-      IP.printInst(MI, OS, "", STI);
+      IP.printInst(MI, 0, "", STI, OS);
     else
       OS << " <unknown>";
   }
@@ -1158,12 +1158,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         }
       }
 
-#ifndef NDEBUG
-      raw_ostream &DebugOut = DebugFlag ? dbgs() : nulls();
-#else
-      raw_ostream &DebugOut = nulls();
-#endif
-
       if (isAFunctionSymbol(Obj, Symbols[si])) {
         auto &SymStr = std::get<1>(Symbols[si]);
 
@@ -1376,8 +1370,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
         // Disassemble a real instruction or a data
         bool Disassembled = DisAsm->getInstruction(
-            Inst, Size, Bytes.slice(Index), SectionAddr + Index, DebugOut,
-            CommentStream);
+            Inst, Size, Bytes.slice(Index), SectionAddr + Index, CommentStream);
         if (Size == 0)
           Size = 1;
 

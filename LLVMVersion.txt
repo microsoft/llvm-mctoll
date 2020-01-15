@@ -5,13 +5,12 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 781b78a3610886e265f08d6de625bfe19e3dd8cf
-Author: Nemanja Ivanovic <nemanja.i.ibm@gmail.com>
-Date:   Thu Jan 2 13:37:34 2020 -0600
+commit d629525597ebe3533d110ea288c2640f0dc24bf7
+Author: Lang Hames <lhames@gmail.com>
+Date:   Wed Jan 15 11:30:04 2020 -0800
 
-    [PowerPC] Only legalize FNEARBYINT with unsafe fp math
+    [docs][ORC] Update the laziness section of the ORCv2 design doc.
     
-    Commit 0f0330a78709 legalized these nodes on PPC without consideration of
-    unsafe math which means that we get inexact exceptions raised for nearbyint.
-    Since this doesn't conform to the standard, switch this legalization to depend
-    on unsafe fp math.
+    This updates the discussion of lazy reexports, fixes a TBD for a usage example,
+    and adds a reference to the fully worked lazy reexports example that was added
+    in e9e26c01cd865da678b1af6ba5f417c713956a66.

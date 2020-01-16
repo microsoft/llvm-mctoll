@@ -1299,8 +1299,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
         new LoadInst(dyn_cast<LoadInst>(MemRefValue)->getPointerOperand(),
                      "globalload", false, MaybeAlign(MemAlignment));
     LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-  }
-  else {
+  } else {
     LoadInst *LdInst =
         new LoadInst(MemRefValue, "memload", false, MaybeAlign(MemAlignment));
     LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
@@ -3683,9 +3682,13 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
 
   // If RetType is a pointer type and RetValue type is 64-bit, cast RetValue
   // appropriately.
-  if ((RetValue != nullptr) && RetType->isPointerTy() && (retReg == X86::RAX)) {
+  if ((RetValue != nullptr) && RetType->isPointerTy() && (retReg == X86::RAX))
     RetValue = getRaisedValues()->castValue(RetValue, RetType, RaisedBB);
-  }
+
+  // Ensure RetValue type match RetType
+  if (RetValue != nullptr)
+    RetValue = getRaisedValues()->castValue(RetValue, RetType, RaisedBB);
+
   // Create return instruction
   Instruction *retInstr =
       ReturnInst::Create(MF.getFunction().getContext(), RetValue);

@@ -3203,6 +3203,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::TEST16ri:
     case X86::TEST32ri:
       BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
+      // Clear OF and CF
+      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
       break;

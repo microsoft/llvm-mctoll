@@ -410,11 +410,11 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
     uint64_t PCOffset = TextSectionAddress + MCInstOffset + MCInstSz + Disp;
     const RelocationRef *DynReloc = MR->getDynRelocAtOffset(PCOffset);
 
-    // assert(DynReloc &&
-    //       "Failed to get dynamic relocation for pc-relative offset");
     // If there is a dynamic relocation for the PCOffset
     if (DynReloc) {
-      if (DynReloc->getType() == ELF::R_X86_64_GLOB_DAT) {
+      auto DynRelocType = DynReloc->getType();
+      if ((DynRelocType == ELF::R_X86_64_COPY) ||
+          (DynRelocType == ELF::R_X86_64_GLOB_DAT)) {
         Expected<StringRef> Symname = DynReloc->getSymbol()->getName();
         assert(Symname &&
                "Failed to find symbol associated with dynamic relocation.");
@@ -494,7 +494,9 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
               break;
             }
           }
-          Constant *GlobalInit = ConstantInt::get(GlobalValTy, SymbVal);
+          Constant *GlobalInit = (DynRelocType == ELF::R_X86_64_GLOB_DAT)
+                                     ? ConstantInt::get(GlobalValTy, SymbVal)
+                                     : nullptr;
           auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                               false /* isConstant */, Lnkg,
                                               GlobalInit, Symname->data());

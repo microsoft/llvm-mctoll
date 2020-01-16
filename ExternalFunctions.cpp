@@ -14,6 +14,7 @@
 
 const std::map<StringRef, ExternalFunctions::RetAndArgs>
     ExternalFunctions::GlibcFunctions = {
+        {"_IO_putc", {"i32", {"i32", "i64"}, false}},
         {"__assert_fail", {"void", {"i8*", "i8*", "i32", "i8*"}, false}},
         {"__isoc99_scanf", {"i32", {"i8*"}, true}},
         {"__printf_chk", {"i32", {"i8*"}, true}},

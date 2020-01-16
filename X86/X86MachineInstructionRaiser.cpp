@@ -1654,13 +1654,23 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
           isa<GetElementPtrInst>(MemRefValue)) &&
          "Unexpected type of memory reference in binary mem op instruction");
 
-  if (IsPCRelMemRef && !isa<GetElementPtrInst>(MemRefValue)) {
-    // memRefValue already represents the global value loaded from
-    // PC-relative memory location. It is incorrect to generate an
-    // additional load of this value. It should be directly used.
-    raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
-                                     MemRefValue);
-  } else {
+  // Assume that MemRefValue represents a memory reference location and hence
+  // needs to be loaded from.
+  bool LoadFromMemrefValue = true;
+  // Following are the exceptions when MemRefValue needs to be considered as
+  // memory content and not as memory reference.
+  if (IsPCRelMemRef) {
+    // If it is a PC-relative global variable with an initializer, it is memory
+    // content and should not be loaded from.
+    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
+      LoadFromMemrefValue = !(GV->hasInitializer());
+    // If it is not a PC-relative GetElementPtrInst, it is memory content and
+    // should not be loaded from.
+    else
+      LoadFromMemrefValue = isa<GetElementPtrInst>(MemRefValue);
+  }
+
+  if (LoadFromMemrefValue) {
     // If it is an effective address value or a select instruction, convert it
     // to a pointer to load register type.
     PointerType *PtrTy =
@@ -1761,6 +1771,12 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
                                        ExtInst);
     } // else PhysReg is already updated in the default case of the above switch
       // statement
+  } else {
+    // memRefValue already represents the global value loaded from
+    // PC-relative memory location. It is incorrect to generate an
+    // additional load of this value. It should be directly used.
+    raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
+                                     MemRefValue);
   }
 
   return true;

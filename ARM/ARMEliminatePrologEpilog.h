@@ -22,7 +22,7 @@ class ARMEliminatePrologEpilog : public ARMRaiserBase {
 public:
   static char ID;
 
-  ARMEliminatePrologEpilog(ModuleRaiser &mr);
+  ARMEliminatePrologEpilog(ARMModuleRaiser &mr);
   ~ARMEliminatePrologEpilog();
   void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
   bool eliminate();

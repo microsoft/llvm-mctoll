@@ -5,6 +5,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+//
+// This file contains the declaration of ARMModuleRaiser class for use by
+// llvm-mctoll.
+//
+//===----------------------------------------------------------------------===//
 
 #include "ARMModuleRaiser.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -33,6 +38,42 @@ bool ARMModuleRaiser::collectDynamicRelocations() {
     }
   }
   return true;
+}
+
+// Get rodata instruction addr.
+uint64_t ARMModuleRaiser::getArgNumInstrAddr(uint64_t callAddr) {
+  uint64_t InstArgCount = InstArgCollect.size();
+  if (InstArgCount == 0)
+    return InstArgCount;
+  for (uint64_t i = 0; i < InstArgCount; i++) {
+    if (InstArgCollect[i] > callAddr) {
+      return InstArgCollect[i - 1];
+    }
+  }
+
+  return InstArgCollect[InstArgCount - 1];
+}
+
+uint64_t ARMModuleRaiser::getFunctionArgNum(uint64_t callAddr) {
+  uint64_t rodataAddr = getArgNumInstrAddr(callAddr);
+
+  if (rodataAddr == 0)
+    return rodataAddr;
+  return InstArgNumMap[rodataAddr];
+}
+
+const Value *ARMModuleRaiser::getRODataValueAt(uint64_t Offset) const {
+  auto Iter = GlobalRODataValues.find(Offset);
+  if (Iter != GlobalRODataValues.end())
+    return Iter->second;
+
+  return nullptr;
+}
+
+void ARMModuleRaiser::addRODataValueAt(Value *V, uint64_t Offset) const {
+  assert((GlobalRODataValues.find(Offset) == GlobalRODataValues.end()) &&
+         "Attempt to insert value for already existing rodata location");
+  GlobalRODataValues.emplace(Offset, V);
 }
 
 #ifdef __cplusplus

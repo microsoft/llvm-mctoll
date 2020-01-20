@@ -426,6 +426,10 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   }
 
   // Update the triple name and return the found target.
+  if (TheTriple.getArchName() == "armv4t" ||
+      TheTriple.getArchName() == "armv5te" ||
+      TheTriple.getArchName() == "armv5" || TheTriple.getArchName() == "armv5t")
+    TheTriple.setArchName("armv6");
   TripleName = TheTriple.getTriple();
   return TheTarget;
 }
@@ -743,6 +747,7 @@ addDynamicElfSymbols(const ObjectFile *Obj,
 */
 
 static std::set<StringRef> ELFCRTSymbols = {
+    "call_weak_fn",
     "deregister_tm_clones",
     "__do_global_dtors_aux",
     "__do_global_dtors_aux_fini_array_entry",

@@ -20,6 +20,9 @@ using namespace llvm;
 
 class X86ModuleRaiser : public ModuleRaiser {
 public:
+  static bool classof(const ModuleRaiser *MR) {
+    return MR->getArch() == Triple::x86_64;
+  }
   X86ModuleRaiser() : ModuleRaiser() { Arch = Triple::x86_64; };
 
   MachineFunctionRaiser *

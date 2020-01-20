@@ -3,7 +3,7 @@
 
 # CHECK: ARMEliminatePrologEpilog start
 # CHECK: Frame Objects:
-# CHECK-NOT: $r12 = MOVr $sp
+# CHECK-NOT: $r11 = MOVr $sp
 # CHECK-NOT: $sp = STMDB_UPD $sp, 14
 # CHECK-NOT: $r11 = SUBri $r12, 16, 14,
 # CHECK-NOT: LDMDB $sp, 14,
@@ -13,7 +13,7 @@
         .global test4
         .type test4, %function
 test4:
-        mov r12, r13
+        mov r11, r13
         stmdb r13!, {r0-r3}
         stmdb r13!, {r4-r12, r14}
         sub r11, r12, #16

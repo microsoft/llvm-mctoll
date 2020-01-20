@@ -1,4 +1,4 @@
-//===-- ARMFunctionPrototype.cpp --------------------------------*- C++ -*-===//
+//===- ARMFunctionPrototype.cpp - Binary raiser utility llvm-mctoll -------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -13,6 +13,8 @@
 
 #include "ARMFunctionPrototype.h"
 #include "ARMSubtarget.h"
+#include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/Support/Debug.h"
 
@@ -48,61 +50,62 @@ bool ARMFunctionPrototype::isUsedRegiser(unsigned reg,
 }
 
 /// Check the first reference of the reg is DEF.
-void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes,
-                                             const MachineFunction &mf,
-                                             LLVMContext &ctx) {
-  assert(!mf.empty() && "The function body is empty!!!");
-
-  const MachineBasicBlock &fmbb = mf.front();
-  // TODO: Need to track register liveness on CFG.
-
+void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes) {
+  assert(!MF->empty() && "The function body is empty!!!");
+  MF->getRegInfo().freezeReservedRegs(*MF);
+  LivePhysRegs liveInPhysRegs;
+  for (MachineBasicBlock &EMBB : *MF)
+    computeAndAddLiveIns(liveInPhysRegs, EMBB);
+  // Walk the CFG DFS to discover first register usage
+  df_iterator_default_set<const MachineBasicBlock *, 16> Visited;
+  DenseMap<unsigned, bool> ArgObtain;
+  ArgObtain[ARM::R0] = false;
+  ArgObtain[ARM::R1] = false;
+  ArgObtain[ARM::R2] = false;
+  ArgObtain[ARM::R3] = false;
+  const MachineBasicBlock &fmbb = MF->front();
   DenseMap<int, Type *> tarr;
   int maxidx = -1; // When the maxidx is -1, means there is no argument.
-
-  // The first function argument is from R0.
-  if (isUsedRegiser(ARM::R0, fmbb)) {
-    maxidx = 0;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
+  // Track register liveness on CFG.
+  for (const MachineBasicBlock *Mbb : depth_first_ext(&fmbb, Visited)) {
+    for (unsigned IReg = ARM::R0; IReg < ARM::R4; IReg++) {
+      if (!ArgObtain[IReg] && Mbb->isLiveIn(IReg)) {
+        for (MachineBasicBlock::const_iterator ii = Mbb->begin(),
+                                               ie = Mbb->end();
+             ii != ie; ++ii) {
+          const MachineInstr &LMI = *ii;
+          auto RUses = LMI.uses();
+          auto ResIter =
+              std::find_if(RUses.begin(), RUses.end(),
+                           [IReg](const MachineOperand &OP) -> bool {
+                             return OP.isReg() && (OP.getReg() == IReg);
+                           });
+          if (ResIter != RUses.end()) {
+            maxidx = IReg - ARM::R0;
+            tarr[maxidx] = getDefaultType();
+            break;
+          }
+        }
+        ArgObtain[IReg] = true;
+      }
+    }
   }
-
-  // The second function argument is from R1.
-  if (isUsedRegiser(ARM::R1, fmbb)) {
-    maxidx = 1;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
-  }
-
-  // The third function argument is from R2.
-  if (isUsedRegiser(ARM::R2, fmbb)) {
-    maxidx = 2;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
-  }
-
-  // The fourth function argument is from R3.
-  if (isUsedRegiser(ARM::R3, fmbb)) {
-    maxidx = 3;
-    tarr[maxidx] = Type::getInt32Ty(ctx);
-  }
-
   // The rest of function arguments are from stack.
-  for (MachineFunction::const_iterator mbbi = mf.begin(), mbbe = mf.end();
+  for (MachineFunction::const_iterator mbbi = MF->begin(), mbbe = MF->end();
        mbbi != mbbe; ++mbbi) {
     const MachineBasicBlock &mbb = *mbbi;
-
     for (MachineBasicBlock::const_iterator mii = mbb.begin(), mie = mbb.end();
          mii != mie; ++mii) {
       const MachineInstr &mi = *mii;
-
       // Match pattern like ldr r1, [fp, #8].
       if (mi.getOpcode() == ARM::LDRi12 && mi.getNumOperands() > 2) {
         const MachineOperand &mo = mi.getOperand(1);
         const MachineOperand &mc = mi.getOperand(2);
         if (mo.isReg() && mo.getReg() == ARM::R11 && mc.isImm()) {
-
           // TODO: Need to check the imm is larger than 0 and it is align
           // by 4(32 bit).
           int imm = mc.getImm();
           if (imm >= 0) {
-
             // The start index of arguments on stack. If the library was
             // compiled by clang, it starts from 2. If the library was compiled
             // by GNU cross compiler, it starts from 1.
@@ -120,16 +123,15 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes,
                                             // of register arguments' indices.
             if (maxidx < idx)
               maxidx = idx;
-            tarr[idx] = Type::getInt32Ty(ctx);
+            tarr[idx] = getDefaultType();
           }
         }
       }
     }
   }
-
   for (int i = 0; i <= maxidx; ++i) {
     if (tarr[i] == nullptr)
-      paramTypes.push_back(Type::getInt32Ty(ctx));
+      paramTypes.push_back(getDefaultType());
     else
       paramTypes.push_back(tarr[i]);
   }
@@ -138,7 +140,6 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes,
 /// Get all arguments types of current MachineFunction.
 bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
                                             const MachineBasicBlock &mbb) {
-
   for (MachineBasicBlock::const_reverse_iterator ii = mbb.rbegin(),
                                                  ie = mbb.rend();
        ii != ie; ++ii) {
@@ -162,17 +163,15 @@ bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
 }
 
 /// Get return type of current MachineFunction.
-Type *ARMFunctionPrototype::genReturnType(const MachineFunction &mf,
-                                          LLVMContext &ctx) {
+Type *ARMFunctionPrototype::genReturnType() {
   // TODO: Need to track register liveness on CFG.
   Type *retTy;
-
-  retTy = Type::getVoidTy(ctx);
-  for (const MachineBasicBlock &mbb : mf) {
+  retTy = Type::getVoidTy(*CTX);
+  for (const MachineBasicBlock &mbb : *MF) {
     if (mbb.succ_empty()) {
       if (isDefinedRegiser(ARM::R0, mbb)) {
         // TODO: Need to identify data type, int, long, float or double.
-        retTy = Type::getInt32Ty(ctx);
+        retTy = getDefaultType();
         break;
       }
     }
@@ -185,12 +184,13 @@ Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
   if (PrintPass)
     dbgs() << "ARMFunctionPrototype start.\n";
 
+  MF = &mf;
   Function &fn = const_cast<Function &>(mf.getFunction());
-  LLVMContext &ctx = fn.getContext();
+  CTX = &fn.getContext();
 
   std::vector<Type *> paramTys;
-  genParameterTypes(paramTys, mf, ctx);
-  Type *retTy = genReturnType(mf, ctx);
+  genParameterTypes(paramTys);
+  Type *retTy = genReturnType();
   FunctionType *fnTy = FunctionType::get(retTy, paramTys, false);
 
   MachineModuleInfo &mmi = mf.getMMI();
@@ -198,14 +198,15 @@ Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
   mdl->getFunctionList().remove(&fn);
   Function *pnfn =
       Function::Create(fnTy, GlobalValue::ExternalLinkage, fn.getName(), mdl);
+  // When run as FunctionPass, the Function must not be empty, so add
+  // EntryBlock at here.
+  BasicBlock::Create(pnfn->getContext(), "EntryBlock", pnfn);
 
   if (PrintPass) {
-    LLVM_DEBUG(mf.dump());
+    LLVM_DEBUG(MF->dump());
     LLVM_DEBUG(pnfn->dump());
-  }
-
-  if (PrintPass)
     dbgs() << "ARMFunctionPrototype end.\n";
+  }
 
   return pnfn;
 }
@@ -218,9 +219,11 @@ bool ARMFunctionPrototype::runOnMachineFunction(MachineFunction &mf) {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 MachineFunctionPass *InitializeARMFunctionPrototype() {
   return new ARMFunctionPrototype();
 }
+
 #ifdef __cplusplus
 }
 #endif

@@ -110,7 +110,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
       uint64_t InstAddIPSz;
       bool Success = MR->getMCDisassembler()->getInstruction(
           InstAddIP, InstAddIPSz, Bytes.slice(PLTEndOff + 4 - SecStart),
-          PLTEndOff + 4, nulls(), nulls());
+          PLTEndOff + 4, nulls());
       assert(Success && "Failed to disassemble instruction in PLT");
 
       unsigned int OpcAddIP = InstAddIP.getOpcode();
@@ -130,7 +130,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
       uint64_t InstSz;
       Success = MR->getMCDisassembler()->getInstruction(
           Inst, InstSz, Bytes.slice(PLTEndOff + 8 - SecStart), PLTEndOff + 8,
-          nulls(), nulls());
+          nulls());
       assert(Success && "Failed to disassemble instruction in PLT");
       unsigned int Opcode = Inst.getOpcode();
       MCInstrDesc MCID = MR->getMCInstrInfo()->get(Opcode);

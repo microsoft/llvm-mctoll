@@ -425,11 +425,14 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
       error("Unsupported target " + TheTriple.getArchName());
   }
 
-  // Update the triple name and return the found target.
+  // A few of opcodes in ARMv4 or ARMv5 are indentified as ARMv6 opcodes,
+  // so unify the triple Archs lower then ARMv6 to ARMv6 temporarily.
   if (TheTriple.getArchName() == "armv4t" ||
       TheTriple.getArchName() == "armv5te" ||
       TheTriple.getArchName() == "armv5" || TheTriple.getArchName() == "armv5t")
     TheTriple.setArchName("armv6");
+
+  // Update the triple name and return the found target.
   TripleName = TheTriple.getTriple();
   return TheTarget;
 }

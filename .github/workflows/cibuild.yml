@@ -16,6 +16,9 @@ jobs:
         echo 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main' | sudo tee -a /etc/apt/sources.list
         sudo apt update
         sudo apt install -y ninja-build clang
+        # To generate ARM binaries (via cross compilation) for tests
+        sudo apt install -y gcc-multilib
+        sudo apt install -y gcc-multilib-arm-linux-gnueabi
         sudo update-alternatives --install /usr/bin/cc  cc  /usr/bin/clang 200
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 200
       shell: bash
@@ -54,6 +57,9 @@ jobs:
         echo 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main' | sudo tee -a /etc/apt/sources.list
         sudo apt update
         sudo apt install -y ninja-build clang
+        # To generate ARM binaries (via cross compilation) for tests
+        sudo apt install -y gcc-multilib
+        sudo apt install -y gcc-multilib-arm-linux-gnueabi
         sudo update-alternatives --install /usr/bin/cc  cc  /usr/bin/clang 200
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 200
       shell: bash

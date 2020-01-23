@@ -72,6 +72,7 @@ public:
     return mcInstMap.find(Offset);
   }
 
+  const_mcinst_iter const_mcinstr_begin() const { return mcInstMap.begin(); }
   const_mcinst_iter const_mcinstr_end() const { return mcInstMap.end(); }
 
   // Get the size of instruction

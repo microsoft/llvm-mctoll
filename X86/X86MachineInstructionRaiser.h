@@ -194,20 +194,6 @@ private:
   bool isEffectiveAddrValue(Value *Val);
   void changeRaisedFunctionReturnType(Type *);
 
-  // JumpTableBlock - the Jumptable case.
-  using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
-
-  struct JumpTableInfo {
-    // Jump table index
-    unsigned jtIdx;
-
-    // Conditon Machine BasicBlock.
-    MachineBasicBlock *conditionMBB;
-
-    // Default Machine BasicBlock.
-    MachineBasicBlock *df_MBB;
-  };
-
   std::vector<JumpTableInfo> jtList;
   // Set of MBBNos that end with tail calls
   std::set<int> tailCallMBBNos;

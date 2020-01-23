@@ -25,6 +25,19 @@ class MachineFunctionRaiser;
 
 using namespace object;
 
+using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
+
+struct JumpTableInfo {
+  /// The index of jump table in the function.
+  unsigned jtIdx;
+
+  /// The MachineBasicBlock which includes the jump table condition value.
+  MachineBasicBlock *conditionMBB;
+
+  /// The MachineBasicBlock which includes the default destination.
+  MachineBasicBlock *df_MBB;
+};
+
 // The ModuleRaiser class encapsulates information needed to raise a given
 // module.
 class ModuleRaiser {
@@ -117,6 +130,8 @@ public:
   }
   // Get the function filter for current Module.
   FunctionFilter *getFunctionFilter() const { return FFT; }
+  // Get the current architecture type.
+  Triple::ArchType getArch() const { return Arch; }
 
 protected:
   // A sequential list of MachineFunctionRaiser objects created

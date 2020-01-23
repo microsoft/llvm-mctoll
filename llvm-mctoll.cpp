@@ -425,6 +425,13 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
       error("Unsupported target " + TheTriple.getArchName());
   }
 
+  // A few of opcodes in ARMv4 or ARMv5 are indentified as ARMv6 opcodes,
+  // so unify the triple Archs lower then ARMv6 to ARMv6 temporarily.
+  if (TheTriple.getArchName() == "armv4t" ||
+      TheTriple.getArchName() == "armv5te" ||
+      TheTriple.getArchName() == "armv5" || TheTriple.getArchName() == "armv5t")
+    TheTriple.setArchName("armv6");
+
   // Update the triple name and return the found target.
   TripleName = TheTriple.getTriple();
   return TheTarget;
@@ -743,6 +750,7 @@ addDynamicElfSymbols(const ObjectFile *Obj,
 */
 
 static std::set<StringRef> ELFCRTSymbols = {
+    "call_weak_fn",
     "deregister_tm_clones",
     "__do_global_dtors_aux",
     "__do_global_dtors_aux_fini_array_entry",

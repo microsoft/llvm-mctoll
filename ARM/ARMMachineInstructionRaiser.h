@@ -5,6 +5,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+//
+// This file contains the declaration of ARMMachineInstructionRaiser class for
+// use by llvm-mctoll.
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMACHINEINSTRUCTIONRAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMACHINEINSTRUCTIONRAISER_H
@@ -18,10 +23,12 @@ public:
                               MCInstRaiser *mcir);
   bool raise();
   FunctionType *getRaisedFunctionPrototype();
-  int getArgumentNumber(unsigned int);
+  int getArgumentNumber(unsigned PReg);
   Value *getRegOrArgValue(unsigned PReg, int MBBNo);
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &);
+
+  std::vector<JumpTableInfo> jtList;
 
 private:
   bool raiseMachineFunction();

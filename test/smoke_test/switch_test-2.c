@@ -1,16 +1,5 @@
 // RUN: clang -o %t-opt %s -O2 -mno-sse
 // RUN: llvm-mctoll -d %t-opt
-// RUN: llvm-strings %t-opt-dis.ll 2>&1 | FileCheck --check-prefix=GLTEXT %s
-// GLTEXT:switch i32 %arg2, label %bb.3 [
-// GLTEXT:  i32 0, label %bb.3
-// GLTEXT:  i32 1, label %bb.3
-// GLTEXT:  i32 2, label %bb.3
-// GLTEXT:  i32 3, label %bb.5
-// GLTEXT:  i32 4, label %bb.5
-// GLTEXT:  i32 5, label %bb.2
-// GLTEXT:  i32 6, label %bb.2
-// GLTEXT:  i32 7, label %bb.6
-// GLTEXT:]
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll
 // RUN: %t-opt-dis 2>&1 | FileCheck --check-prefix=RESULT %s
 // RESULT:buf = 35

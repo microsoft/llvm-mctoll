@@ -1803,7 +1803,7 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
         int64_t BranchTargetOffset =
             MCInstOffset + MCIR->getMCInstSize(MCInstOffset) + BranchOffset;
         const int64_t TgtMBBNo =
-            MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset);
+            MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset, MF);
 
         // If the target is not a known target basic block, attempt to raise
         // this instruction as a call.

@@ -250,3 +250,73 @@ void MCInstRaiser::addMCInstOrData(uint64_t index, MCInstOrData mcInst) {
 
   mcInstMap.insert(std::make_pair(index, mcInst));
 }
+
+int64_t MCInstRaiser::getMBBNumberOfMCInstOffset(uint64_t Offset,
+                                                 MachineFunction &MF) const {
+  if ((Offset < FuncStart) || (Offset > FuncEnd))
+    return -1;
+  auto iter = mcInstToMBBNum.find(Offset);
+  if (iter != mcInstToMBBNum.end())
+    return (*iter).second;
+
+  // MBBNo not found. Check to see if the Offset corresponds to a non-leading
+  // instruction of any of the blocks. Such a situation may occur when this
+  // function is called before noops are deleted.
+  for (auto N : mcInstToMBBNum) {
+    uint64_t CurMBBStartOffset = N.first;
+    uint64_t CurMBBNo = N.second;
+    auto CurMBB = MF.getBlockNumbered(CurMBBNo);
+    unsigned CurMBBSizeinBytes = 0;
+    for (const MachineInstr &I : CurMBB->instrs()) {
+      CurMBBSizeinBytes += getMCInstSize(getMCInstIndex(I));
+    }
+    if ((CurMBBStartOffset <= Offset) &&
+        (Offset < CurMBBStartOffset + CurMBBSizeinBytes)) {
+      return CurMBBNo;
+    }
+  }
+  return -1;
+}
+
+int64_t MCInstRaiser::getMCInstOffsetOfMBBNumber(uint64_t MBBNum) const {
+  auto iter =
+      std::find_if(mcInstToMBBNum.begin(), mcInstToMBBNum.end(),
+                   [MBBNum](auto &&item) { return item.second == MBBNum; });
+
+  if (iter != mcInstToMBBNum.end())
+    return iter->first;
+  return -1;
+}
+
+uint64_t MCInstRaiser::getMCInstSize(uint64_t Offset) const {
+  const_mcinst_iter Iter = mcInstMap.find(Offset);
+  const_mcinst_iter End = mcInstMap.end();
+  assert(Iter != End && "Attempt to find MCInst at non-existent offset");
+
+  if (Iter.operator++() != End) {
+    uint64_t NextOffset = (*Iter).first;
+    return NextOffset - Offset;
+  }
+
+  // The instruction at Offset is the last instriuction in the input stream
+  assert(Offset < FuncEnd &&
+         "Attempt to find MCInst at offset beyond function end");
+  return FuncEnd - Offset;
+}
+
+uint64_t MCInstRaiser::getMCInstIndex(const MachineInstr &MI) const {
+  unsigned NumExpOps = MI.getNumExplicitOperands();
+  const MachineOperand &MO = MI.getOperand(NumExpOps);
+  assert(MO.isMetadata() &&
+         "Unexpected non-metadata operand in branch instruction");
+  const MDNode *MDN = MO.getMetadata();
+  // Unwrap metadata of the instruction to get the MCInstIndex of
+  // the MCInst corresponding to this MachineInstr.
+  ConstantAsMetadata *CAM = dyn_cast<ConstantAsMetadata>(MDN->getOperand(0));
+  assert(CAM != nullptr && "Unexpected metadata type");
+  Constant *CV = CAM->getValue();
+  ConstantInt *CI = dyn_cast<ConstantInt>(CV);
+  assert(CI != nullptr && "Unexpected metadata constant type");
+  APInt ArbPrecInt = CI->getValue();
+  return ArbPrecInt.getSExtValue();
+}

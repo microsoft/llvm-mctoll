@@ -1,8 +1,8 @@
 // REQUIRES: system-linux
 // RUN: clang -o %t.so %S/Inputs/switch_func.c -shared -fPIC
 // RUN: llvm-mctoll -d %t.so
-// RUN: clang -o %t1 %s %t-dis.ll
-// RUN: %t1 2>&1 | FileCheck %s -check-prefix=DSO
+// RUN: clang -o %t-so-dis %s %t-dis.ll
+// RUN: %t-so-dis 2>&1 | FileCheck %s -check-prefix=DSO
 // DSO: Switch 1
 // DSO-NEXT: Return 15
 // DSO-NEXT: Switch 2
@@ -24,8 +24,8 @@
 
 // RUN: clang -o %t %s %S/Inputs/switch_func.c
 // RUN: llvm-mctoll -d %t
-// RUN: clang -o %t1 %t-dis.ll
-// RUN: %t1 2>&1 | FileCheck %s -check-prefix=EXEC
+// RUN: clang -o %t-dis %t-dis.ll
+// RUN: %t-dis 2>&1 | FileCheck %s -check-prefix=EXEC
 // EXEC: Switch 1
 // EXEC-NEXT: Return 15
 // EXEC-NEXT: Switch 2

@@ -3348,7 +3348,8 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
   assert(MCIR != nullptr && "MCInstRaiser not initialized");
   int64_t BranchTargetOffset =
       MCInstOffset + MCIR->getMCInstSize(MCInstOffset) + BranchOffset;
-  const int64_t TgtMBBNo = MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset);
+  const int64_t TgtMBBNo =
+      MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset, MF);
   assert((TgtMBBNo != -1) && "No branch target found");
   auto iter = mbbToBBMap.find(TgtMBBNo);
   assert(iter != mbbToBBMap.end() &&
@@ -3369,7 +3370,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
            "Attempt to go past MCInstr stream");
     // Get MBB number whose lead instruction is at the offset of next
     // instruction. This is the fall-through MBB.
-    int64_t FTMBBNum = MCIR->getMBBNumberOfMCInstOffset((*MCIter).first);
+    int64_t FTMBBNum = MCIR->getMBBNumberOfMCInstOffset((*MCIter).first, MF);
     assert((FTMBBNum != -1) && "No fall-through target found");
     // Find raised BasicBlock corresponding to fall-through MBB
     auto mapIter = mbbToBBMap.find(FTMBBNum);

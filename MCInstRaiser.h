@@ -59,12 +59,14 @@ public:
   // MBB has the raised MachineInstr corresponding to MCInst at
   // Offset is the first instruction.
   // return -1 if no MBB maps to the specified MCinst offset
-  int64_t getMBBNumberOfMCInstOffset(uint64_t Offset) const {
-    auto iter = mcInstToMBBNum.find(Offset);
-    if (iter != mcInstToMBBNum.end())
-      return (*iter).second;
-    return -1;
-  }
+  int64_t getMBBNumberOfMCInstOffset(uint64_t Offset,
+                                     MachineFunction &MF) const;
+
+  // Get the MCInst at Offset that corresponds to MBB number .
+  // MBB has the raised MachineInstr corresponding to MCInst at
+  // Offset is the first instruction.
+  // return -1 if no MCinst offset maps to the specified MBB
+  int64_t getMCInstOffsetOfMBBNumber(uint64_t MBBNum) const;
 
   // Returns the iterator pointing to MCInstOrData at Offset in
   // input instruction stream.
@@ -76,38 +78,9 @@ public:
   const_mcinst_iter const_mcinstr_end() const { return mcInstMap.end(); }
 
   // Get the size of instruction
-  uint64_t getMCInstSize(uint64_t Offset) const {
-    const_mcinst_iter Iter = mcInstMap.find(Offset);
-    const_mcinst_iter End = mcInstMap.end();
-    assert(Iter != End && "Attempt to find MCInst at non-existent offset");
+  uint64_t getMCInstSize(uint64_t Offset) const;
 
-    if (Iter.operator++() != End) {
-      uint64_t NextOffset = (*Iter).first;
-      return NextOffset - Offset;
-    }
-
-    // The instruction at Offset is the last instriuction in the input stream
-    assert(Offset < FuncEnd &&
-           "Attempt to find MCInst at offset beyond function end");
-    return FuncEnd - Offset;
-  }
-
-  uint64_t getMCInstIndex(const MachineInstr &MI) {
-    unsigned NumExpOps = MI.getNumExplicitOperands();
-    const MachineOperand &MO = MI.getOperand(NumExpOps);
-    assert(MO.isMetadata() &&
-           "Unexpected non-metadata operand in branch instruction");
-    const MDNode *MDN = MO.getMetadata();
-    // Unwrap metadata of the instruction to get the MCInstIndex of
-    // the MCInst corresponding to this MachineInstr.
-    ConstantAsMetadata *CAM = dyn_cast<ConstantAsMetadata>(MDN->getOperand(0));
-    assert(CAM != nullptr && "Unexpected metadata type");
-    Constant *CV = CAM->getValue();
-    ConstantInt *CI = dyn_cast<ConstantInt>(CV);
-    assert(CI != nullptr && "Unexpected metadata constant type");
-    APInt ArbPrecInt = CI->getValue();
-    return ArbPrecInt.getSExtValue();
-  }
+  uint64_t getMCInstIndex(const MachineInstr &MI) const;
 
 private:
   // NOTE: The following data structures are implemented to record instruction

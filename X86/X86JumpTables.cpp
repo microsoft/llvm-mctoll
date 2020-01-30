@@ -38,8 +38,8 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
   for (MachineBasicBlock &JmpTblBaseCalcMBB : MF) {
     for (MachineBasicBlock::iterator CurMBBIter = JmpTblBaseCalcMBB.begin();
          CurMBBIter != JmpTblBaseCalcMBB.end(); CurMBBIter++) {
-      MachineInstr &JmpTblOffsetCalcMI = (*CurMBBIter);
-      unsigned Opcode = JmpTblOffsetCalcMI.getOpcode();
+      MachineInstr &JmpTblBaseCalcMI = (*CurMBBIter);
+      unsigned Opcode = JmpTblBaseCalcMI.getOpcode();
       auto InstKind = getInstructionKind(Opcode);
       // A vector of switch target MBBs
       std::vector<MachineBasicBlock *> JmpTgtMBBvec;
@@ -48,15 +48,15 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       // Find the MI LEA64r $rip and save offset of rip
       // This is typically generated in a shared library.
       if (Opcode == X86::LEA64r &&
-          JmpTblOffsetCalcMI.getOperand(1).getReg() == X86::RIP &&
-          JmpTblOffsetCalcMI.getOperand(4).isImm()) {
-        uint32_t JmpOffset = JmpTblOffsetCalcMI.getOperand(4).getImm();
-        auto MCInstIndex = MCIR->getMCInstIndex(JmpTblOffsetCalcMI);
+          JmpTblBaseCalcMI.getOperand(1).getReg() == X86::RIP &&
+          JmpTblBaseCalcMI.getOperand(4).isImm()) {
+        uint32_t JmpOffset = JmpTblBaseCalcMI.getOperand(4).getImm();
+        auto MCInstIndex = MCIR->getMCInstIndex(JmpTblBaseCalcMI);
         uint64_t MCInstSz = MCIR->getMCInstSize(MCInstIndex);
         // Calculate memory offset of the referenced offset.
         uint32_t JmpTblBaseMemAddress =
             TextSectionAddress + MCInstIndex + MCInstSz + JmpOffset;
-        JmpTblBaseReg = JmpTblOffsetCalcMI.getOperand(0).getReg();
+        JmpTblBaseReg = JmpTblBaseCalcMI.getOperand(0).getReg();
         // Get the contents of the section with JmpTblBaseMemAddress
         const ELF64LEObjectFile *Elf64LEObjFile =
             dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
@@ -99,8 +99,8 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
                                    JmpTblBaseMemAddress;
 
           // Get MBB corresponding to offset into text section of JmpTgtMemAddr
-          auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(JmpTgtMemAddr -
-                                                        TextSectionAddress);
+          auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(
+              JmpTgtMemAddr - TextSectionAddress, MF);
 
           // Continue reading 4-byte offsets from the section contents till
           // there is no valid MBB corresponding to jump target offset or
@@ -119,12 +119,12 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       // mov instruction of the kind mov offset(, IndxReg, Scale), Reg
       else {
         // Get index of memory reference in the instruction.
-        int memoryRefOpIndex = getMemoryRefOpIndex(JmpTblOffsetCalcMI);
+        int memoryRefOpIndex = getMemoryRefOpIndex(JmpTblBaseCalcMI);
         if ((InstKind == InstructionKind::MOV_FROM_MEM) ||
             (InstKind == InstructionKind::BRANCH_MEM_OP)) {
           assert((memoryRefOpIndex >= 0) && "Unexpected memory operand index");
           X86AddressMode memRef =
-              llvm::getAddressFromInstr(&JmpTblOffsetCalcMI, memoryRefOpIndex);
+              llvm::getAddressFromInstr(&JmpTblBaseCalcMI, memoryRefOpIndex);
           if (memRef.Base.Reg == X86::NoRegister) {
             unsigned memReadTargetByteSz = getInstructionMemOpSize(Opcode);
             assert(memReadTargetByteSz > 0 &&
@@ -138,7 +138,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
               assert(Elf64LEObjFile != nullptr &&
                      "Only 64-bit ELF binaries supported at present.");
               StringRef Contents;
-              JmpTblBaseReg = JmpTblOffsetCalcMI.getOperand(0).getReg();
+              JmpTblBaseReg = JmpTblBaseCalcMI.getOperand(0).getReg();
               size_t DataSize = 0;
               size_t JmpTblBaseOffset = 0;
               // Find the section.
@@ -188,7 +188,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
                 // get MBB corresponding to file offset into text section of
                 // JmpTgtMemAddr
                 auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(
-                    JmpTgtMemAddr - TextSectionAddress);
+                    JmpTgtMemAddr - TextSectionAddress, MF);
                 if (MBBNo != -1) {
                   MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);
                   JmpTgtMBBvec.push_back(MBB);
@@ -212,10 +212,15 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       }
 
       // Check to verify the current  block - JmpTblBaseCalcMBB - terminates
-      // with an indirect branch.
+      // with an indirect or an unconditional branch.
       bool BuildJumpTable = true;
+      MachineInstr *JmpTblBaseCalcMBBTermInst = nullptr;
       for (auto &T : JmpTblBaseCalcMBB.terminators()) {
-        if (!T.isIndirectBranch()) {
+        if (T.isIndirectBranch() || T.isUnconditionalBranch()) {
+          assert(JmpTblBaseCalcMBBTermInst == nullptr &&
+                 "MachineBasicBlock with multiple branch terminators found");
+          JmpTblBaseCalcMBBTermInst = &T;
+        } else {
           BuildJumpTable = false;
           break;
         }
@@ -233,7 +238,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         unsigned SR = find64BitSuperReg(JmpTblBaseReg);
 
         for (MachineBasicBlock::const_instr_iterator instIter =
-                 JmpTblOffsetCalcMI.getNextNode()->getIterator();
+                 JmpTblBaseCalcMI.getNextNode()->getIterator();
              instIter != JmpTblBaseCalcMBB.end(); ++instIter) {
           for (auto O : instIter->defs()) {
             if (O.isReg()) {
@@ -251,61 +256,101 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
           continue;
       }
 
-      // With all the checks done, we can safely assume that this is a block
-      // that computes the base of jumptables and delete it.
-      MBBsToBeErased.push_back(&JmpTblBaseCalcMBB);
+      assert(JmpTblBaseCalcMBBTermInst != nullptr &&
+             "Branch instruction terminating basic block computing jump table "
+             "base not found");
 
-      // Construct jump table. Current block is the block which would
-      // potentially contain the start of jump targets. If current block
-      // has multiple predecessors this may not be a jump table. For now
-      // assert this to discover potential situations in binaries. Change
-      // the assert to and continue if the assumption is correct.
-      assert((JmpTblBaseCalcMBB.pred_size() == 1) &&
-             "Expect a single predecessor during jump table discovery");
-      MachineBasicBlock *JmpTblPredMBB = *(JmpTblBaseCalcMBB.pred_begin());
-      // Predecessor block of current block (MBB) - which is jump table
-      // block - is expected to have exactly two successors; one the current
-      // block and the other which should become the default MBB for the switch.
-      assert((JmpTblPredMBB->succ_size() == 2) &&
-             "Unexpected number of successors of switch block");
+      // Find the MBB terminating with an indirect branch that would be changed
+      // to switch instruction.
+      MachineBasicBlock *SwitchMBB = nullptr;
       JumpTableInfo JmpTblInfo;
-      // Set predecessor of current block as condition block of jump table info
-      JmpTblInfo.conditionMBB = JmpTblPredMBB;
-      // Set default basic block in jump table info
-      for (auto Succ : JmpTblPredMBB->successors()) {
-        if (Succ != &JmpTblBaseCalcMBB) {
-          JmpTblInfo.df_MBB = Succ;
-          break;
+
+      if (JmpTblBaseCalcMBBTermInst->isUnconditionalBranch()) {
+        assert(JmpTblBaseCalcMBB.succ_size() == 1 &&
+               "Unexpected number of successors of a block terminating with "
+               "unconditional branch");
+        SwitchMBB = *(JmpTblBaseCalcMBB.succ_begin());
+        MachineInstr &BranchInstr = *(SwitchMBB->getFirstTerminator());
+        assert(BranchInstr.isIndirectBranch());
+        // Delete the unconditional branch instruction.
+        SwitchMBB->erase(BranchInstr);
+
+        // Set default basic block in jump table info
+        for (auto Pred : SwitchMBB->predecessors()) {
+          if (Pred != &JmpTblBaseCalcMBB) {
+            JmpTblInfo.df_MBB = Pred;
+            break;
+          }
         }
-      }
+        // Set predecessor of current block as condition block of jump table
+        // info
+        JmpTblInfo.conditionMBB = *(SwitchMBB->pred_begin());
+      } else if (JmpTblBaseCalcMBBTermInst->isIndirectBranch()) {
+        assert((JmpTblBaseCalcMBB.pred_size() == 1) &&
+               "Expect a single predecessor during jump table discovery");
+        // With all the checks done, we can safely assume that this is a block
+        // that computes the base of jumptables and delete it.
+        MBBsToBeErased.push_back(&JmpTblBaseCalcMBB);
+
+        // Construct jump table. Current block is the block which would
+        // potentially contain the start of jump targets. If current block
+        // has multiple predecessors this may not be a jump table. For now
+        // assert this to discover potential situations in binaries. Change
+        // the assert to and continue if the assumption is correct.
+        SwitchMBB = *(JmpTblBaseCalcMBB.pred_begin());
+        // Set default basic block in jump table info
+        for (auto Succ : SwitchMBB->successors()) {
+          if (Succ != &JmpTblBaseCalcMBB) {
+            JmpTblInfo.df_MBB = Succ;
+            break;
+          }
+        }
+
+        // Predecessor block of current block (MBB) - which is jump table
+        // block - is expected to have exactly two successors; one the current
+        // block and the other which should become the default MBB for the
+        // switch.
+        assert((SwitchMBB->succ_size() == 2) &&
+               "Unexpected number of successors of switch block");
+
+        // Set predecessor of current block as condition block of jump table
+        // info
+        JmpTblInfo.conditionMBB = SwitchMBB;
+
+        // Verify the branch instruction of SwitchMBB is a conditional
+        // jmp that uses eflags. Go to the most recent instruction that
+        // defines eflags. Remove that instruction as well as any subsequent
+        // instruction that uses the register defined by that instruction.
+        MachineInstr &BranchInstr = SwitchMBB->instr_back();
+        std::vector<MachineInstr *> MBBInstrsToErase;
+        if (BranchInstr.isConditionalBranch() &&
+            BranchInstr.getDesc().hasImplicitUseOfPhysReg(X86::EFLAGS)) {
+          // Delete the conditional branch instruction. The target of this
+          // instruction is default block and fall-through is the block that
+          // computes switch table base.
+          SwitchMBB->erase(BranchInstr);
+        } else
+          llvm_unreachable("Conditional branch expected in switch basic block "
+                           "during jump table discovery");
+      } else
+        llvm_unreachable("Unhandled case in jump table discovery");
+
       MachineJumpTableInfo *JTI =
           MF.getOrCreateJumpTableInfo(llvm::MachineJumpTableInfo::EK_Inline);
       JmpTblInfo.jtIdx = JTI->createJumpTableIndex(JmpTgtMBBvec);
-      // Verify the branch instruction of JmpTblPredMBB is a conditional
-      // jmp that uses eflags. Go to the most recent instruction that
-      // defines eflags. Remove that instruction as well as any subsequent
-      // instruction that uses the register defined by that instruction.
-      MachineInstr &BranchInstr = JmpTblPredMBB->instr_back();
-      std::vector<MachineInstr *> MBBInstrsToErase;
-      if (BranchInstr.isConditionalBranch() &&
-          BranchInstr.getDesc().hasImplicitUseOfPhysReg(X86::EFLAGS)) {
-        // Delete the conditional branch instruction. The target of this
-        // instruction is default block and fall-through is the block that
-        // computes switch table base.
-        JmpTblPredMBB->erase(BranchInstr);
-      }
 
       const X86Subtarget *STI = &MF.getSubtarget<X86Subtarget>();
       const X86InstrInfo *TII = STI->getInstrInfo();
 
       // Find the appropriate jump opcode based on the size of switch value
-      BuildMI(JmpTblPredMBB, DebugLoc(), TII->get(X86::JMP64r))
+      BuildMI(SwitchMBB, DebugLoc(), TII->get(X86::JMP64r))
           .addJumpTableIndex(JmpTblInfo.jtIdx);
       jtList.push_back(JmpTblInfo);
-      // Add jump table targets as successors of JmpTblPredMBB.
+
+      // Add jump table targets as successors of SwitchMBB.
       for (MachineBasicBlock *NewSucc : JmpTgtMBBvec) {
-        if (!JmpTblPredMBB->isSuccessor(NewSucc)) {
-          JmpTblPredMBB->addSuccessor(NewSucc);
+        if (!SwitchMBB->isSuccessor(NewSucc)) {
+          SwitchMBB->addSuccessor(NewSucc);
         }
       }
     }
@@ -390,6 +435,24 @@ X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
 
     assert(Register::isPhysicalRegister(cmpSrcReg) &&
            "Unable to detect compare source register");
+    Value *CmpVal = getRegOrArgValue(cmpSrcReg, MBB.getNumber());
+    Instruction *CmpInst = dyn_cast<Instruction>(CmpVal);
+    assert((CmpInst != nullptr) &&
+           "Expect instruction while finding switch compare value");
+    switchOnVal = CmpInst->getOperand(0);
+    // If switchOnval is a cast value, it is most likely cast to match the
+    // source of the compare instruction. Get to the value prior to casting.
+    CastInst *castInst = dyn_cast<CastInst>(switchOnVal);
+    while (castInst) {
+      switchOnVal = castInst->getOperand(0);
+      castInst = dyn_cast<CastInst>(switchOnVal);
+    }
+  } else if (instrNameStartsWith(*CurInstrIter, "XOR32")) {
+    CurInstrIter--;
+    const unsigned UseOp1Index = 1;
+    const MachineOperand &SrcOp = CurInstrIter->getOperand(UseOp1Index);
+    unsigned int cmpSrcReg = X86::NoRegister;
+    cmpSrcReg = SrcOp.getReg();
     Value *CmpVal = getRegOrArgValue(cmpSrcReg, MBB.getNumber());
     Instruction *CmpInst = dyn_cast<Instruction>(CmpVal);
     assert((CmpInst != nullptr) &&

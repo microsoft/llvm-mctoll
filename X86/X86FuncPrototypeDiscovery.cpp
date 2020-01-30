@@ -374,7 +374,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
                                            BranchOffset;
               // This may be a tail call if there is no MBB corresponding to the
               // branch target offset.
-              if (MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset) == -1) {
+              if (MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset, MF) ==
+                  -1) {
                 // It is a tail call only if there are no other instructions
                 // after this unconditional branch instruction.
                 IsTailCall = (MI.getNextNode() == nullptr);
@@ -722,7 +723,7 @@ X86MachineInstructionRaiser::getBranchTargetMBBNumber(const MachineInstr &MI) {
       uint64_t MCInstOffset = MCIR->getMCInstIndex(MI);
       int64_t BranchTargetOffset =
           MCInstOffset + MCIR->getMCInstSize(MCInstOffset) + BranchOffset;
-      TargetMBBNo = MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset);
+      TargetMBBNo = MCIR->getMBBNumberOfMCInstOffset(BranchTargetOffset, MF);
     }
   }
 

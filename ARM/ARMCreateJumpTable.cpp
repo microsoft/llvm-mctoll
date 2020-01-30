@@ -168,7 +168,7 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
                 IsFPIC ? (mcInstorData.getData() +
                           MCIR->getMCInstIndex(JmpTblOffsetCalcMI) + 16)
                        : (mcInstorData.getData() - MR->getTextSectionAddress());
-            auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(Offset);
+            auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(Offset, MF);
             if (MBBNo != -1) {
               MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);
               JmpTgtMBBvec.push_back(MBB);

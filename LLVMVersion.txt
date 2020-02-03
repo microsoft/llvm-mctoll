@@ -5,12 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit d629525597ebe3533d110ea288c2640f0dc24bf7
-Author: Lang Hames <lhames@gmail.com>
-Date:   Wed Jan 15 11:30:04 2020 -0800
+commit b2e884bee7ef6e22881861c5b720fa9934d46ae9
+Author: Sanjay Patel <spatel@rotateright.com>
+Date:   Mon Feb 3 11:54:12 2020 -0500
 
-    [docs][ORC] Update the laziness section of the ORCv2 design doc.
-    
-    This updates the discussion of lazy reexports, fixes a TBD for a usage example,
-    and adds a reference to the fully worked lazy reexports example that was added
-    in e9e26c01cd865da678b1af6ba5f417c713956a66.
+    [InstCombine] add tests for casted phi; NFC

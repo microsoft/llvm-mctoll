@@ -219,7 +219,7 @@ struct RunPassOption {
     SmallVector<StringRef, 8> PassNames;
     StringRef(Val).split(PassNames, ',', -1, false);
     for (auto PassName : PassNames)
-      RunPassNames->push_back(PassName);
+      RunPassNames->push_back(std::string(PassName));
   }
 };
 } // namespace
@@ -445,11 +445,11 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
     // If InputFilename ends in .o, remove it.
     StringRef IFN = InputFilenames[0];
     if (IFN.endswith(".o"))
-      OutputFilename = IFN.drop_back(2);
+      OutputFilename = std::string(IFN.drop_back(2));
     else if (IFN.endswith(".so"))
-      OutputFilename = IFN.drop_back(3);
+      OutputFilename = std::string(IFN.drop_back(3));
     else
-      OutputFilename = IFN;
+      OutputFilename = std::string(IFN);
 
     switch (OutputFormat) {
     case CGFT_AssemblyFile:

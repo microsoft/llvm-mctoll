@@ -231,9 +231,9 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
     TargetTy = Type::getInt64Ty(Ctx);
     UseRegTy = Type::getInt32Ty(Ctx);
   } else if (Opcode == X86::CQO) {
-    assert(is64BitPhysReg(UseReg) && is16BitPhysReg(DefReg_0) &&
+    assert(is64BitPhysReg(UseReg) && is64BitPhysReg(DefReg_0) &&
            is64BitPhysReg(DefReg_1) && (UseReg == DefReg_0) &&
-           "Unexpected characteristics of use/def registers in cdo "
+           "Unexpected characteristics of use/def registers in cqo "
            "instruction");
     TargetTy = Type::getInt128Ty(Ctx);
     UseRegTy = Type::getInt64Ty(Ctx);

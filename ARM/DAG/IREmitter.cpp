@@ -545,7 +545,8 @@ void IREmitter::emitSDNode(SDNode *Node) {
       if (GlobalVariable::classof(Ptr))
         Inst = IRB.CreatePtrToInt(Ptr, getDefaultType());
       else
-        Inst = IRB.CreateAlignedLoad(Ptr, Log2(DLT->getPointerPrefAlignment()));
+        Inst = IRB.CreateAlignedLoad(
+            Ptr, MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
 
       PHINode *Phi = createAndEmitPHINode(Node, BB, IfBB, ElseBB,
                                           dyn_cast<Instruction>(Inst));
@@ -559,7 +560,8 @@ void IREmitter::emitSDNode(SDNode *Node) {
         // Inst = IRB.CreatePtrToInt(Ptr, getDefaultType());
         Inst = new PtrToIntInst(Ptr, getDefaultType(), "", BB);
       } else {
-        Inst = IRB.CreateAlignedLoad(Ptr, Log2(DLT->getPointerPrefAlignment()));
+        Inst = IRB.CreateAlignedLoad(
+            Ptr, MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
 
         // TODO:
         // Temporary method for this.
@@ -604,12 +606,14 @@ void IREmitter::emitSDNode(SDNode *Node) {
       emitCondCode(CondValue, BB, IfBB, ElseBB);
       IRB.SetInsertPoint(IfBB);
 
-      IRB.CreateAlignedStore(Val, Ptr, Log2(DLT->getPointerPrefAlignment()));
+      IRB.CreateAlignedStore(Val, Ptr,
+                             MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
 
       IRB.CreateBr(ElseBB);
       IRB.SetInsertPoint(ElseBB);
     } else {
-      IRB.CreateAlignedStore(Val, Ptr, Log2(DLT->getPointerPrefAlignment()));
+      IRB.CreateAlignedStore(Val, Ptr,
+                             MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
     }
   } break;
   case ICmp: {
@@ -730,8 +734,9 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         else {
           const Value *StackAlloc =
               MFI.getObjectAllocation(StackArg - i - 4 + 1);
-          ArgVal = IRB.CreateAlignedLoad(const_cast<Value *>(StackAlloc),
-                                         Log2(DLT->getPointerPrefAlignment()));
+          ArgVal = IRB.CreateAlignedLoad(
+              const_cast<Value *>(StackAlloc),
+              MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
         }
         if (IsSyscall && i < CallFunc->arg_size() &&
             ArgVal->getType() != CalledFuncArgs[i].getType()) {

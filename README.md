@@ -113,9 +113,26 @@ The easiest way to check the raised LLVM IR `<binary>-dis.ll` is correct is to c
 
 # Acknowledgements
 
-Please use the following reference when citing `llvm-mctoll` in your work:
+Please use the following reference when citing this work [Raising Binaries to LLVM IR with MCTOLL (WIP)](https://dl.acm.org/doi/10.1145/3316482.3326354)
 
-* `Raising Binaries to LLVM IR with MCTOLL (WIP), S. Bharadwaj Yadavalli and Aaron Smith, LCTES 2019`
+```
+	       @inproceedings{10.1145/3316482.3326354,
+		    author = {Yadavalli, S. Bharadwaj and Smith, Aaron},
+		    title = {Raising Binaries to LLVM IR with MCTOLL (WIP Paper)},
+		    year = {2019},
+		    isbn = {9781450367240},
+		    publisher = {Association for Computing Machinery},
+		    address = {New York, NY, USA},
+		    url = {https://doi.org/10.1145/3316482.3326354},
+		    doi = {10.1145/3316482.3326354},
+		    booktitle = {Proceedings of the 20th ACM SIGPLAN/SIGBED International Conference on Languages, Compilers, and Tools for Embedded Systems},
+		    pages = {213–218},
+		    numpages = {6},
+		    keywords = {Code Generation, LLVM IR, Binary Translation},
+		    location = {Phoenix, AZ, USA},
+		    series = {LCTES 2019}
+	       }
+```
 
 # Contributing
 

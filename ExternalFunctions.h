@@ -20,10 +20,10 @@
 using namespace llvm;
 
 class ExternalFunctions {
-  ExternalFunctions() {};
-  ~ExternalFunctions() {};
+  ExternalFunctions(){};
+  ~ExternalFunctions(){};
 
-  typedef struct {
+  typedef struct RetAndArgs_t {
     StringRef ReturnType;
     std::vector<StringRef> Arguments;
     bool isVariadic;

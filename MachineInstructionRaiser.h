@@ -25,7 +25,7 @@ using namespace llvm;
 // transfer (i.e., branch) instructions during a post-processing
 // phase.
 
-typedef struct {
+typedef struct ControlTransferInfo_t {
   BasicBlock *CandidateBlock;
   // This is the MachineInstr that needs to be raised
   const MachineInstr *CandidateMachineInstr;

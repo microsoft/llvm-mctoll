@@ -148,50 +148,15 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
   SmallVector<MachineBasicBlock *, 8> WorkList;
   for (MachineBasicBlock &MBB : MF) {
     if (MBB.isReturnBlock()) {
-      // Add the predecessors of return block to the list as candidates
-      // of blocks to look for the instruction that sets return register, in
-      // case it is not found in the return block.
-      for (auto Pred : MBB.predecessors())
-        WorkList.push_back(Pred);
       // Push return block to ensure we look at the return block first.
       WorkList.push_back(&MBB);
       break;
     }
   }
 
-  bool BlockHasCall = false;
-
   while (!WorkList.empty() && returnType == nullptr) {
     MachineBasicBlock *MBB = WorkList.pop_back_val();
-    // If return register is defined in MBB, return the appropriate type.
-    // 1. Get the register definition map of MBB
-    auto MBBDefinedPhysRegIter = PerMBBDefinedPhysRegMap.find(MBB->getNumber());
-    if (MBBDefinedPhysRegIter != PerMBBDefinedPhysRegMap.end()) {
-      // If found, get the value defined for X86::RAX
-      MCPhysRegSizeMap DefinedPhysRegMap = MBBDefinedPhysRegIter->second;
-      auto DefinedPhysRegMapIter = DefinedPhysRegMap.find(X86::RAX);
-      // If RAX is defined by the end of the block, get the type.
-      // NOTE: The fact that return register is defined at the end of the block
-      // does not imply that a return type would be found. In cases where the
-      // return register might have been defined before the last call
-      // instruction in the block but not after that call instruction determines
-      // if we can deduce the return type.
-      if (DefinedPhysRegMapIter != DefinedPhysRegMap.end()) {
-        returnType = getReturnTypeFromMBB(*MBB, BlockHasCall);
-        // Check the correctness of the type, if found.
-        if (returnType != nullptr) {
-          uint16_t returnTypeSize = returnType->isPointerTy()
-                                        ? 64
-                                        : returnType->getPrimitiveSizeInBits();
-          assert((returnTypeSize == DefinedPhysRegMapIter->second * 8) &&
-                 "Inconsistent return type found");
-        }
-        // If the block has a call instruction, stop looking for the instruction
-        // that sets return register.
-        if (BlockHasCall)
-          break;
-      }
-    }
+    returnType = getReachingReturnType(*MBB);
   }
 
   // If we are unable to discover the return type, check if the function has
@@ -558,6 +523,69 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
       raisedFunction, tempFunctionPtr);
 
   return raisedFunction->getFunctionType();
+}
+
+// Discover and return the type of return register (viz., RAX or its
+// sub-register) definition that reaches MBB. Only definition of return register
+// after the last call instruction or that found on a reverse traversal without
+// encountering any call instruction, are considered to be indicative of return
+// value set up.
+Type *X86MachineInstructionRaiser::getReachingReturnType(
+    const MachineBasicBlock &MBB) {
+  bool HasCall = false;
+  // Find return type in MBB
+  Type *ReturnType = getReturnTypeFromMBB(MBB, HasCall);
+  // If the MBB has no call instruction and return type is not found, traverse
+  // up its predecessors to find the type of reaching definition of return
+  // register.
+  if (!HasCall) {
+    if (ReturnType == nullptr) {
+      for (auto P : MBB.predecessors()) {
+        // Initialize a bit vector tracking visited basic blocks
+        BitVector BlockVisited(MF.getNumBlockIDs(), false);
+        SmallVector<MachineBasicBlock *, 8> WorkList;
+        Type *ReturnTypeOnPath = nullptr;
+
+        WorkList.push_back(P);
+
+        while (!WorkList.empty() && !ReturnType) {
+          MachineBasicBlock *PredMBB = WorkList.pop_back_val();
+          int CurPredMBBNo = PredMBB->getNumber();
+          if (!BlockVisited[CurPredMBBNo]) {
+            // Mark block as visited
+            BlockVisited.set(CurPredMBBNo);
+            // Get function return type from MBB
+            ReturnTypeOnPath = getReturnTypeFromMBB(*PredMBB, HasCall);
+            // Check out whether the ReturnType get from called instruction.
+            // Only keep the first find called function return type, continue
+            // to find other reach tree which has not call instruction.
+            // If the MBB has no call instruction and return type is not found,
+            // continue traversal up its predecessors.
+            if (!HasCall && ReturnTypeOnPath == nullptr) {
+              // Continue traversal
+              for (auto Pred : PredMBB->predecessors()) {
+                if (!BlockVisited[Pred->getNumber()])
+                  WorkList.push_back(Pred);
+              }
+            } else {
+              // ReturnTypeOnPath is found
+              if (ReturnTypeOnPath) {
+                // Ensure it is the same as any found along other reverse
+                // traversals.
+                if (ReturnType)
+                  assert(ReturnType == ReturnTypeOnPath);
+                else
+                  // Return type found on this traversal
+                  ReturnType = ReturnTypeOnPath;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return ReturnType;
 }
 
 // Discover and return the type of return register definition in the block

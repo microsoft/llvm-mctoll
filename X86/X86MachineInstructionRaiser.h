@@ -134,7 +134,8 @@ private:
 
   // Helper functions
   // Cleanup MachineBasicBlocks
-  static bool deleteNOOPInstrMI(MachineBasicBlock &, MachineBasicBlock::iterator);
+  static bool deleteNOOPInstrMI(MachineBasicBlock &,
+                                MachineBasicBlock::iterator);
   bool deleteNOOPInstrMF();
   bool unlinkEmptyMBBs();
   // Adjust sizes of stack allocated objects
@@ -168,6 +169,7 @@ private:
   Value *matchSSAValueToSrcRegSize(const MachineInstr &, unsigned);
 
   Type *getFunctionReturnType();
+  Type *getReachingReturnType(const MachineBasicBlock &MBB);
   Type *getReturnTypeFromMBB(const MachineBasicBlock &MBB, bool &HasCall);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
   Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);

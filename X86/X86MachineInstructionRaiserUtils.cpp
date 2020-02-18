@@ -1892,6 +1892,9 @@ void X86MachineInstructionRaiser::changeRaisedFunctionReturnType(Type *RetTy) {
       I2->takeName(&*I);
       ++I2;
     }
+    // Delete old function signature from function list
+    raisedFunction->getParent()->getFunctionList().remove(
+        raisedFunction->getIterator());
     raisedFunction = NewF;
   }
   return;

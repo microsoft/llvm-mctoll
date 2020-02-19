@@ -58,7 +58,7 @@ public:
   // Return the Type of the physical register.
   Type *getPhysRegType(unsigned int PhysReg);
 
-  bool insertAllocaInEntryBlock(Instruction *alloca);
+  bool insertAllocaInEntryBlock(Instruction *alloca, int StackOffset);
   BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
@@ -87,6 +87,9 @@ private:
 
   // A map of MachineFunctionBlock number to BasicBlock *
   MBBNumToBBMap mbbToBBMap;
+
+  // A map of alloca instruction to its offset on stack
+  std::map<Instruction *, int> allocaIntToOffset;
 
   // Commonly used LLVM data structures during this phase
   MachineRegisterInfo &machineRegInfo;

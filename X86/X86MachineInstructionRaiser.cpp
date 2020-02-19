@@ -104,7 +104,7 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
       MF.getFrameInfo().setObjectOffset(StackFrameIndex, Offset);
 
       // Add the alloca instruction to entry block
-      insertAllocaInEntryBlock(Alloca);
+      insertAllocaInEntryBlock(Alloca, Offset);
       // The alloca corresponds to the current location of stack pointer
       raisedValues->setPhysRegSSAValue(X86::RSP, mi.getParent()->getNumber(),
                                        Alloca);

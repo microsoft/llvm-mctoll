@@ -233,9 +233,6 @@ static cl::opt<RunPassOption, true, cl::parser<std::string>> RunPass(
 
 static StringRef ToolName;
 
-typedef std::tuple<uint64_t, StringRef, uint8_t> SectionSymbolInfo;
-typedef std::vector<SectionSymbolInfo> SectionSymbolsTy;
-
 namespace {
 typedef std::function<bool(llvm::object::SectionRef const &)> FilterPredicate;
 
@@ -792,16 +789,15 @@ static std::set<StringRef> MachOSectionsToDisassemble = {};
    table. For now assuming global linkage
 */
 
-static bool isAFunctionSymbol(const ObjectFile *Obj,
-                              SectionSymbolInfo &Symbol) {
+static bool isAFunctionSymbol(const ObjectFile *Obj, SymbolInfoTy &Symbol) {
   if (Obj->isELF()) {
-    return (std::get<2>(Symbol) == ELF::STT_FUNC);
+    return (Symbol.Type == ELF::STT_FUNC);
   }
   if (Obj->isMachO()) {
     // If Symbol is not in the MachOCRTSymbol list return true indicating that
     // this is a symbol of a function we are interested in disassembling and
     // raising.
-    return (MachOCRTSymbols.find(std::get<1>(Symbol)) == MachOCRTSymbols.end());
+    return (MachOCRTSymbols.find(Symbol.Name) == MachOCRTSymbols.end());
   }
   return false;
 }
@@ -1022,8 +1018,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::vector<uint64_t> TextMappingSymsAddr;
     if (isArmElf(Obj)) {
       for (const auto &Symb : Symbols) {
-        uint64_t Address = std::get<0>(Symb);
-        StringRef Name = std::get<1>(Symb);
+        uint64_t Address = Symb.Addr;
+        StringRef Name = Symb.Name;
         if (Name.startswith("$d"))
           DataMappingSymsAddr.push_back(Address - SectionAddr);
         if (Name.startswith("$x"))
@@ -1085,11 +1081,11 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     }
 
     // If the section has no symbol at the start, just insert a dummy one.
-    if (Symbols.empty() || std::get<0>(Symbols[0]) != 0) {
+    if (Symbols.empty() || Symbols[0].Addr != 0) {
       Symbols.insert(
           Symbols.begin(),
-          std::make_tuple(SectionAddr, name,
-                          Section.isText() ? ELF::STT_FUNC : ELF::STT_OBJECT));
+          SymbolInfoTy(SectionAddr, name,
+                       Section.isText() ? ELF::STT_FUNC : ELF::STT_OBJECT));
     }
 
     SmallString<40> Comments;
@@ -1123,12 +1119,11 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     // Disassemble symbol by symbol.
     for (unsigned si = 0, se = Symbols.size(); si != se; ++si) {
-      uint64_t Start = std::get<0>(Symbols[si]) - SectionAddr;
+      uint64_t Start = Symbols[si].Addr - SectionAddr;
       // The end is either the section end or the beginning of the next
       // symbol.
-      uint64_t End = (si == se - 1)
-                         ? SectSize
-                         : std::get<0>(Symbols[si + 1]) - SectionAddr;
+      uint64_t End =
+          (si == se - 1) ? SectSize : Symbols[si + 1].Addr - SectionAddr;
       // Don't try to disassemble beyond the end of section contents.
       if (End > SectSize)
         End = SectSize;
@@ -1150,12 +1145,12 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       if (Obj->isELF() && Obj->getArch() == Triple::amdgcn) {
         // make size 4 bytes folded
         End = Start + ((End - Start) & ~0x3ull);
-        if (std::get<2>(Symbols[si]) == ELF::STT_AMDGPU_HSA_KERNEL) {
+        if (Symbols[si].Type == ELF::STT_AMDGPU_HSA_KERNEL) {
           // skip amd_kernel_code_t at the begining of kernel symbol (256 bytes)
           Start += 256;
         }
         if (si == se - 1 ||
-            std::get<2>(Symbols[si + 1]) == ELF::STT_AMDGPU_HSA_KERNEL) {
+            Symbols[si + 1].Type == ELF::STT_AMDGPU_HSA_KERNEL) {
           // cut trailing zeroes at the end of kernel
           // cut up to 256 bytes
           const uint64_t EndAlign = 256;
@@ -1167,7 +1162,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       }
 
       if (isAFunctionSymbol(Obj, Symbols[si])) {
-        auto &SymStr = std::get<1>(Symbols[si]);
+        auto &SymStr = Symbols[si].Name;
 
         if ((FilterFunctionSet.getNumOccurrences() != 0)) {
           // Check the symbol name whether it should be excluded or not.
@@ -1205,7 +1200,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         // abstraction of the binary function. Instead, a new Function is
         // created using the LLVMContext and name of this Function object.
         FunctionType *FTy = FunctionType::get(Type::getVoidTy(llvmCtx), false);
-        StringRef FunctionName(std::get<1>(Symbols[si]));
+        StringRef FunctionName(Symbols[si].Name);
         // Strip leading underscore if the binary is MachO
         if (Obj->isMachO()) {
           FunctionName.consume_front("_");
@@ -1234,7 +1229,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         // decoded.
         // bool allInstructionsDecoded = true;
         if (PrintAll)
-          outs() << "\nFunction " << std::get<1>(Symbols[si]) << ":\n";
+          outs() << "\nFunction " << Symbols[si].Name << ":\n";
       } else {
         // Continue using to the most recent MachineFunctionRaiser
         // Get current MachineFunctionRaiser
@@ -1279,7 +1274,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         // same section. We rely on the markers introduced to
         // understand what we need to dump. If the data marker is within a
         // function, it is denoted as a word/short etc
-        if (isArmElf(Obj) && std::get<2>(Symbols[si]) != ELF::STT_OBJECT) {
+        if (isArmElf(Obj) && Symbols[si].Type != ELF::STT_OBJECT) {
           uint64_t Stride = 0;
 
           auto DAI = std::lower_bound(DataMappingSymsAddr.begin(),
@@ -1334,7 +1329,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         // only disassembling text, we are in a situation where we must print
         // the data and not disassemble it.
         // TODO : Get rid of the following code in the if-block.
-        if (Obj->isELF() && std::get<2>(Symbols[si]) == ELF::STT_OBJECT &&
+        if (Obj->isELF() && Symbols[si].Type == ELF::STT_OBJECT &&
             Section.isText()) {
           // parse data up to 8 bytes at a time
           uint8_t AsciiData[9] = {'\0'};
@@ -1434,7 +1429,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
           }
         }
       }
-      FuncFilter->eraseFunctionBySymbol(std::get<1>(Symbols[si]),
+      FuncFilter->eraseFunctionBySymbol(Symbols[si].Name,
                                         FunctionFilter::FILTER_INCLUDE);
     }
 

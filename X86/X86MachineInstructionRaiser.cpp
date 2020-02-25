@@ -3364,14 +3364,20 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
     // Find the fall through basic block
     MCInstRaiser::const_mcinst_iter MCIter = MCIR->getMCInstAt(MCInstOffset);
     LLVMContext &Ctx(MF.getFunction().getContext());
-    // Go to next instruction
-    MCIter++;
-    assert(MCIter != MCIR->const_mcinstr_end() &&
-           "Attempt to go past MCInstr stream");
-    // Get MBB number whose lead instruction is at the offset of next
-    // instruction. This is the fall-through MBB.
+    // Go to next non-nop instruction on the fall-through path.
+    bool isNop = true;
+    while (isNop) {
+      MCIter++;
+      isNop = isNoop(MCIter->second.getMCInst().getOpcode());
+      assert(MCIter != MCIR->const_mcinstr_end() &&
+             "Attempt to go past MCInstr stream");
+    }
+    // Get MBB number whose lead instruction is at the offset of fall-through
+    // non-nop instruction. This is the fall-through MBB.
     int64_t FTMBBNum = MCIR->getMBBNumberOfMCInstOffset((*MCIter).first, MF);
     assert((FTMBBNum != -1) && "No fall-through target found");
+    if (MF.getBlockNumbered(FTMBBNum)->empty())
+      assert(false && "Fall-through empty");
     // Find raised BasicBlock corresponding to fall-through MBB
     auto mapIter = mbbToBBMap.find(FTMBBNum);
     assert(mapIter != mbbToBBMap.end() &&

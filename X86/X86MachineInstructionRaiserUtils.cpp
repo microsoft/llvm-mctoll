@@ -21,6 +21,7 @@
 #include "llvm/Object/ELFObjectFile.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
+#include <iterator>
 
 using namespace llvm;
 using namespace mctoll;
@@ -787,7 +788,6 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   // At this point, the stack offset specified in the memory opernad is
   // different from that of the alloca corresponding to sp or there is no
   // stack allocation corresponding to sp.
-  MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
   // If there is no allocation corresponding to sp, set the offset of new
   // allocation to be that specified in memory operand.
   if (CurSPVal != nullptr) {
@@ -799,8 +799,6 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
         if (hasRODataAccess(LoadAllocInst))
           // Refers to rodata; so has no sp allocation;
           return nullptr;
-        // Set current SP value to be the alloc being loaded from.
-        CurSPVal = LoadAllocInst->getPointerOperand();
       } else {
         return nullptr;
       }
@@ -810,6 +808,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   int MIStackOffset = MemRef.Disp;
   // Look for alloc with offset MIStackOffset
   bool StackIndexFound = false;
+  MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
   unsigned NumObjs = MFrameInfo.getNumObjects();
   unsigned StackIndex = 0;
   for (; ((StackIndex < NumObjs) && !StackIndexFound); StackIndex++) {
@@ -863,7 +862,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   // Set MIStackOffset as the offset for stack frame object created.
   MF.getFrameInfo().setObjectOffset(stackFrameIndex, MIStackOffset);
   // Add the alloca instruction to entry block
-  insertAllocaInEntryBlock(alloca, MIStackOffset);
+  insertAllocaInEntryBlock(alloca, MIStackOffset, stackFrameIndex);
 
   return alloca;
 }
@@ -1686,56 +1685,61 @@ int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
   return memOperandNo;
 }
 
+// Insert a newly created alloca instruction representing stack location at
+// offset StackOffset and with MachineFrame index MFIndex.
 bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
-                                                           int StackOffset) {
+                                                           int StackOffset,
+                                                           int MFIndex) {
   // Avoid using BasicBlock InstrList iterators so that the tool can use LLVM
   // built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
   BasicBlock &EntryBlock = getRaisedFunction()->getEntryBlock();
-
   BasicBlock::InstListType &InstList = EntryBlock.getInstList();
+  bool Inserted = false;
+
   if (InstList.size() == 0) {
     InstList.push_back(alloca);
+    Inserted = true;
   } else {
     // Find the insertion point for alloca instructions in the block.
     // Insert the new alloc instruction after an existing alloca instruction
     // with stack offset larger than StackOffset and before the next alloca at
     // stack offset lesser than StackOffset.
-    Instruction *Inst = &EntryBlock.back();
-    while (Inst != nullptr) {
-      if (Inst->getOpcode() == Instruction::Alloca) {
-        // Get the stack offset of Inst
-        auto InstMapIter = allocaIntToOffset.find(Inst);
-        assert(InstMapIter != allocaIntToOffset.end() &&
-               "alloca stack index not found");
-        if (StackOffset < InstMapIter->second) {
-          auto NextInst = Inst->getNextNode();
-          if (NextInst != nullptr &&
-              NextInst->getOpcode() == Instruction::Alloca) {
-            // Get the stack offset of NextInst
-            auto NextInstMapIter = allocaIntToOffset.find(NextInst);
-            assert(NextInstMapIter != allocaIntToOffset.end() &&
-                   "alloca stack index not found");
-            if (NextInstMapIter->second < StackOffset)
-              // Insert alloca
-              InstList.insertAfter(Inst->getIterator(), alloca);
-          } else
-            // Next instruction is not an alloc. Simply insert alloca
+    // If there is no alloca instruction yet, push to front
+    if (ShadowStackIndexedByOffset.empty()) {
+      InstList.push_front(alloca);
+      Inserted = true;
+    } else {
+      MachineFrameInfo &MFInfo = MF.getFrameInfo();
+      assert((ShadowStackIndexedByOffset.find(StackOffset) ==
+              ShadowStackIndexedByOffset.end()) &&
+             "Alloca at stack slot already exists");
+      // Note that ShadowStack keys are stack offsets and are sorted in
+      // descending order. alloca instructions in the entry block are also in
+      // the descending order of their corresponding stack offsets.
+      for (auto SSIter = ShadowStackIndexedByOffset.begin();
+           SSIter != ShadowStackIndexedByOffset.end(); SSIter++) {
+        if (SSIter->first < StackOffset) {
+          auto NextSSIter = std::next(SSIter);
+          if ((NextSSIter == ShadowStackIndexedByOffset.end()) ||
+              ((NextSSIter != ShadowStackIndexedByOffset.end()) &&
+               (StackOffset < NextSSIter->first))) {
+            // Insert alloca after the alloca corresponding to stack offset
+            // SSIter->first
+            AllocaInst *Inst = const_cast<AllocaInst *>(
+                MFInfo.getObjectAllocation(SSIter->second));
             InstList.insertAfter(Inst->getIterator(), alloca);
-          break;
+            Inserted = true;
+            break;
+          }
         }
       }
-      Inst = Inst->getPrevNode();
     }
-
-    // If there is no alloca instruction yet, push to front
-    if (Inst == nullptr)
-      InstList.push_front(alloca);
   }
-  // Record the alloca instruction and its corresponding stack index
-  assert(allocaIntToOffset.find(alloca) == allocaIntToOffset.end() &&
-         "Unexpected alloca at stack index");
-  allocaIntToOffset.emplace(std::pair<Instruction *, int>(alloca, StackOffset));
-
+  if (!Inserted)
+    InstList.push_front(alloca);
+  // Record alloca in ShadowStack
+  ShadowStackIndexedByOffset.emplace(
+      std::pair<int64_t, unsigned>(StackOffset, MFIndex));
   return true;
 }
 

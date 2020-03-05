@@ -365,7 +365,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     MF.getFrameInfo().setObjectOffset(StackFrameIndex, Offset);
 
     // Add the alloca instruction to entry block
-    x86MIRaiser->insertAllocaInEntryBlock(Alloca, Offset);
+    x86MIRaiser->insertAllocaInEntryBlock(Alloca, Offset, StackFrameIndex);
 
     // If PhysReg is defined in MBBNo, store the defined value in the
     // newly created stack slot.

@@ -58,7 +58,8 @@ public:
   // Return the Type of the physical register.
   Type *getPhysRegType(unsigned int PhysReg);
 
-  bool insertAllocaInEntryBlock(Instruction *alloca, int StackOffset);
+  bool insertAllocaInEntryBlock(Instruction *alloca, int StackOffset,
+                                int MFIndex);
   BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
@@ -88,8 +89,10 @@ private:
   // A map of MachineFunctionBlock number to BasicBlock *
   MBBNumToBBMap mbbToBBMap;
 
-  // A map of alloca instruction to its offset on stack
-  std::map<Instruction *, int> allocaIntToOffset;
+  // Since MachineFrameInfo does not represent stack object ordering, we
+  // maintain a shadow stack indexed and sorted by descending order of stack
+  // offset of objects allocated on the stack.
+  std::map<int64_t, int, greater<int>> ShadowStackIndexedByOffset;
 
   // Commonly used LLVM data structures during this phase
   MachineRegisterInfo &machineRegInfo;

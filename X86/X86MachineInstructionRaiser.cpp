@@ -78,33 +78,35 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
       Type *Ty = getPhysRegOperandType(mi, 0);
       AllocaInst *Alloca = new AllocaInst(
           Ty, AllocaAddrSpace, 0, MaybeAlign(DL.getPrefTypeAlignment(Ty)));
-
-      // Create a stack slot associated with the alloca instruction
-      unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(
-          (Ty->getPrimitiveSizeInBits() / 8), DL.getPrefTypeAlignment(Ty),
-          false /* isSpillSlot */, Alloca);
-
-      // Compute size of new stack object.
-      const MachineFrameInfo &MFI = MF.getFrameInfo();
-      // Size of currently allocated object size
-      int64_t ObjectSize = MFI.getObjectSize(StackFrameIndex);
+      uint64_t StackObjectSize = (Ty->getPrimitiveSizeInBits() / 8);
 
       // Get the offset of the top of stack. Note that stack objects in MFI are
       // not sorted by offset. So we need to walk the stack objects to find the
       // offset of the top stack object.
-      int64_t StackTopOffset = 0;
-      for (int StackIndex = MFI.getObjectIndexBegin();
-           StackIndex < MFI.getObjectIndexEnd(); StackIndex++) {
-        int64_t ObjOffset = MFI.getObjectOffset(StackIndex);
-        if (ObjOffset < StackTopOffset)
-          StackTopOffset = ObjOffset;
+      int64_t StackObjectOffset = 0;
+      const MachineFrameInfo &MFI = MF.getFrameInfo();
+      // If there are objects on the stack, get the offset of the top object.
+      if (MFI.getNumObjects() > 0) {
+        for (int StackIndex = MFI.getObjectIndexBegin();
+             StackIndex < MFI.getObjectIndexEnd(); StackIndex++) {
+          int64_t ObjOffset = MFI.getObjectOffset(StackIndex);
+          if (ObjOffset < StackObjectOffset)
+            StackObjectOffset = ObjOffset;
+        }
+        // Compute the offset of the new stack object being created
+        StackObjectOffset = StackObjectOffset - StackObjectSize;
       }
-      int64_t Offset = StackTopOffset - ObjectSize;
-      // Set object size.
-      MF.getFrameInfo().setObjectOffset(StackFrameIndex, Offset);
+
+      // Create a stack slot associated with the alloca instruction
+      unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(
+          StackObjectSize, DL.getPrefTypeAlignment(Ty), false /* isSpillSlot */,
+          Alloca);
+
+      // Set offset of the stack object
+      MF.getFrameInfo().setObjectOffset(StackFrameIndex, StackObjectOffset);
 
       // Add the alloca instruction to entry block
-      insertAllocaInEntryBlock(Alloca, Offset);
+      insertAllocaInEntryBlock(Alloca, StackObjectOffset, StackFrameIndex);
       // The alloca corresponds to the current location of stack pointer
       raisedValues->setPhysRegSSAValue(X86::RSP, mi.getParent()->getNumber(),
                                        Alloca);

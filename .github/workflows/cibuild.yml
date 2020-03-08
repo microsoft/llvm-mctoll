@@ -19,6 +19,7 @@ jobs:
         # To generate ARM binaries (via cross compilation) for tests
         sudo apt install -y gcc-multilib
         sudo apt install -y gcc-multilib-arm-linux-gnueabi
+        sudo apt-get -y autoremove
         sudo update-alternatives --install /usr/bin/cc  cc  /usr/bin/clang 200
         sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 200
       shell: bash

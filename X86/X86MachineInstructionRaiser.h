@@ -172,7 +172,7 @@ private:
 
   bool changePhysRegToVirtReg(MachineInstr &);
 
-  Value *matchSSAValueToSrcRegSize(const MachineInstr &, unsigned);
+  Value *getPhysRegValue(const MachineInstr &, unsigned);
 
   Type *getFunctionReturnType();
   Type *getReachingReturnType(const MachineBasicBlock &MBB);

@@ -63,62 +63,36 @@ X86MachineInstructionRaiser::X86MachineInstructionRaiser(MachineFunction &MF,
   raisedValues = nullptr;
 }
 
-bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &mi) {
-  const MCInstrDesc &MCIDesc = mi.getDesc();
+bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
+  const MCInstrDesc &MCIDesc = MI.getDesc();
   uint64_t MCIDTSFlags = MCIDesc.TSFlags;
 
-  if ((MCIDTSFlags & X86II::FormMask) == X86II::AddRegFrm) {
-    // This is a register PUSH. If the source is register, create a slot on
-    // the stack.
-    if (mi.getOperand(0).isReg()) {
-      const DataLayout &DL = MR->getModule()->getDataLayout();
-      unsigned AllocaAddrSpace = DL.getAllocaAddrSpace();
+  assert(((MCIDTSFlags & X86II::FormMask) == X86II::AddRegFrm) &&
+         "Unhandled PUSH instruction with non-AddrRegFrm source operand");
+  assert((MI.getOperand(0).isReg()) &&
+         "Unhandled PUSH instruction with a non-register operand");
 
-      // Create alloca instruction to allocate stack slot
-      Type *Ty = getPhysRegOperandType(mi, 0);
-      AllocaInst *Alloca = new AllocaInst(
-          Ty, AllocaAddrSpace, 0, MaybeAlign(DL.getPrefTypeAlignment(Ty)));
-      uint64_t StackObjectSize = (Ty->getPrimitiveSizeInBits() / 8);
+  assert(MCIDesc.getNumImplicitUses() == 1 &&
+         MCIDesc.getNumImplicitDefs() == 1 &&
+         "Unexpected number of implicit uses and defs in push instruction");
+  assert((find64BitSuperReg(MCIDesc.ImplicitUses[0]) == X86::RSP) &&
+         (find64BitSuperReg(MCIDesc.ImplicitDefs[0]) == X86::RSP) &&
+         (MI.getNumExplicitOperands() == 1) &&
+         "Unexpected implicit or explicit registers in push instruction");
 
-      // Get the offset of the top of stack. Note that stack objects in MFI are
-      // not sorted by offset. So we need to walk the stack objects to find the
-      // offset of the top stack object.
-      int64_t StackObjectOffset = 0;
-      const MachineFrameInfo &MFI = MF.getFrameInfo();
-      // If there are objects on the stack, get the offset of the top object.
-      if (MFI.getNumObjects() > 0) {
-        for (int StackIndex = MFI.getObjectIndexBegin();
-             StackIndex < MFI.getObjectIndexEnd(); StackIndex++) {
-          int64_t ObjOffset = MFI.getObjectOffset(StackIndex);
-          if (ObjOffset < StackObjectOffset)
-            StackObjectOffset = ObjOffset;
-        }
-        // Compute the offset of the new stack object being created
-        StackObjectOffset = StackObjectOffset - StackObjectSize;
-      }
-
-      // Create a stack slot associated with the alloca instruction
-      unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(
-          StackObjectSize, DL.getPrefTypeAlignment(Ty), false /* isSpillSlot */,
-          Alloca);
-
-      // Set offset of the stack object
-      MF.getFrameInfo().setObjectOffset(StackFrameIndex, StackObjectOffset);
-
-      // Add the alloca instruction to entry block
-      insertAllocaInEntryBlock(Alloca, StackObjectOffset, StackFrameIndex);
-      // The alloca corresponds to the current location of stack pointer
-      raisedValues->setPhysRegSSAValue(X86::RSP, mi.getParent()->getNumber(),
-                                       Alloca);
-      return true;
-    } else {
-      assert(false && "Unhandled PUSH instruction with a non-register operand");
-    }
-  } else {
-    assert(false && "Unhandled PUSH instruction with source operand other "
-                    "than AddrRegFrm");
-  }
-  return false;
+  X86AddressMode memRef;
+  memRef.Base.Reg = MCIDesc.ImplicitUses[0]; // SP
+  memRef.BaseType = X86AddressMode::RegBase;
+  // Displacement of the store location of MIDesc.ImplicitUses[0] 0 off SP
+  // i.e., on top of stack.
+  memRef.Disp = 0;
+  memRef.IndexReg = X86::NoRegister;
+  memRef.Scale = 1;
+  Value *StackRef = getStackAllocatedValue(MI, memRef, false);
+  assert(StackRef != nullptr && "Failed to allocate stack slot for push");
+  raisedValues->setPhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
+                                   StackRef);
+  return true;
 }
 
 bool X86MachineInstructionRaiser::raisePopInstruction(const MachineInstr &mi) {
@@ -244,7 +218,7 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
   assert((TargetTy != nullptr) && (UseRegTy != nullptr) &&
          "Target type not set for cwd/cdq/cqo instruction");
   // Value *UseValue = getRegOrArgValue(UseReg, MI.getParent()->getNumber());
-  Value *UseValue = matchSSAValueToSrcRegSize(MI, UseReg);
+  Value *UseValue = getPhysRegValue(MI, UseReg);
 
   // Check if UseReg is a use-before-define register
   if (UseValue == nullptr)
@@ -455,7 +429,6 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
            "Unsized source value in move instruction");
     MachineOperand MO = MI.getOperand(Src1Index);
     assert(MO.isReg() && "Unexpected non-register operand");
-    SrcValue = matchSSAValueToSrcRegSize(MI, MO.getReg());
     // Check for undefined use
     Success = (SrcValue != nullptr);
     if (Success)
@@ -476,9 +449,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
            "Encountered cmovcc instruction with undefined source register");
     assert(SrcValue->getType()->isSized() &&
            "Unsized source value in cmovcc instruction");
-    MachineOperand MO = MI.getOperand(Src2Index);
-    assert(MO.isReg() && "Unexpected non-register operand");
-    SrcValue = matchSSAValueToSrcRegSize(MI, MO.getReg());
+    SrcValue = getRegOperandValue(MI, Src2Index);
     // Check for undefined use
     Success = (SrcValue != nullptr);
     if (Success) {
@@ -1196,7 +1167,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            "Expect one implicit use in shl instruction");
     assert((MCID.ImplicitUses[0] == X86::CL) &&
            "Expect implicit CL regsiter operand in shl instruction");
-    Value *CountValue = matchSSAValueToSrcRegSize(MI, X86::CL);
+    Value *CountValue = getPhysRegValue(MI, X86::CL);
     // Check for undefined use
     if (CountValue == nullptr)
       Success = false;
@@ -1578,15 +1549,10 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
       }
     }
   }
-  // If it is an effective address value, convert it to a pointer to
-  // the type of load reg.
-  if (isEffectiveAddrValue(MemRefValue)) {
-    assert(false &&
-           "*** Unhandled situation. Need to implement support correctly");
-    Type *PtrTy = MemRefValue->getType();
-    IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
-    RaisedBB->getInstList().push_back(ConvIntToPtr);
-    MemRefValue = ConvIntToPtr;
+  // Unwrap any casting to get to the actual memory reference.
+  while (isa<CastInst>(MemRefValue)) {
+    CastInst *B = dyn_cast<CastInst>(MemRefValue);
+    MemRefValue = B->getOperand(0);
   }
   assert(MemRefValue->getType()->isPointerTy() &&
          "Pointer type expected in store instruction");
@@ -2018,8 +1984,8 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
     isSigned = true;
   }
 
-  Value *DividendLowBytes = matchSSAValueToSrcRegSize(MI, UseDefReg_0);
-  Value *DividendHighBytes = matchSSAValueToSrcRegSize(MI, UseDefReg_1);
+  Value *DividendLowBytes = getPhysRegValue(MI, UseDefReg_0);
+  Value *DividendHighBytes = getPhysRegValue(MI, UseDefReg_1);
   if ((DividendLowBytes == nullptr) || (DividendHighBytes == nullptr))
     return false;
 
@@ -2736,9 +2702,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   // Values need to be discovered to form the appropriate instruction.
   // Note that DstOp is both source and dest.
   unsigned int DstPReg = DstOp.getReg();
-  Value *SrcOp1Value = matchSSAValueToSrcRegSize(MI, SrcOp1.getReg());
-  Value *SrcOp2Value = matchSSAValueToSrcRegSize(MI, SrcOp2.getReg());
-
+  Value *SrcOp1Value = getRegOperandValue(MI, SrcOp1Index);
+  Value *SrcOp2Value = getRegOperandValue(MI, SrcOp2Index);
   // Return if either of the operand values are not found. Possibly use of
   // undefined register.
   if ((SrcOp1Value == nullptr) || (SrcOp2Value == nullptr)) {
@@ -2778,7 +2743,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
            "Expect one implicit use in MCR encoded instruction");
     assert((MIDesc.ImplicitUses[0] == X86::CL) &&
            "Expect implicit CL regsiter operand in MCR encoded instruction");
-    CountValue = matchSSAValueToSrcRegSize(MI, X86::CL);
+    CountValue = getPhysRegValue(MI, X86::CL);
     // Check for undefined use
     if (CountValue != nullptr)
       // cast CountValue as needed
@@ -2957,7 +2922,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     unsigned SrcValIdx = 0;
     for (; SrcValIdx < NumImplicitUses; SrcValIdx++) {
       OpValues[SrcValIdx] =
-          matchSSAValueToSrcRegSize(MI, MIDesc.ImplicitUses[SrcValIdx]);
+          getPhysRegValue(MI, MIDesc.ImplicitUses[SrcValIdx]);
       // Check for undefined use
       if (OpValues[SrcValIdx] == nullptr)
         return false;
@@ -2975,9 +2940,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
                "operand of BinOp instruction with RI/I operand format");
 
         // Get value of SrcOp appropriately sized.
-        MachineOperand MO = MI.getOperand(CurExplicitOpIndex);
-        assert(MO.isReg() && "Unexpected non-register operand");
-        OpValues[0] = matchSSAValueToSrcRegSize(MI, MO.getReg());
+        OpValues[0] = getRegOperandValue(MI, CurExplicitOpIndex);
         // Check for undefined use
         if (OpValues[0] == nullptr)
           return false;

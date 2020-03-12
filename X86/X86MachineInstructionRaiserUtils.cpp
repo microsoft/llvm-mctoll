@@ -726,35 +726,29 @@ bool X86MachineInstructionRaiser::adjustStackAllocatedObjects() {
     int StackIndex = Entry.second;
     AllocaInst *allocaInst =
         const_cast<AllocaInst *>(MFrameInfo.getObjectAllocation(StackIndex));
-    // No need to look at the alloca instruction created to demarcate the
-    // stack pointer adjustment. It stack allocation does not have a
-    // corresponding reference in the binary being raised.
-    if (!allocaInst->getName().startswith("StackAdj")) {
-      auto NextEntryIter = std::next(StackOffsetToIndexMapIter);
-      if (NextEntryIter != StackOffsetToIndexMap.end()) {
-        int64_t NextStackOffset = NextEntryIter->first;
-        // Get stack slot size in bytes between current stack object
-        // and the next stack object
-        int SlotSize = abs(StackOffset - NextStackOffset);
-        // Slot size should be equal to or greater than sizeof alloca type
-        // times number of elements.
-        auto allocaBitCount = allocaInst->getAllocationSizeInBits(dataLayout);
-        assert(allocaBitCount.hasValue() &&
-               "Failed to get size of alloca instruction");
-        int allocaByteCount = allocaBitCount.getValue() / 8;
-        // assert((allocaByteCount >= SlotSize) &&
-        //       "Incorrect size of stack slot allocated");
-        if (allocaByteCount < SlotSize) {
-          // Change alloca size to match the slot size
-          // Value *sz = allocaInst->getArraySize();
-          // sz->dump();
-          int NewAllocaCount = ((SlotSize % allocaByteCount) == 0)
-                                   ? (SlotSize / allocaByteCount)
-                                   : (SlotSize / allocaByteCount) + 1;
-          Value *Count =
-              ConstantInt::get(llvmContext, APInt(32, NewAllocaCount));
-          allocaInst->setOperand(0, Count);
-        }
+    auto NextEntryIter = std::next(StackOffsetToIndexMapIter);
+    if (NextEntryIter != StackOffsetToIndexMap.end()) {
+      int64_t NextStackOffset = NextEntryIter->first;
+      // Get stack slot size in bytes between current stack object
+      // and the next stack object
+      int SlotSize = abs(StackOffset - NextStackOffset);
+      // Slot size should be equal to or greater than sizeof alloca type
+      // times number of elements.
+      auto allocaBitCount = allocaInst->getAllocationSizeInBits(dataLayout);
+      assert(allocaBitCount.hasValue() &&
+             "Failed to get size of alloca instruction");
+      int allocaByteCount = allocaBitCount.getValue() / 8;
+      // assert((allocaByteCount >= SlotSize) &&
+      //       "Incorrect size of stack slot allocated");
+      if (allocaByteCount < SlotSize) {
+        // Change alloca size to match the slot size
+        // Value *sz = allocaInst->getArraySize();
+        // sz->dump();
+        int NewAllocaCount = ((SlotSize % allocaByteCount) == 0)
+                                 ? (SlotSize / allocaByteCount)
+                                 : (SlotSize / allocaByteCount) + 1;
+        Value *Count = ConstantInt::get(llvmContext, APInt(32, NewAllocaCount));
+        allocaInst->setOperand(0, Count);
       }
     }
     // Go to next entry
@@ -791,6 +785,12 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   // If there is no allocation corresponding to sp, set the offset of new
   // allocation to be that specified in memory operand.
   if (CurSPVal != nullptr) {
+    // Unwrap a bitcast instruction to get to the base stack allocation value.
+    while (isa<CastInst>(CurSPVal)) {
+      CastInst *B = dyn_cast<CastInst>(CurSPVal);
+      CurSPVal = B->getOperand(0);
+    }
+
     // If the sp/bp do not reference a stack allocation, return nullptr
     if (!isa<AllocaInst>(CurSPVal)) {
       // Check if this is an instruction that loads from stack (i.e., alloc)
@@ -804,27 +804,58 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
       }
     }
   }
-  assert((MemRef.Disp != 0) && "Unexpected 0 offset value");
   int MIStackOffset = MemRef.Disp;
   // Look for alloc with offset MIStackOffset
-  bool StackIndexFound = false;
   MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
-  unsigned NumObjs = MFrameInfo.getNumObjects();
-  unsigned StackIndex = 0;
-  for (; ((StackIndex < NumObjs) && !StackIndexFound); StackIndex++) {
-    StackIndexFound = (MIStackOffset == MFrameInfo.getObjectOffset(StackIndex));
+  // Find and return an already existing stack slot for stack offset
+  // MIStackOffset.
+  auto SSIter = ShadowStackIndexedByOffset.find(MIStackOffset);
+  if (SSIter != ShadowStackIndexedByOffset.end())
+    return const_cast<AllocaInst *>(
+        MFrameInfo.getObjectAllocation(SSIter->second));
+
+  // If this is a stack pinter adjustment, find the corresponding adjustment
+  // slot and return it. There is no need for a new slot to be created.
+  if (IsStackPointerAdjust) {
+    auto SSIter = ShadowStackIndexedByOffset.find(-MIStackOffset);
+    if (SSIter != ShadowStackIndexedByOffset.end())
+      return const_cast<AllocaInst *>(
+          MFrameInfo.getObjectAllocation(SSIter->second));
   }
-  if (StackIndexFound) {
-    AllocaInst *Alloca = const_cast<AllocaInst *>(
-        MFrameInfo.getObjectAllocation(StackIndex - 1));
-    assert((Alloca != nullptr) && "Failed to look up stack allocated object");
-    assert(isa<Value>(Alloca) &&
-           "Alloca instruction expected to be associated with stack object");
-    return dyn_cast<AllocaInst>(Alloca);
+
+  // Find if there exists a stack slot that includes the offset MIStackSlot
+
+  for (auto StackSlot : ShadowStackIndexedByOffset) {
+    int64_t StackSlotOffset = StackSlot.first;
+    int StackSlotIndex = StackSlot.second;
+    if ((StackSlotOffset < MIStackOffset) &&
+        ((StackSlotOffset + MFrameInfo.getObjectSize(StackSlotIndex)) >
+         MIStackOffset)) {
+      AllocaInst *StackSlotAllocaInst = const_cast<AllocaInst *>(
+          MFrameInfo.getObjectAllocation(StackSlotIndex));
+      int Stride = MIStackOffset - StackSlotOffset;
+      assert(Stride > 0 && "Unexpected stack slot stride");
+      uint64_t CurAlign = MFrameInfo.getObjectAlign(StackSlotIndex).value();
+      int ModVal = Stride % CurAlign;
+      uint64_t NewAlign = CurAlign;
+      if (ModVal != 0)
+        NewAlign = pow(2, Log2_32(ModVal));
+      if (CurAlign > NewAlign)
+        MFrameInfo.setObjectAlignment(StackSlotIndex, NewAlign);
+      BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+
+      PtrToIntInst *AllocaAsInt = new PtrToIntInst(
+          StackSlotAllocaInst,
+          StackSlotAllocaInst->getType()->getPointerElementType(), "",
+          RaisedBB);
+      Instruction *AddStride = BinaryOperator::CreateAdd(
+          AllocaAsInt, ConstantInt::get(AllocaAsInt->getType(), Stride), "",
+          RaisedBB);
+      return AddStride;
+    }
   }
   // No stack object found with offset MIStackOffset. Create one.
   Type *Ty = nullptr;
-  unsigned int typeAlignment;
   LLVMContext &llvmContext(MF.getFunction().getContext());
   const DataLayout &dataLayout = MR->getModule()->getDataLayout();
   unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
@@ -847,20 +878,28 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
 
   assert(stackObjectSize != 0 && Ty != nullptr &&
          "Unknown type of operand in memory referencing instruction");
-  typeAlignment = dataLayout.getPrefTypeAlignment(Ty);
 
+  std::string RegName(x86RegisterInfo->getName(PReg));
+  std::string BaseName =
+      IsStackPointerAdjust ? RegName + "Adj_" : RegName + "_";
+  std::string SPStr = (MIStackOffset < 0) ? BaseName + "N." : BaseName + "P.";
+  // Compute the alignment
+  unsigned int typeAlignment = dataLayout.getPrefTypeAlignment(Ty);
+  int ModVal = abs(MIStackOffset) % typeAlignment;
+  if (ModVal != 0)
+    typeAlignment = pow(2, Log2_32(ModVal));
   // Create alloca instruction to allocate stack slot
   AllocaInst *alloca =
       new AllocaInst(Ty, allocaAddrSpace, 0, MaybeAlign(typeAlignment),
-                     IsStackPointerAdjust ? "StackAdj" : "");
+                     SPStr + std::to_string(abs(MIStackOffset)));
 
   // Create a stack slot associated with the alloca instruction
   stackFrameIndex = MF.getFrameInfo().CreateStackObject(
-      stackObjectSize, dataLayout.getPrefTypeAlignment(Ty),
-      false /* isSpillSlot */, alloca);
+      stackObjectSize, typeAlignment, false /* isSpillSlot */, alloca);
 
   // Set MIStackOffset as the offset for stack frame object created.
   MF.getFrameInfo().setObjectOffset(stackFrameIndex, MIStackOffset);
+
   // Add the alloca instruction to entry block
   insertAllocaInEntryBlock(alloca, MIStackOffset, stackFrameIndex);
 
@@ -1219,8 +1258,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             const char *beg =
                 reinterpret_cast<const char *>(SecData.bytes_begin() + Index);
 
-            // Symbol size should at least be the same as memory access size of
-            // the instruction.
+            // Symbol size should at least be the same as memory access size
+            // of the instruction.
             assert(MemAccessSizeInBytes <= SymbSize &&
                    "Inconsistent values of memory access size and symbol size");
             // Read MemAccesssSize number of bytes and check if they represent
@@ -1435,7 +1474,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   // IndexReg * ScaleAmt
   // Generate mul scaleAmt, IndexRegVal, if IndexReg is not 0.
   if (IndexReg != X86::NoRegister) {
-    Value *IndexRegVal = matchSSAValueToSrcRegSize(MI, IndexReg);
+    Value *IndexRegVal = getPhysRegValue(MI, IndexReg);
     switch (ScaleAmt) {
     case 0:
       break;
@@ -1578,9 +1617,10 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
             }
           }
         } else if (GV->getType()->isPointerTy()) {
-          // Global value is expected to be an pointer type to an integer type.
-          // Cast GV in accordance with the type of MemrefValue to facilitate
-          // the addition performed later to construct the address expression.
+          // Global value is expected to be an pointer type to an integer
+          // type. Cast GV in accordance with the type of MemrefValue to
+          // facilitate the addition performed later to construct the address
+          // expression.
           if (GV->getType()->getPointerElementType()->isIntegerTy()) {
 
             DispValue = getRaisedValues()->castValue(GV, MemrefValue->getType(),
@@ -1628,11 +1668,11 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
 // definition, function prototype is consulted to return the corresponding
 // value. In that case, return argument value associated with physical
 // register PReg according to C calling convention. This function simply
-// returns the value of PReg. It does not make any attempt to cast it to match
-// the PReg type.
+// returns the value of PReg.
 
 // NOTE : This is the preferred API to get the SSA value associated
-//        with PReg.
+//        with PReg. It does not make any attempt to cast it to match
+//        the PReg type.
 Value *X86MachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
   Value *PRegValue = raisedValues->getReachingDef(PReg, MBBNo);
 
@@ -1661,9 +1701,8 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
                                                        unsigned OpIndex) {
   const MachineOperand &MO = MI.getOperand(OpIndex);
   Value *PRegValue = nullptr; // Unknown, to start with.
-  if (MO.isReg()) {
-    PRegValue = getRegOrArgValue(MO.getReg(), MI.getParent()->getNumber());
-  }
+  assert(MO.isReg() && "Register operand expected");
+  PRegValue = getRegOrArgValue(MO.getReg(), MI.getParent()->getNumber());
 
   if (PRegValue != nullptr) {
     // Cast the value in accordance with the register size of the operand,
@@ -1676,83 +1715,13 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
   return PRegValue;
 }
 
-// Find the index of the first memory reference operand.
-int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
-  const MCInstrDesc &Desc = mi.getDesc();
-  int memOperandNo = X86II::getMemoryOperandNo(Desc.TSFlags);
-  if (memOperandNo >= 0)
-    memOperandNo += X86II::getOperandBias(Desc);
-  return memOperandNo;
-}
-
-// Insert a newly created alloca instruction representing stack location at
-// offset StackOffset and with MachineFrame index MFIndex.
-bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
-                                                           int StackOffset,
-                                                           int MFIndex) {
-  // Avoid using BasicBlock InstrList iterators so that the tool can use LLVM
-  // built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
-  BasicBlock &EntryBlock = getRaisedFunction()->getEntryBlock();
-  BasicBlock::InstListType &InstList = EntryBlock.getInstList();
-  bool Inserted = false;
-
-  if (InstList.size() == 0) {
-    InstList.push_back(alloca);
-    Inserted = true;
-  } else {
-    // Find the insertion point for alloca instructions in the block.
-    // Insert the new alloc instruction after an existing alloca instruction
-    // with stack offset larger than StackOffset and before the next alloca at
-    // stack offset lesser than StackOffset.
-    // If there is no alloca instruction yet, push to front
-    if (ShadowStackIndexedByOffset.empty()) {
-      InstList.push_front(alloca);
-      Inserted = true;
-    } else {
-      MachineFrameInfo &MFInfo = MF.getFrameInfo();
-      assert((ShadowStackIndexedByOffset.find(StackOffset) ==
-              ShadowStackIndexedByOffset.end()) &&
-             "Alloca at stack slot already exists");
-      // Note that ShadowStack keys are stack offsets and are sorted in
-      // descending order. alloca instructions in the entry block are also in
-      // the descending order of their corresponding stack offsets.
-      for (auto SSIter = ShadowStackIndexedByOffset.begin();
-           SSIter != ShadowStackIndexedByOffset.end(); SSIter++) {
-        if (SSIter->first < StackOffset) {
-          auto NextSSIter = std::next(SSIter);
-          if ((NextSSIter == ShadowStackIndexedByOffset.end()) ||
-              ((NextSSIter != ShadowStackIndexedByOffset.end()) &&
-               (StackOffset < NextSSIter->first))) {
-            // Insert alloca after the alloca corresponding to stack offset
-            // SSIter->first
-            AllocaInst *Inst = const_cast<AllocaInst *>(
-                MFInfo.getObjectAllocation(SSIter->second));
-            InstList.insertAfter(Inst->getIterator(), alloca);
-            Inserted = true;
-            break;
-          }
-        }
-      }
-    }
-  }
-  if (!Inserted)
-    InstList.push_front(alloca);
-  // Record alloca in ShadowStack
-  ShadowStackIndexedByOffset.emplace(
-      std::pair<int64_t, unsigned>(StackOffset, MFIndex));
-  return true;
-}
-
 // Check the sizes of the operand register PReg and that of the corresponding
-// SSA value. Return a value that is either truncated or sign-extended version
-// of the SSA Value if their sizes do not match. Return the SSA value of the
-// operand register PReg, if they match. This is handles the situation following
-// pattern of instructions
+// SSA value. Return an appropriately cast value to match with the size of PReg.
+// This is handles the situation following pattern of instructions
 //   rax <- ...
 //   edx <- opcode eax, ...
-Value *
-X86MachineInstructionRaiser::matchSSAValueToSrcRegSize(const MachineInstr &MI,
-                                                       unsigned PReg) {
+Value *X86MachineInstructionRaiser::getPhysRegValue(const MachineInstr &MI,
+                                                    unsigned PReg) {
   assert(Register::isPhysicalRegister(PReg) &&
          "Expect physical register to get SSA value");
   unsigned SrcOpSize = getPhysRegSizeInBits(PReg);
@@ -1780,6 +1749,58 @@ X86MachineInstructionRaiser::matchSSAValueToSrcRegSize(const MachineInstr &MI,
     MI.print(dbgs());
   }
   return SrcOpValue;
+}
+
+// Find the index of the first memory reference operand.
+int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
+  const MCInstrDesc &Desc = mi.getDesc();
+  int memOperandNo = X86II::getMemoryOperandNo(Desc.TSFlags);
+  if (memOperandNo >= 0)
+    memOperandNo += X86II::getOperandBias(Desc);
+  return memOperandNo;
+}
+
+// Insert a newly created alloca instruction representing stack location at
+// offset StackOffset and with MachineFrame index MFIndex. It is assumed that
+// MachineFrameInfo of Machine function already has the stack slot created
+// for offset StackOffset at MFIndex
+bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
+                                                           int StackOffset,
+                                                           int MFIndex) {
+  // Avoid using BasicBlock InstrList iterators so that the tool can use LLVM
+  // built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
+  BasicBlock &EntryBlock = getRaisedFunction()->getEntryBlock();
+  BasicBlock::InstListType &InstList = EntryBlock.getInstList();
+  // Ensure that stack slot corresponding to StackOffset is not in shadow
+  // stack i.e., not generated.
+  assert((ShadowStackIndexedByOffset.find(StackOffset) ==
+          ShadowStackIndexedByOffset.end()) &&
+         "Alloca at stack slot already exists");
+
+  // Record alloca in ShadowStack
+  auto InserResult = ShadowStackIndexedByOffset.emplace(
+      std::pair<int64_t, unsigned>(StackOffset, MFIndex));
+  // The order of alloca instructions should match the order of shadow stack -
+  // i.e., in descending order of stack offset. So, we utilize the fact that
+  // the map is ordered by stack offset value and leverage the insertion point
+  // returned by emplace.
+  assert(InserResult.second && "Shadow stack insertion failed");
+  auto InsertAtIter = InserResult.first;
+  // If this insertion point is at the beginning of the map, insert the alloca
+  // instruction at the beginning of the block.
+  if (InsertAtIter == ShadowStackIndexedByOffset.begin()) {
+    InstList.push_front(alloca);
+  } else {
+    // Insert alloca after the alloca instruction corresponding to the prior
+    // stack slot.
+    MachineFrameInfo &MFInfo = MF.getFrameInfo();
+    InsertAtIter--;
+    AllocaInst *Inst = const_cast<AllocaInst *>(
+        MFInfo.getObjectAllocation(InsertAtIter->second));
+    InstList.insertAfter(Inst->getIterator(), alloca);
+  }
+
+  return true;
 }
 
 // Record information to raise a terminator instruction in a later pass.

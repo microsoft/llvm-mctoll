@@ -5,12 +5,12 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit b61e83eb0e31c1e6006569b43bb98a61ff44ca4c
-Author: Raphael Isemann <teemperor@gmail.com>
-Date:   Mon Feb 24 20:20:54 2020 +0100
+commit dca920a904c27f4c86e909ef2e4e343d48168cca
+Author: Adrian Prantl <aprantl@apple.com>
+Date:   Wed Mar 18 15:30:20 2020 -0700
 
-    [libc++] Give headers that require C++14 a cplusplus14 requires in the modulemap
+    Allow remapping Clang module include paths
 
-    https://reviews.llvm.org/D68480 added those headers and made the std module
-    only usable with C++14 or later as the submodules were not marked as requiring
-    C++14 or later. This just adds the missing requires directives.
+    rdar://problem/55685132
+
+    Differential Revision: https://reviews.llvm.org/D76385

@@ -2105,6 +2105,8 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
 
 bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     const MachineInstr &MI, bool isMemCompare, Value *MemRefValue) {
+  // Ensure this is a compare instruction
+  assert(MI.isCompare() && "Compare instruction expected");
   // Get index of memory reference in the instruction.
   int memoryRefOpIndex = getMemoryRefOpIndex(MI);
   int MBBNo = MI.getParent()->getNumber();
@@ -2119,9 +2121,14 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  // Is this a sub instruction?
+  // Three instructions viz., CMP*, SUB* and TEST* are classified by LLVM as
+  // compare instructions Is this a sub instruction?
+  bool isCMPInst = instrNameStartsWith(MI, "CMP");
   bool isSUBInst = instrNameStartsWith(MI, "SUB");
+  bool isTESTInst = instrNameStartsWith(MI, "TEST");
 
+  assert((isCMPInst || isSUBInst || isTESTInst) &&
+         "Unhandled memory referencing compare instruction");
   SmallVector<Value *, 2> OpValues{nullptr, nullptr};
 
   // Get operand indices
@@ -2273,39 +2280,53 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
 
   raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
   raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
-  // SubInst is of type Value * to allow for a potential need to pass it to
+  // CmpInst is of type Value * to allow for a potential need to pass it to
   // castValue(), if needed.
-  Value *SubInst = BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
-  // Casting SubInst to instruction to be added to the raised basic block is
-  // correct since it is known to be specifically of type Instruction.
-  RaisedBB->getInstList().push_back(dyn_cast<Instruction>(SubInst));
+  Value *CmpInst = nullptr;
+  // If MI is a test instruction, the compare instruction should be an and
+  // instruction.
+  if (isTESTInst)
+    CmpInst = BinaryOperator::CreateAnd(OpValues[0], OpValues[1]);
+  else
+    CmpInst = BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
+  // Casting CmpInst to instruction to be added to the raised basic
+  // block is correct since it is known to be specifically of type Instruction.
+  RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CmpInst));
 
-  if (isSUBInst) {
+  if (isSUBInst || isTESTInst) {
     switch (MI.getOpcode()) {
     case X86::SUB8mi:
+    case X86::TEST8mi:
     case X86::SUB8mi8:
     case X86::SUB8mr:
+    case X86::TEST8mr:
     case X86::SUB16mi:
+    case X86::TEST16mi:
     case X86::SUB16mi8:
     case X86::SUB16mr:
+    case X86::TEST16mr:
     case X86::SUB32mi:
+    case X86::TEST32mi:
     case X86::SUB32mi8:
     case X86::SUB32mr:
+    case X86::TEST32mr:
     case X86::SUB64mi8:
     case X86::SUB64mi32:
-    case X86::SUB64mr: {
+    case X86::TEST64mi32:
+    case X86::SUB64mr:
+    case X86::TEST64mr: {
       // This instruction moves a source value to memory. So, if the types of
       // the source value and that of the memory pointer content are not the
       // same, it is the source value that needs to be cast to match the type of
       // destination (i.e., memory). It needs to be sign extended as needed.
       Type *MatchTy = MemRefValue->getType()->getPointerElementType();
       if (!MatchTy->isArrayTy()) {
-        SubInst = getRaisedValues()->castValue(SubInst, MatchTy, RaisedBB);
+        CmpInst = getRaisedValues()->castValue(CmpInst, MatchTy, RaisedBB);
       }
 
-      // Store SubInst to MemRefValue only if this is a sub MI or MR
+      // Store CmpInst to MemRefValue only if this is a sub MI or MR
       // instruction. Do not update if this is a cmp instruction.
-      StoreInst *StInst = new StoreInst(SubInst, MemRefValue);
+      StoreInst *StInst = new StoreInst(CmpInst, MemRefValue);
       RaisedBB->getInstList().push_back(StInst);
     } break;
     case X86::SUB32rr:
@@ -2318,7 +2339,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
       // Update the DestReg only if this is a sub instruction. Do not update
       // if this is a cmp instruction
       raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
-                                       SubInst);
+                                       CmpInst);
     } break;
     default:
       assert(false && "Unhandled sub instruction found");
@@ -2331,12 +2352,12 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   assert(ImpDefReg == X86::EFLAGS &&
          "Expected implicit EFLAGS def in compare instruction");
   // Create instructions to set CF, ZF, SF, and OF flags according to the result
-  // SubInst.
+  // CmpInst.
   // NOTE: Support for tracking AF and PF not yet implemented.
-  raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, SubInst);
-  raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, SubInst);
-  raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, SubInst);
-  raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, SubInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, CmpInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, CmpInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, CmpInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, CmpInst);
   return true;
 }
 
@@ -2921,8 +2942,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
            "with RI/I format operands");
     unsigned SrcValIdx = 0;
     for (; SrcValIdx < NumImplicitUses; SrcValIdx++) {
-      OpValues[SrcValIdx] =
-          getPhysRegValue(MI, MIDesc.ImplicitUses[SrcValIdx]);
+      OpValues[SrcValIdx] = getPhysRegValue(MI, MIDesc.ImplicitUses[SrcValIdx]);
       // Check for undefined use
       if (OpValues[SrcValIdx] == nullptr)
         return false;
@@ -3971,7 +3991,11 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         // an address, try to construct the associated global read-only data
         // value.
         Argument &FuncArg = CalledFuncArgs[i];
-        if (isa<ConstantInt>(ArgVal)) {
+        if (ArgVal == nullptr) {
+          // Most likely the argument register corresponds to an argument value
+          // that is not used in the function body. Just initialize it to 0.
+          ArgVal = ConstantInt::get(FuncArg.getType(), 0, false /* isSigned */);
+        } else if (isa<ConstantInt>(ArgVal)) {
           ConstantInt *Address = dyn_cast<ConstantInt>(ArgVal);
           if (!Address->isNegative()) {
             Value *RefVal = getOrCreateGlobalRODataValueAtOffset(

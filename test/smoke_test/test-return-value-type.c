@@ -5,12 +5,6 @@
 // CHECK: ret 90
 // CHECK: ret 250
 
-/*
- * Code will poduce MI as follows:
- * CALL64pcrel32 48, <0x55c021faa7a8>, implicit $rsp, implicit $ssp
- * $ebx = MOVSX32rr16 $ax, <0x55c021faa8c8>
- */
-
 #include <stdio.h>
 #define call_big(x) (0xf000 | (x))
 
@@ -21,15 +15,19 @@ static signed int C[16] = {0};
 signed short __attribute__((noinline))
 call_test(unsigned int N, signed int *C, signed short *A, signed short *B,
           signed short val);
-signed short call_sum(unsigned int N, signed int *C, signed short clipval);
+signed short __attribute__((noinline))
+call_sum(unsigned int N, signed int *C, signed short clipval);
 
-void call_mul_const(unsigned int N, signed int *C, signed short *A,
-                    signed short val);
-void call_mul_vect(unsigned int N, signed int *C, signed short *A,
-                   signed short *B);
-void call_add_const(unsigned int N, signed short *A, signed short val);
+void __attribute__((noinline))
+call_mul_const(unsigned int N, signed int *C, signed short *A,
+               signed short val);
+void __attribute__((noinline))
+call_mul_vect(unsigned int N, signed int *C, signed short *A, signed short *B);
+void __attribute__((noinline))
+call_add_const(unsigned int N, signed short *A, signed short val);
 
-unsigned short bar(unsigned char data, unsigned short arg) {
+unsigned short __attribute__((noinline))
+bar(unsigned char data, unsigned short arg) {
   unsigned char i = 0, x16 = 0, carry = 0;
 
   for (i = 0; i < 8; i++) {
@@ -49,17 +47,20 @@ unsigned short bar(unsigned char data, unsigned short arg) {
   }
   return arg;
 }
-unsigned short foo(unsigned short newval, unsigned short arg) {
+
+unsigned short __attribute__((noinline))
+foo(unsigned short newval, unsigned short arg) {
   arg = bar((unsigned char)(newval), arg);
   arg = bar((unsigned char)((newval) >> 8), arg);
   return arg;
 }
 
-unsigned short call(signed short newval, unsigned short arg) {
+unsigned short __attribute__((noinline))
+call(signed short newval, unsigned short arg) {
   return foo((unsigned short)newval, arg);
 }
 
-int bench_call() {
+int __attribute__((noinline)) bench_call() {
   unsigned int N = 4;
   short val = 2;
   unsigned int arg = 0x0102;
@@ -79,13 +80,15 @@ call_test(unsigned int N, signed int *C, signed short *A, signed short *B,
   arg = call(call_sum(N, C, clipval), arg);
 
   call_mul_vect(N, C, A, B);
+
   arg = call(call_sum(N, C, clipval), arg);
 
   call_add_const(N, A, -val);
   return arg;
 }
 
-signed short call_sum(unsigned int N, signed int *C, signed short clipval) {
+signed short __attribute__((noinline))
+call_sum(unsigned int N, signed int *C, signed short clipval) {
   signed int tmp = 0, prev = 0, cur = 0;
   signed short ret = 0;
   unsigned int i, j;
@@ -105,8 +108,9 @@ signed short call_sum(unsigned int N, signed int *C, signed short clipval) {
   return ret;
 }
 
-void call_mul_const(unsigned int N, signed int *C, signed short *A,
-                    signed short val) {
+void __attribute__((noinline))
+call_mul_const(unsigned int N, signed int *C, signed short *A,
+               signed short val) {
   unsigned int i, j;
   for (i = 0; i < N; i++) {
     for (j = 0; j < N; j++) {
@@ -115,8 +119,8 @@ void call_mul_const(unsigned int N, signed int *C, signed short *A,
   }
 }
 
-void call_mul_vect(unsigned int N, signed int *C, signed short *A,
-                   signed short *B) {
+void __attribute__((noinline))
+call_mul_vect(unsigned int N, signed int *C, signed short *A, signed short *B) {
   unsigned int i, j;
   for (i = 0; i < N; i++) {
     C[i] = 0;
@@ -126,7 +130,8 @@ void call_mul_vect(unsigned int N, signed int *C, signed short *A,
   }
 }
 
-void call_add_const(unsigned int N, signed short *A, signed short val) {
+void __attribute__((noinline))
+call_add_const(unsigned int N, signed short *A, signed short val) {
   unsigned int i, j;
   for (i = 0; i < N; i++) {
     for (j = 0; j < N; j++) {

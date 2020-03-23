@@ -1905,10 +1905,11 @@ void X86MachineInstructionRaiser::changeRaisedFunctionReturnType(Type *RetTy) {
       ArgTypes.push_back(I.getType());
 
     // Create function with new signature and clone the old body into it.
-    auto NewFT = FunctionType::get(Type::getVoidTy(Ctx), ArgTypes, false);
-    auto NewF = Function::Create(NewFT, raisedFunction->getLinkage(),
-                                 raisedFunction->getAddressSpace(),
-                                 raisedFunction->getName());
+    FunctionType *NewFT =
+        FunctionType::get(Type::getVoidTy(Ctx), ArgTypes, false);
+    Function *NewF = Function::Create(NewFT, raisedFunction->getLinkage(),
+                                      raisedFunction->getAddressSpace(),
+                                      raisedFunction->getName());
     NewF->copyAttributesFrom(raisedFunction);
     NewF->setSubprogram(raisedFunction->getSubprogram());
 
@@ -1928,6 +1929,35 @@ void X86MachineInstructionRaiser::changeRaisedFunctionReturnType(Type *RetTy) {
       I->replaceAllUsesWith(&*I2);
       I2->takeName(&*I);
       ++I2;
+    }
+    // Change the function type used in any of the users of this function to
+    // match that for NewF.
+    for (auto *U : raisedFunction->getFunction().users()) {
+      if (auto *C = dyn_cast<CallBase>(U)) {
+        CallBase *OrigCall = const_cast<CallBase *>(C);
+        SmallVector<Instruction *, 8> UsersToDelete;
+        // If changing to a function type with void return type, the original
+        // call instruction's return value should have no uses. Remove its name
+        if (RetTy->isVoidTy()) {
+          if (!OrigCall->uses().empty()) {
+            // If there are users, they are just pro-active cast instructions
+            for (auto *RetUsr : OrigCall->users()) {
+              if (CastInst *CI = dyn_cast<CastInst>(RetUsr)) {
+                assert((CI->uses().empty()) &&
+                       "Unexpected uses of a void return value");
+                UsersToDelete.push_back(CI);
+              } else
+                assert(false && "Unhandled use of return value");
+            }
+          }
+          OrigCall->setName("");
+        }
+        OrigCall->mutateFunctionType(NewFT);
+        OrigCall->setCalledFunction(NewF);
+        for (Instruction *I : UsersToDelete) {
+          I->eraseFromParent();
+        }
+      }
     }
     // Delete old function signature from function list
     raisedFunction->getParent()->getFunctionList().remove(

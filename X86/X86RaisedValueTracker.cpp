@@ -638,6 +638,10 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
             BinaryOperator::CreateXor(MSBIsSet, PreMSBIsSet, "OF", RaisedBB);
         physRegDefsInMBB[FlagBit][MBBNo].second = ResultOF;
       }
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "TEST")) {
+      // Set CF to 0
+      physRegDefsInMBB[FlagBit][MBBNo].second =
+          ConstantInt::get(TestResultVal->getType(), 0);
     } else {
       LLVM_DEBUG(MI.dump());
       assert(false && "*** EFLAGS update abstraction not handled yet");
@@ -901,6 +905,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       NewCF = NewOF;
       // Set OF to the same value of CF
       physRegDefsInMBB[EFLAGS::OF][MBBNo].second = NewCF;
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "TEST")) {
+      // Set CF to 0
+      NewCF = ConstantInt::get(TestResultVal->getType(), 0);
     } else {
       LLVM_DEBUG(MI.dump());
       assert(false &&

@@ -40,7 +40,7 @@ Support for raising X86-64 and Arm32 binaries is enabled by building LLVM's X86 
 2. Clone the LLVM and mctoll git repositories
 
 ```sh
-git clone --depth 500 -b master https://github.com/llvm/llvm-project.git
+git clone -b master https://github.com/llvm/llvm-project.git
 cd llvm-project && git clone -b master https://github.com/microsoft/llvm-mctoll.git llvm/tools/llvm-mctoll
 ```
 

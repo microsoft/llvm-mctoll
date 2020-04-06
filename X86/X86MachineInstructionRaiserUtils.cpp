@@ -835,13 +835,6 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
           MFrameInfo.getObjectAllocation(StackSlotIndex));
       int Stride = MIStackOffset - StackSlotOffset;
       assert(Stride > 0 && "Unexpected stack slot stride");
-      uint64_t CurAlign = MFrameInfo.getObjectAlign(StackSlotIndex).value();
-      int ModVal = Stride % CurAlign;
-      uint64_t NewAlign = CurAlign;
-      if (ModVal != 0)
-        NewAlign = pow(2, Log2_32(ModVal));
-      if (CurAlign > NewAlign)
-        MFrameInfo.setObjectAlignment(StackSlotIndex, NewAlign);
       BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
       PtrToIntInst *AllocaAsInt = new PtrToIntInst(

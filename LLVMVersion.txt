@@ -5,12 +5,10 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit dca920a904c27f4c86e909ef2e4e343d48168cca
-Author: Adrian Prantl <aprantl@apple.com>
-Date:   Wed Mar 18 15:30:20 2020 -0700
+commit 3ce77142a6452d76d6f97c9a6c2da193e78841ba
+Author: Jonathan Roelofs <jroelofs@jroelofs.com>
+Date:   Sat Apr 4 13:47:22 2020 -0600
 
-    Allow remapping Clang module include paths
+    Revert "[DAG] Fix PR45049: LegalizeTypes crash"
 
-    rdar://problem/55685132
-
-    Differential Revision: https://reviews.llvm.org/D76385
+    This reverts commit 17673ae0b2cbf8d48973b673d413fb8591d8aae7.

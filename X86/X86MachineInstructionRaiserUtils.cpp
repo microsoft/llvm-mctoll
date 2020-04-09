@@ -19,6 +19,7 @@
 #include "llvm-mctoll.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
 #include <iterator>
@@ -158,8 +159,8 @@ bool X86MachineInstructionRaiser::isEffectiveAddrValue(Value *Val) {
 
   // An instruction that casts a pointer value may be considered as an effective
   // address.
-  if (isa<CastInst>(Val)) {
-    return (dyn_cast<CastInst>(Val)->getSrcTy()->isPointerTy());
+  if (isa<PtrToIntInst>(Val)) {
+    return (dyn_cast<PtrToIntInst>(Val)->getSrcTy()->isPointerTy());
   }
 
   if (isa<BinaryOperator>(Val)) {
@@ -630,7 +631,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
 // Promote the ReachingValue of PhysReg defined in DefiningMBB to specified
 // stack slot Alloca.
 StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
-    int PhysReg, Value *ReachingValue, int DefiningMBB, AllocaInst *Alloca) {
+    int PhysReg, Value *ReachingValue, int DefiningMBB, Instruction *Alloca) {
   StoreInst *StInst = nullptr;
   LLVMContext &Ctxt(MF.getFunction().getContext());
 
@@ -679,6 +680,34 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   return StInst;
 }
 
+// Does Val represent a stack location? It does if it is either an AllocaInst or
+// a cast of an AllocaInst or a computation of stack location.
+static bool isStackLocation(Value *Val) {
+  Value *V = Val;
+  while (!isa<AllocaInst>(V)) {
+    if (isa<CastInst>(V)) {
+      CastInst *P = dyn_cast<CastInst>(V);
+      V = P->getOperand(0);
+    } else if (isa<BinaryOperator>(V)) {
+      BinaryOperator *BinaryOp = dyn_cast<BinaryOperator>(V);
+      int NumUseOps = BinaryOp->getNumOperands();
+      assert((NumUseOps == 2) && "Unexpected operands of binary operands");
+      for (int i = 0; i < NumUseOps; i++) {
+        auto Op = BinaryOp->getOperand(i);
+        if (isa<CastInst>(Op)) {
+          CastInst *P = dyn_cast<CastInst>(Op);
+          V = P->getOperand(0);
+        } else if (isa<AllocaInst>(Op)) {
+          V = Op;
+        } else
+          assert(isa<ConstantInt>(Op) &&
+                 "Constant value expected in stack pointer computation");
+      }
+    }
+  }
+  return (isa<AllocaInst>(V));
+}
+
 // Promote any reaching definitions that remained unpromoted.
 bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
   for (auto RDToFix : reachingDefsToPromote) {
@@ -686,73 +715,161 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
     unsigned int SuperReg = find64BitSuperReg(PReg);
     unsigned int DefiningMBBNo = std::get<1>(RDToFix);
     Value *Val = std::get<2>(RDToFix);
-    assert((isa<AllocaInst>(Val)) && "Found value that is not a stack location "
-                                     "during reaching definition fixup");
-    AllocaInst *Alloca = dyn_cast<AllocaInst>(Val);
+    assert(isStackLocation(Val) && "Found value that is not a stack location "
+                                   "during reaching definition fixup");
+    Instruction *StackLoc = dyn_cast<Instruction>(Val);
     Value *ReachingDef =
         raisedValues->getInBlockRegOrArgDefVal(PReg, DefiningMBBNo).second;
     assert((ReachingDef != nullptr) &&
            "Null reaching definition found during reaching definition fixup");
-    StoreInst *StInst =
-        promotePhysregToStackSlot(SuperReg, ReachingDef, DefiningMBBNo, Alloca);
+    StoreInst *StInst = promotePhysregToStackSlot(SuperReg, ReachingDef,
+                                                  DefiningMBBNo, StackLoc);
     assert(StInst != nullptr && "Failed to promote register to memory");
   }
   return true;
 }
 
-// Adjust sizes of stack allocated objects. Ensure all allocations account
-// for the stack size of the function deduced from the machine code.
-bool X86MachineInstructionRaiser::adjustStackAllocatedObjects() {
-  MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
-  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
-  // Map of stack offset and stack index
-  std::map<int64_t, int> StackOffsetToIndexMap;
-  std::map<int64_t, int>::iterator StackOffsetToIndexMapIter;
-  LLVMContext &llvmContext(MF.getFunction().getContext());
-  for (int StackIndex = MFrameInfo.getObjectIndexBegin();
-       StackIndex < MFrameInfo.getObjectIndexEnd(); StackIndex++) {
-    int64_t ObjOffset = MFrameInfo.getObjectOffset(StackIndex);
-    assert(StackOffsetToIndexMap.find(ObjOffset) ==
-               StackOffsetToIndexMap.end() &&
-           "Multiple stack objects with same offset found");
-    StackOffsetToIndexMap.emplace(
-        std::pair<int64_t, int>(ObjOffset, StackIndex));
-  }
+// Create a single stack frame based on stack allocations of the Function.
+// The single stack frame thus created is expected to preserve the frame layout
+// of the source binary - as represented by the various stack allocations. This
+// raiser tool makes no attempt to abstract aggregate data, thus requiring the
+// layout of any aggregate data stored on the stack to be preserved.
+// Additionally, Prolog/Epilog insertion attempts to reorder stack objects when
+// the raised LLVM IR is compiled to native code resulting in potentially
+// fracturing aggregate data. This function abstracts all stack objects into
+// a single frame to ensures the stack layout in source binary is preserved and
+// prevent aggregate data fractures on the stack.
+bool X86MachineInstructionRaiser::createFunctionStackFrame() {
+  // If there are stack objects allocated
+  if (ShadowStackIndexedByOffset.size() > 1) {
+    MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
+    const DataLayout &dataLayout = MR->getModule()->getDataLayout();
+    unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
 
-  StackOffsetToIndexMapIter = StackOffsetToIndexMap.begin();
-  while (StackOffsetToIndexMapIter != StackOffsetToIndexMap.end()) {
-    auto Entry = *StackOffsetToIndexMapIter;
-    int64_t StackOffset = Entry.first;
-    int StackIndex = Entry.second;
-    AllocaInst *allocaInst =
-        const_cast<AllocaInst *>(MFrameInfo.getObjectAllocation(StackIndex));
-    auto NextEntryIter = std::next(StackOffsetToIndexMapIter);
-    if (NextEntryIter != StackOffsetToIndexMap.end()) {
-      int64_t NextStackOffset = NextEntryIter->first;
-      // Get stack slot size in bytes between current stack object
-      // and the next stack object
-      int SlotSize = abs(StackOffset - NextStackOffset);
-      // Slot size should be equal to or greater than sizeof alloca type
-      // times number of elements.
-      auto allocaBitCount = allocaInst->getAllocationSizeInBits(dataLayout);
-      assert(allocaBitCount.hasValue() &&
-             "Failed to get size of alloca instruction");
-      int allocaByteCount = allocaBitCount.getValue() / 8;
-      // assert((allocaByteCount >= SlotSize) &&
-      //       "Incorrect size of stack slot allocated");
-      if (allocaByteCount < SlotSize) {
-        // Change alloca size to match the slot size
-        // Value *sz = allocaInst->getArraySize();
-        // sz->dump();
-        int NewAllocaCount = ((SlotSize % allocaByteCount) == 0)
-                                 ? (SlotSize / allocaByteCount)
-                                 : (SlotSize / allocaByteCount) + 1;
-        Value *Count = ConstantInt::get(llvmContext, APInt(32, NewAllocaCount));
-        allocaInst->setOperand(0, Count);
+    std::map<int64_t, int>::iterator StackOffsetToIndexMapIter;
+    LLVMContext &llvmContext(MF.getFunction().getContext());
+    StackOffsetToIndexMapIter = ShadowStackIndexedByOffset.begin();
+    // The first alloca in StackOffsetToIndexMapIter map record represents
+    // the alloca corresponding to the top-of-stack offset. Get stack top
+    // offset and index.
+    int64_t StackTopOffset = StackOffsetToIndexMapIter->first;
+    int StackTopObjIndex = StackOffsetToIndexMapIter->second;
+    AllocaInst *TOSAlloca = const_cast<AllocaInst *>(
+        MFrameInfo.getObjectAllocation(StackTopObjIndex));
+    Type *TOSAllocaOrigType = TOSAlloca->getType();
+    auto TOSSzInBytes =
+        TOSAlloca->getAllocationSizeInBits(dataLayout).getValue() / 8;
+    // Get stack bottom offset and index
+    int64_t StackBottomOffset = ShadowStackIndexedByOffset.rbegin()->first;
+    int StackBottomObjIndex = ShadowStackIndexedByOffset.rbegin()->second;
+    const AllocaInst *BOSAlloca =
+        MFrameInfo.getObjectAllocation(StackBottomObjIndex);
+    auto BOSSzInBytes =
+        BOSAlloca->getAllocationSizeInBits(dataLayout).getValue() / 8;
+    // Get stack frame size. Note that stack grows down on x86-64. Need to
+    // ensure that stack frame size includes the size of the bottom most
+    // object as well.
+    int StackFrameSize = StackBottomOffset - StackTopOffset + BOSSzInBytes;
+    assert(StackFrameSize > 0 && "Unexpected stack frame size");
+    Value *StackFreameSizeVal =
+        ConstantInt::get(llvmContext, APInt(32, StackFrameSize));
+    // Construct new alloca corresponding to TOS offset with size
+    // StackFrameSize bytes and insert it before TOSAlloca (which will be
+    // replaced later by the cast of this alloca).
+    Type *ByteTy = Type::getInt8Ty(llvmContext);
+    AllocaInst *StackFrameAlloca =
+        new AllocaInst(ByteTy, allocaAddrSpace, StackFreameSizeVal, Align(),
+                       "stktop_" + std::to_string(TOSSzInBytes), TOSAlloca);
+    // Cast the StackFrameAlloca instruction to the type of TOSAlloca
+    Instruction *CastStackFrameAlloca =
+        CastInst::Create(CastInst::getCastOpcode(StackFrameAlloca, false,
+                                                 TOSAllocaOrigType, false),
+                         StackFrameAlloca, TOSAllocaOrigType);
+
+    // Copy RODataIndex metadata
+    raisedValues->setInstMetadataRODataIndex(TOSAlloca, StackFrameAlloca);
+    raisedValues->setInstMetadataRODataIndex(TOSAlloca, CastStackFrameAlloca);
+
+    // Update TOSAlloca entries to CastStackFrameAlloca in
+    // reachingDefsToPromote. This map is used later while promoting
+    // reaching defs that were not promoted.
+    for (auto RDToFix : reachingDefsToPromote) {
+      Value *Val = std::get<2>(RDToFix);
+      if (AllocaInst *A = dyn_cast<AllocaInst>(Val)) {
+        if (A == TOSAlloca) {
+          unsigned PReg = std::get<0>(RDToFix);
+          unsigned int MBBNo = std::get<1>(RDToFix);
+          reachingDefsToPromote.erase(std::make_tuple(PReg, MBBNo, A));
+          reachingDefsToPromote.insert(
+              std::make_tuple(PReg, MBBNo, CastStackFrameAlloca));
+        }
       }
     }
-    // Go to next entry
+
+    // Finally, replace TOSAlloca with CastStackFrameAlloca
+    ReplaceInstWithInst(dyn_cast<Instruction>(TOSAlloca), CastStackFrameAlloca);
+    // Cast StackFrameAlloca as int and insert it before StackObjAlloca,
+    // which will be replaced later
+    Type *Int64Ty = Type::getInt64Ty(llvmContext);
+    Instruction *StackFrameAllocaAddr = CastInst::Create(
+        CastInst::getCastOpcode(StackFrameAlloca, false, Int64Ty, false),
+        StackFrameAlloca, Int64Ty, "tos", CastStackFrameAlloca->getNextNode());
+
+    // Copy RODataIndex metadata
+    raisedValues->setInstMetadataRODataIndex(StackFrameAlloca,
+                                             StackFrameAllocaAddr);
+
+    // Convert all allocas to offsets from CastStackFrameAlloca
+    // Go to next record in ShadowStackIndexedByOffset
     StackOffsetToIndexMapIter++;
+    while (StackOffsetToIndexMapIter != ShadowStackIndexedByOffset.end()) {
+      auto Entry = *StackOffsetToIndexMapIter;
+      int64_t MCStackOffset = Entry.first;
+      int StackIndex = Entry.second;
+      AllocaInst *StackObjAlloca =
+          const_cast<AllocaInst *>(MFrameInfo.getObjectAllocation(StackIndex));
+      int IRStackOffset = StackFrameSize + MCStackOffset;
+      assert(IRStackOffset >= 0 &&
+             "Non-negative IR stack offset expected to be computed");
+
+      // Add IRStackOffset instruction before StackObjAlloca
+      Value *StackObjOffsetVal =
+          ConstantInt::get(StackFrameAllocaAddr->getType(), IRStackOffset);
+
+      Instruction *StackObjOffset = BinaryOperator::CreateAdd(
+          StackFrameAllocaAddr, StackObjOffsetVal, "", StackObjAlloca);
+      // Copy RODataIndex metadata
+      raisedValues->setInstMetadataRODataIndex(StackObjAlloca, StackObjOffset);
+      // Cast the value to the type of StackObjAlloca; do not insert it into
+      // the block. It will be done when we replace StackObjAlloca.
+      Type *DstTy = StackObjAlloca->getType();
+      Instruction *CastStackObjAlloca = CastInst::Create(
+          CastInst::getCastOpcode(StackObjOffset, false, DstTy, false),
+          StackObjOffset, DstTy);
+
+      // Copy RODataIndex metadata
+      raisedValues->setInstMetadataRODataIndex(StackObjAlloca,
+                                               CastStackObjAlloca);
+
+      // Replace StackObjAlloca entries in reachingDefsToPromote
+      for (auto RDToFix : reachingDefsToPromote) {
+        Value *Val = std::get<2>(RDToFix);
+        if (AllocaInst *A = dyn_cast<AllocaInst>(Val)) {
+          if (A == StackObjAlloca) {
+            unsigned PReg = std::get<0>(RDToFix);
+            unsigned int MBBNo = std::get<1>(RDToFix);
+            reachingDefsToPromote.erase(std::make_tuple(PReg, MBBNo, A));
+            reachingDefsToPromote.insert(
+                std::make_tuple(PReg, MBBNo, CastStackObjAlloca));
+          }
+        }
+      }
+
+      // Finally, replace StackObjAlloca with CastStackObjAlloca
+      ReplaceInstWithInst(StackObjAlloca, CastStackObjAlloca);
+      // Go to next entry
+      StackOffsetToIndexMapIter++;
+    }
   }
   return true;
 }
@@ -768,9 +885,8 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
          "Stack or base pointer expected for stack allocated value lookup");
   Value *CurSPVal = getRegOrArgValue(PReg, MI.getParent()->getNumber());
 
-  // If the memory reference offset is 0 i.e., not different from the current
-  // sp reference and there is already a stack allocation, just return that
-  // value
+  // If the memory reference offset is 0 i.e., not different from the current sp
+  // reference and there is already a stack allocation, just return that value
   if ((MemRef.Disp == 0) && (CurSPVal != nullptr)) {
     if (Instruction *I = dyn_cast<Instruction>(CurSPVal)) {
       if (hasRODataAccess(I))
@@ -779,7 +895,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
     }
     return CurSPVal;
   }
-  // At this point, the stack offset specified in the memory opernad is
+  // At this point, the stack offset specified in the memory operand is
   // different from that of the alloca corresponding to sp or there is no
   // stack allocation corresponding to sp.
   // If there is no allocation corresponding to sp, set the offset of new
@@ -848,47 +964,43 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
     }
   }
   // No stack object found with offset MIStackOffset. Create one.
-  Type *Ty = nullptr;
+  Type *MemOpTy = nullptr;
   LLVMContext &llvmContext(MF.getFunction().getContext());
   const DataLayout &dataLayout = MR->getModule()->getDataLayout();
   unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
   unsigned stackObjectSize = getInstructionMemOpSize(MI.getOpcode());
   switch (stackObjectSize) {
   default:
-    Ty = Type::getInt64Ty(llvmContext);
+    MemOpTy = Type::getInt64Ty(llvmContext);
     stackObjectSize = 8;
     break;
   case 4:
-    Ty = Type::getInt32Ty(llvmContext);
+    MemOpTy = Type::getInt32Ty(llvmContext);
     break;
   case 2:
-    Ty = Type::getInt16Ty(llvmContext);
+    MemOpTy = Type::getInt16Ty(llvmContext);
     break;
   case 1:
-    Ty = Type::getInt8Ty(llvmContext);
+    MemOpTy = Type::getInt8Ty(llvmContext);
     break;
   }
 
-  assert(stackObjectSize != 0 && Ty != nullptr &&
+  assert(stackObjectSize != 0 && MemOpTy != nullptr &&
          "Unknown type of operand in memory referencing instruction");
 
   std::string RegName(x86RegisterInfo->getName(PReg));
   std::string BaseName =
       IsStackPointerAdjust ? RegName + "Adj_" : RegName + "_";
   std::string SPStr = (MIStackOffset < 0) ? BaseName + "N." : BaseName + "P.";
-  // Compute the alignment
-  unsigned int typeAlignment = dataLayout.getPrefTypeAlignment(Ty);
-  int ModVal = abs(MIStackOffset) % typeAlignment;
-  if (ModVal != 0)
-    typeAlignment = pow(2, Log2_32(ModVal));
+  auto ByteAlign = Align();
   // Create alloca instruction to allocate stack slot
   AllocaInst *alloca =
-      new AllocaInst(Ty, allocaAddrSpace, 0, MaybeAlign(typeAlignment),
+      new AllocaInst(MemOpTy, allocaAddrSpace, 0, ByteAlign,
                      SPStr + std::to_string(abs(MIStackOffset)));
 
   // Create a stack slot associated with the alloca instruction
   stackFrameIndex = MF.getFrameInfo().CreateStackObject(
-      stackObjectSize, typeAlignment, false /* isSpillSlot */, alloca);
+      stackObjectSize, ByteAlign, false /* isSpillSlot */, alloca);
 
   // Set MIStackOffset as the offset for stack frame object created.
   MF.getFrameInfo().setObjectOffset(stackFrameIndex, MIStackOffset);
@@ -1593,9 +1705,9 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                 assert(isa<Instruction>(DispValue) &&
                        "Expect Instruction - memory address expression "
                        "abstraction");
-                // Cast the byte access GEP to MemrefValue type as needed
-                // Using dyn_cast<Instruction> to cast the result of castValue
-                // is correct as we know that DispValue is an instruction;
+                // Cast the byte access GEP to MemrefValue type as needed using
+                // dyn_cast<Instruction> to cast the result of castValue is
+                // correct as we know that DispValue is an instruction;
                 // castValue returns ByteAccessGEP (an Instruction) if no cast
                 // is done or a value of type CastInst, if cast is done.
                 DispValue = dyn_cast<Instruction>(getRaisedValues()->castValue(
@@ -1708,9 +1820,10 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
   return PRegValue;
 }
 
-// Check the sizes of the operand register PReg and that of the corresponding
-// SSA value. Return an appropriately cast value to match with the size of PReg.
-// This is handles the situation following pattern of instructions
+// Check the sizes of the operand register PReg and that of the
+// corresponding SSA value. Return an appropriately cast value to match with
+// the size of PReg. This is handles the situation following pattern of
+// instructions
 //   rax <- ...
 //   edx <- opcode eax, ...
 Value *X86MachineInstructionRaiser::getPhysRegValue(const MachineInstr &MI,
@@ -1755,8 +1868,8 @@ int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
 
 // Insert a newly created alloca instruction representing stack location at
 // offset StackOffset and with MachineFrame index MFIndex. It is assumed that
-// MachineFrameInfo of Machine function already has the stack slot created
-// for offset StackOffset at MFIndex
+// MachineFrameInfo of Machine function already has the stack slot created for
+// offset StackOffset at MFIndex
 bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
                                                            int StackOffset,
                                                            int MFIndex) {
@@ -1774,8 +1887,8 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
   auto InserResult = ShadowStackIndexedByOffset.emplace(
       std::pair<int64_t, unsigned>(StackOffset, MFIndex));
   // The order of alloca instructions should match the order of shadow stack -
-  // i.e., in descending order of stack offset. So, we utilize the fact that
-  // the map is ordered by stack offset value and leverage the insertion point
+  // i.e., in descending order of stack offset. So, we utilize the fact that the
+  // map is ordered by stack offset value and leverage the insertion point
   // returned by emplace.
   assert(InserResult.second && "Shadow stack insertion failed");
   auto InsertAtIter = InserResult.first;
@@ -1933,7 +2046,8 @@ void X86MachineInstructionRaiser::changeRaisedFunctionReturnType(Type *RetTy) {
         // call instruction's return value should have no uses. Remove its name
         if (RetTy->isVoidTy()) {
           if (!OrigCall->uses().empty()) {
-            // If there are users, they are just pro-active cast instructions
+            // If there are users, they are just pro-active cast
+            // instructions
             for (auto *RetUsr : OrigCall->users()) {
               if (CastInst *CI = dyn_cast<CastInst>(RetUsr)) {
                 assert((CI->uses().empty()) &&

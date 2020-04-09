@@ -4232,7 +4232,7 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
       }
     }
   }
-  if (adjustStackAllocatedObjects()) {
+  if (createFunctionStackFrame()) {
     return raiseBranchMachineInstrs() && handleUnpromotedReachingDefs();
   }
 

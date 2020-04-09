@@ -63,7 +63,7 @@ public:
   BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
-                                       int MBBNo, AllocaInst *Alloca);
+                                       int MBBNo, Instruction *Alloca);
   int getArgumentNumber(unsigned PReg);
   auto getRegisterInfo() const { return x86RegisterInfo; }
   bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
@@ -92,7 +92,7 @@ private:
   // Since MachineFrameInfo does not represent stack object ordering, we
   // maintain a shadow stack indexed and sorted by descending order of stack
   // offset of objects allocated on the stack.
-  std::map<int64_t, int, greater<int>> ShadowStackIndexedByOffset;
+  std::map<int64_t, int> ShadowStackIndexedByOffset;
 
   // Commonly used LLVM data structures during this phase
   MachineRegisterInfo &machineRegInfo;
@@ -145,7 +145,7 @@ private:
   bool deleteNOOPInstrMF();
   bool unlinkEmptyMBBs();
   // Adjust sizes of stack allocated objects
-  bool adjustStackAllocatedObjects();
+  bool createFunctionStackFrame();
 
   // Method to record information that is used in a second pass
   // to raise control transfer instructions in a second pass.

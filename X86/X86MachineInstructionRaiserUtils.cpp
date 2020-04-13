@@ -884,6 +884,30 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   assert(((PReg == X86::RSP) || (PReg == X86::RBP)) &&
          "Stack or base pointer expected for stack allocated value lookup");
   Value *CurSPVal = getRegOrArgValue(PReg, MI.getParent()->getNumber());
+  Type *MemOpTy = nullptr;
+  LLVMContext &llvmContext(MF.getFunction().getContext());
+  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
+  unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
+  unsigned stackObjectSize = getInstructionMemOpSize(MI.getOpcode());
+  switch (stackObjectSize) {
+  default:
+    MemOpTy = Type::getInt64Ty(llvmContext);
+    stackObjectSize = 8;
+    break;
+  case 4:
+    MemOpTy = Type::getInt32Ty(llvmContext);
+    break;
+  case 2:
+    MemOpTy = Type::getInt16Ty(llvmContext);
+    break;
+  case 1:
+    MemOpTy = Type::getInt8Ty(llvmContext);
+    break;
+  }
+
+  assert(stackObjectSize != 0 && MemOpTy != nullptr &&
+         "Unknown type of operand in memory referencing instruction");
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
   // If the memory reference offset is 0 i.e., not different from the current sp
   // reference and there is already a stack allocation, just return that value
@@ -892,6 +916,13 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
       if (hasRODataAccess(I))
         // Refers to rodata; so has no sp allocation;
         return nullptr;
+    }
+    // Ensure the type of CurSPVal matches that of pointer to MemOpTy
+    Type *MemOpPtrTy = MemOpTy->getPointerTo();
+    if (CurSPVal->getType() != MemOpPtrTy) {
+      CurSPVal = CastInst::Create(
+          CastInst::getCastOpcode(CurSPVal, false, MemOpPtrTy, false), CurSPVal,
+          MemOpPtrTy, "", RaisedBB);
     }
     return CurSPVal;
   }
@@ -951,7 +982,6 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
           MFrameInfo.getObjectAllocation(StackSlotIndex));
       int Stride = MIStackOffset - StackSlotOffset;
       assert(Stride > 0 && "Unexpected stack slot stride");
-      BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
       PtrToIntInst *AllocaAsInt = new PtrToIntInst(
           StackSlotAllocaInst,
@@ -964,29 +994,6 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
     }
   }
   // No stack object found with offset MIStackOffset. Create one.
-  Type *MemOpTy = nullptr;
-  LLVMContext &llvmContext(MF.getFunction().getContext());
-  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
-  unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
-  unsigned stackObjectSize = getInstructionMemOpSize(MI.getOpcode());
-  switch (stackObjectSize) {
-  default:
-    MemOpTy = Type::getInt64Ty(llvmContext);
-    stackObjectSize = 8;
-    break;
-  case 4:
-    MemOpTy = Type::getInt32Ty(llvmContext);
-    break;
-  case 2:
-    MemOpTy = Type::getInt16Ty(llvmContext);
-    break;
-  case 1:
-    MemOpTy = Type::getInt8Ty(llvmContext);
-    break;
-  }
-
-  assert(stackObjectSize != 0 && MemOpTy != nullptr &&
-         "Unknown type of operand in memory referencing instruction");
 
   std::string RegName(x86RegisterInfo->getName(PReg));
   std::string BaseName =

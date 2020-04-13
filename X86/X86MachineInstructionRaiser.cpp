@@ -1619,7 +1619,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   // instruction.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
           isa<GlobalValue>(MemRefValue) || isa<SelectInst>(MemRefValue) ||
-          isa<GetElementPtrInst>(MemRefValue)) &&
+          isa<GetElementPtrInst>(MemRefValue) ||
+          MemRefValue->getType()->isPointerTy()) &&
          "Unexpected type of memory reference in binary mem op instruction");
 
   // Assume that MemRefValue represents a memory reference location and hence
@@ -1804,7 +1805,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an effective address value.
   assert((isa<AllocaInst>(MemRefVal) || isEffectiveAddrValue(MemRefVal) ||
-          isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal)) &&
+          isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal) ||
+          MemRefVal->getType()->isPointerTy()) &&
          "Unexpected type of memory reference in mem-to-reg instruction");
 
   // If memory reference is not a pointer type, cast it to a pointer

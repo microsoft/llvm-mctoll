@@ -828,7 +828,8 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
       int StackIndex = Entry.second;
       AllocaInst *StackObjAlloca =
           const_cast<AllocaInst *>(MFrameInfo.getObjectAllocation(StackIndex));
-      int IRStackOffset = StackFrameSize + MCStackOffset;
+      int IRStackOffset = (MCStackOffset < 0) ? (StackFrameSize + MCStackOffset)
+                                              : MCStackOffset;
       assert(IRStackOffset >= 0 &&
              "Non-negative IR stack offset expected to be computed");
 

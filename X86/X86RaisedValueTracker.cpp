@@ -402,7 +402,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
       }
     }
     // 3. load from the stack slot for use in current block
-    Instruction *LdReachingVal = new LoadInst(Alloca);
+    Instruction *LdReachingVal =
+        new LoadInst(Alloca->getType()->getPointerElementType(), Alloca);
     LdReachingVal =
         setInstMetadataRODataContent(dyn_cast<LoadInst>(LdReachingVal));
     // Insert load instruction
@@ -521,9 +522,12 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
 
       // Construct a call to get overflow value upon comparison of test arg
       // values
-      Value *ValueOF =
+      Function *ValueOF =
           Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
-      CallInst *GetOF = CallInst::Create(ValueOF, ArrayRef<Value *>(TestArg));
+      CallInst *GetOF = CallInst::Create(
+          cast<FunctionType>(
+              cast<PointerType>(ValueOF->getType())->getElementType()),
+          ValueOF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set it
       physRegDefsInMBB[FlagBit][MBBNo].second =
@@ -537,9 +541,12 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
 
       // Construct a call to get overflow value upon comparison of test arg
       // values
-      Value *ValueOF =
+      Function *ValueOF =
           Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
-      CallInst *GetOF = CallInst::Create(ValueOF, ArrayRef<Value *>(TestArg));
+      CallInst *GetOF = CallInst::Create(
+          cast<FunctionType>(
+              cast<PointerType>(ValueOF->getType())->getElementType()),
+          ValueOF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set it
       physRegDefsInMBB[FlagBit][MBBNo].second =
@@ -697,9 +704,12 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
              "Differing types of test values not expected");
       // Construct a call to get carry flag value upon comparison of test arg
       // values
-      Value *ValueCF = Intrinsic::getDeclaration(
+      Function *ValueCF = Intrinsic::getDeclaration(
           M, Intrinsic::usub_with_overflow, TestArg[0]->getType());
-      CallInst *GetCF = CallInst::Create(ValueCF, ArrayRef<Value *>(TestArg));
+      CallInst *GetCF = CallInst::Create(
+          cast<FunctionType>(
+              cast<PointerType>(ValueCF->getType())->getElementType()),
+          ValueCF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetCF);
       // Extract flag-bit
       NewCF = ExtractValueInst::Create(GetCF, 1, "CF", RaisedBB);
@@ -714,9 +724,12 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
              "Differing types of test values not expected");
       // Construct a call to get carry flag value upon comparison of test arg
       // values
-      Value *ValueCF = Intrinsic::getDeclaration(
+      Function *ValueCF = Intrinsic::getDeclaration(
           M, Intrinsic::uadd_with_overflow, TestArg[0]->getType());
-      CallInst *GetCF = CallInst::Create(ValueCF, ArrayRef<Value *>(TestArg));
+      CallInst *GetCF = CallInst::Create(
+          cast<FunctionType>(
+              cast<PointerType>(ValueCF->getType())->getElementType()),
+          ValueCF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetCF);
       // Extract flag-bit
       NewCF = ExtractValueInst::Create(GetCF, 1, "CF", RaisedBB);
@@ -895,9 +908,12 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
 
       // Construct a call to get overflow value upon comparison of test arg
       // values.
-      Value *ValueOF = Intrinsic::getDeclaration(
+      Function *ValueOF = Intrinsic::getDeclaration(
           M, Intrinsic::smul_with_overflow, TestArg[0]->getType());
-      CallInst *GetOF = CallInst::Create(ValueOF, ArrayRef<Value *>(TestArg));
+      CallInst *GetOF = CallInst::Create(
+          cast<FunctionType>(
+              cast<PointerType>(ValueOF->getType())->getElementType()),
+          ValueOF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set both OF and CF to the same value
       auto NewOF = ExtractValueInst::Create(GetOF, 1, "OF", RaisedBB);

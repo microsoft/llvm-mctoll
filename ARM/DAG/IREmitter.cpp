@@ -253,9 +253,9 @@ void IREmitter::emitCPSR(Value *Operand0, Value *Operand1, BasicBlock *BB,
   Module &M = *MR->getModule();
   Type *Ty = IRB.getInt1Ty();
   Type *OperandTy = getDefaultType();
-  Value *F_Signed =
+  Function *F_Signed =
       Intrinsic::getDeclaration(&M, Intrinsic::sadd_with_overflow, OperandTy);
-  Value *F_Unsigned =
+  Function *F_Unsigned =
       Intrinsic::getDeclaration(&M, Intrinsic::uadd_with_overflow, OperandTy);
   Value *Args[] = {Operand0, Operand1};
   Value *Unsigned_Sum;

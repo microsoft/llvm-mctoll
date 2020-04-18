@@ -12,3 +12,33 @@ Date:   Sat Apr 4 13:47:22 2020 -0600
     Revert "[DAG] Fix PR45049: LegalizeTypes crash"
 
     This reverts commit 17673ae0b2cbf8d48973b673d413fb8591d8aae7.
+commit 4e7e414ec943b264e5104c797b2f4a7af5151f71
+Author: Bjorn Pettersson <bjorn.a.pettersson@ericsson.com>
+Date:   Fri Apr 10 19:24:11 2020 +0200
+
+    [Float2Int] Make iteration over Roots deterministic
+    
+    Summary:
+    Use a SmallSetVector instead of a SmallPtrSet when collecting
+    and storing Roots.
+    
+    The iteration order for a SmallPtrSet is not deterministic,
+    so in the past the order of items inserted in the WorkList
+    inside walkBackwards has been non-deterministic. This patch
+    intends to make the order of rewrites done in Float2Int
+    deterministic by changing the container for the Roots set.
+    
+    The semantics result of the transformation should not be
+    any different afaict. But at least naming of IR variables
+    (when outputting the result as an ll file) should be more
+    stable now.
+    
+    Reviewers: craig.topper, spatel, cameron.mcinally
+    
+    Reviewed By: spatel
+    
+    Subscribers: mgrang, llvm-commits
+    
+    Tags: #llvm
+    
+    Differential Revision: https://reviews.llvm.org/D74534

@@ -1268,13 +1268,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   Value *LoadValue = nullptr;
   if (IsMemRefGlobalVal) {
     // Load the global value.
+    auto Op = dyn_cast<LoadInst>(MemRefValue)->getPointerOperand();
     LoadInst *LdInst =
-        new LoadInst(dyn_cast<LoadInst>(MemRefValue)->getPointerOperand(),
-                     "globalload", false, MaybeAlign(MemAlignment));
+        new LoadInst(Op->getType()->getPointerElementType(), Op, "globalload",
+                     false, MaybeAlign(MemAlignment));
     LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
   } else {
     LoadInst *LdInst =
-        new LoadInst(MemRefValue, "memload", false, MaybeAlign(MemAlignment));
+        new LoadInst(MemRefValue->getType()->getPointerElementType(),
+                     MemRefValue, "memload", false, MaybeAlign(MemAlignment));
     LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
   }
 
@@ -1446,13 +1448,13 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
   assert(MemRefValue->getType()->isPointerTy() &&
          "Pointer type expected in load instruction");
   // Load the value from memory location
-  LoadInst *LdInst = new LoadInst(MemRefValue);
-  unsigned int MemAlignment = MemRefValue->getType()
-                                  ->getPointerElementType()
-                                  ->getPrimitiveSizeInBits() /
-                              8;
-  LdInst->setAlignment(MaybeAlign(MemAlignment));
-  RaisedBB->getInstList().push_back(LdInst);
+  auto MemAlignment = Align(MemRefValue->getType()
+                                ->getPointerElementType()
+                                ->getPrimitiveSizeInBits() /
+                            8);
+  LoadInst *LdInst =
+      new LoadInst(MemRefValue->getType()->getPointerElementType(), MemRefValue,
+                   "", false, MemAlignment, RaisedBB);
 
   switch (Opcode) {
   default: {
@@ -1822,10 +1824,10 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   LoadInst *LdInst = nullptr;
   if (!isMovInst) {
     // Load the value from memory location
-    LdInst = new LoadInst(MemRefVal);
-    LdInst->setAlignment(MaybeAlign(
-        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout())));
-    RaisedBB->getInstList().push_back(LdInst);
+    auto align =
+        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout());
+    LdInst = new LoadInst(MemRefVal->getType()->getPointerElementType(),
+                          MemRefVal, "", false, align, RaisedBB);
   }
 
   // This instruction moves a source value to memory. So, if the types of
@@ -2042,12 +2044,13 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
   // slot
   if (isa<AllocaInst>(SrcValue)) {
     // Load the value from memory location
-    LoadInst *loadInst = new LoadInst(SrcValue);
-    unsigned int memAlignment =
+    auto memAlignment = Align(
         SrcValue->getType()->getPointerElementType()->getPrimitiveSizeInBits() /
-        8;
-    loadInst->setAlignment(MaybeAlign(memAlignment));
-    RaisedBB->getInstList().push_back(loadInst);
+        8);
+    LoadInst *loadInst =
+        new LoadInst(SrcValue->getType()->getPointerElementType(), SrcValue, "",
+                     false, memAlignment, RaisedBB);
+
     SrcValue = loadInst;
   }
   // Cast divisor (srcValue) to double type
@@ -2162,10 +2165,11 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
       MemRefValue = convIntToPtr;
     }
     // Load the value from memory location
-    LoadInst *loadInst = new LoadInst(MemRefValue);
-    loadInst->setAlignment(MaybeAlign(
-        MemRefValue->getPointerAlignment(MR->getModule()->getDataLayout())));
-    RaisedBB->getInstList().push_back(loadInst);
+    auto align =
+        MemRefValue->getPointerAlignment(MR->getModule()->getDataLayout());
+    LoadInst *loadInst =
+        new LoadInst(MemRefValue->getType()->getPointerElementType(),
+                     MemRefValue, "", false, align, RaisedBB);
     // save it at the appropriate index of operand value array
     if (memoryRefOpIndex == 0) {
       OpValues[0] = loadInst;
@@ -4111,14 +4115,14 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     Type *ReturnType = getReturnTypeFromMBB(*MBB, BlockHasCall /* ignored*/);
 
     // Build Function type.
-    auto FunctionType = FunctionType::get(ReturnType, ArgTypeVector, false);
+    auto FT = FunctionType::get(ReturnType, ArgTypeVector, false);
 
     // Get function pointer address.
     unsigned int CallReg = MI.getOperand(0).getReg();
     Value *Func = getRegOrArgValue(CallReg, MBBNo);
 
     // Cast the function pointer address to function type pointer.
-    Type *FuncTy = FunctionType->getPointerTo();
+    Type *FuncTy = FT->getPointerTo();
     if (Func->getType() != FuncTy) {
       CastInst *CInst = CastInst::Create(
           CastInst::getCastOpcode(Func, false, FuncTy, false), Func, FuncTy);
@@ -4127,8 +4131,10 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     }
 
     // Construct call instruction.
-    CallInst *CallInst =
-        CallInst::Create(Func, ArrayRef<Value *>(ArgValueVector));
+    CallInst *CallInst = CallInst::Create(
+        cast<FunctionType>(
+            cast<PointerType>(Func->getType())->getElementType()),
+        Func, ArrayRef<Value *>(ArgValueVector));
     RaisedBB->getInstList().push_back(CallInst);
 
     // A function call with a non-void return will modify RAX.

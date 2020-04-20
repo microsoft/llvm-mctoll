@@ -6,6 +6,7 @@ config.llvm_mctoll_tools_dir = "@LLVM_MCTOLL_TOOLS_DIR@"
 config.lit_tools_dir = "@LLVM_LIT_TOOLS_DIR@"
 config.target_triple = "@TARGET_TRIPLE@"
 config.enable_assertions = @ENABLE_ASSERTIONS@
+config.targets_to_build = "@TARGETS_TO_BUILD@"
 
 # Support substitution of the tools and build_mode with user parameters.
 # This is used when we can't determine the tool dir at configuration time.
@@ -21,4 +22,3 @@ lit.llvm.initialize(lit_config, config)
 
 # Let the main config do the real work.
 lit_config.load_config(config, "@LLVM_MCTOLL_SOURCE_DIR@/test/lit.cfg")
-

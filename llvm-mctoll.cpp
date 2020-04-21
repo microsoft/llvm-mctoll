@@ -1527,10 +1527,12 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
     return;
   }
 
+  const StringRef FileName = o->getFileName();
+
   for (const SymbolRef &Symbol : o->symbols()) {
     Expected<uint64_t> AddressOrError = Symbol.getAddress();
     if (!AddressOrError)
-      report_error(AddressOrError.takeError(), o->getFileName(), ArchiveName,
+      report_error(AddressOrError.takeError(), FileName, ArchiveName,
                    ArchitectureName);
     uint64_t Address = *AddressOrError;
     if ((Address < StartAddress) || (Address > StopAddress))
@@ -1538,14 +1540,16 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
 
     Expected<SymbolRef::Type> TypeOrError = Symbol.getType();
     if (!TypeOrError)
-      report_error(TypeOrError.takeError(), o->getFileName(), ArchiveName,
+      report_error(TypeOrError.takeError(), FileName, ArchiveName,
                    ArchitectureName);
 
     SymbolRef::Type Type = *TypeOrError;
-    uint32_t Flags = Symbol.getFlags();
+    uint32_t Flags = unwrapOrError(Symbol.getFlags(), FileName, ArchiveName,
+                                   ArchitectureName);
+
     Expected<section_iterator> SectionOrErr = Symbol.getSection();
     if (!SectionOrErr)
-      report_error(SectionOrErr.takeError(), o->getFileName(), ArchiveName,
+      report_error(SectionOrErr.takeError(), FileName, ArchiveName,
                    ArchitectureName);
 
     section_iterator Section = *SectionOrErr;
@@ -1559,7 +1563,7 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
     } else {
       Expected<StringRef> NameOrErr = Symbol.getName();
       if (!NameOrErr)
-        report_error(NameOrErr.takeError(), o->getFileName(), ArchiveName,
+        report_error(NameOrErr.takeError(), FileName, ArchiveName,
                      ArchitectureName);
       Name = *NameOrErr;
     }
@@ -1604,8 +1608,7 @@ void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
         StringRef SegmentName = MachO->getSectionFinalSegmentName(DR);
         outs() << SegmentName << ",";
       }
-      StringRef SectionName =
-          unwrapOrError(Section->getName(), o->getFileName());
+      StringRef SectionName = unwrapOrError(Section->getName(), FileName);
 
       outs() << SectionName;
     }

@@ -342,8 +342,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
 
     // Create a stack slot associated with the alloca instruction of size 8
     unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(
-        typeAlignment, DL.getPrefTypeAlignment(AllocTy),
-        false /* isSpillSlot */, Alloca);
+        typeAlignment, DL.getPrefTypeAlignment(AllocTy), true /* isSpillSlot */,
+        Alloca);
 
     // Compute size of new stack object.
     const MachineFrameInfo &MFI = MF.getFrameInfo();

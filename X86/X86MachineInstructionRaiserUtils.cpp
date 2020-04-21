@@ -749,11 +749,27 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
     std::map<int64_t, int>::iterator StackOffsetToIndexMapIter;
     LLVMContext &llvmContext(MF.getFunction().getContext());
     StackOffsetToIndexMapIter = ShadowStackIndexedByOffset.begin();
-    // The first alloca in StackOffsetToIndexMapIter map record represents
-    // the alloca corresponding to the top-of-stack offset. Get stack top
-    // offset and index.
-    int64_t StackTopOffset = StackOffsetToIndexMapIter->first;
-    int StackTopObjIndex = StackOffsetToIndexMapIter->second;
+    // The first non-spill alloca in StackOffsetToIndexMapIter map record
+    // represents the alloca corresponding to the top-of-stack offset. Get stack
+    // top offset and index.
+    int64_t StackTopOffset;
+    int StackTopObjIndex;
+    while (StackOffsetToIndexMapIter != ShadowStackIndexedByOffset.end()) {
+      StackTopObjIndex = StackOffsetToIndexMapIter->second;
+      // Stop search at the first non-spill stack object
+      if (!MFrameInfo.isSpillSlotObjectIndex(StackTopObjIndex))
+        break;
+      // Go to next stack object
+      StackOffsetToIndexMapIter++;
+    }
+
+    // If we reached the end of the shadow stack, there no allocas to
+    // consolidate into a single frame.
+    if (StackOffsetToIndexMapIter == ShadowStackIndexedByOffset.end())
+      return true;
+
+    StackTopOffset = StackOffsetToIndexMapIter->first;
+
     AllocaInst *TOSAlloca = const_cast<AllocaInst *>(
         MFrameInfo.getObjectAllocation(StackTopObjIndex));
     Type *TOSAllocaOrigType = TOSAlloca->getType();
@@ -826,6 +842,10 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
       auto Entry = *StackOffsetToIndexMapIter;
       int64_t MCStackOffset = Entry.first;
       int StackIndex = Entry.second;
+      // Skip spill allocas
+      if (MFrameInfo.isSpillSlotObjectIndex(StackIndex))
+        continue;
+
       AllocaInst *StackObjAlloca =
           const_cast<AllocaInst *>(MFrameInfo.getObjectAllocation(StackIndex));
       int IRStackOffset = (MCStackOffset < 0) ? (StackFrameSize + MCStackOffset)

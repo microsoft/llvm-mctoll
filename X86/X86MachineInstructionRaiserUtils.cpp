@@ -339,7 +339,9 @@ X86MachineInstructionRaiser::getRaisedBasicBlock(const MachineBasicBlock *MBB) {
   return RaisedBB;
 }
 
-// Return a Value representing stack-allocated object
+// Construct and return a Value* corresponding to PC-relative memory address
+// access. Insert any intermediate values created in the process into
+// curBlock.
 Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
     const MachineInstr &MI) {
   Value *MemrefValue = nullptr;
@@ -1554,9 +1556,6 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
   return GlobalVariableValue;
 }
 
-// Construct and return a Value* corresponding to PC-relative memory address
-// access. Insert any intermediate values created in the process into
-// curBlock.
 // Construct and return a Value* corresponding to non-stack memory address
 // expression in MachineInstr mi. Insert any intermediate values created in
 // the process into curBlock. NOTE: This returns a value that may need to be
@@ -1610,6 +1609,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
     Value *IndexRegVal = getPhysRegValue(MI, IndexReg);
     switch (ScaleAmt) {
     case 0:
+      assert(false && "Unexpected zero-value of scale in memory operand");
       break;
     case 1:
       MemrefValue = IndexRegVal;

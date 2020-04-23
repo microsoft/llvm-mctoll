@@ -1244,7 +1244,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   // data access) or an LoadInst that loads an address in memory.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
           isa<GetElementPtrInst>(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue)) &&
+          isa<GlobalValue>(MemRefValue) ||
+          MemRefValue->getType()->isPointerTy()) &&
          "Unexpected type of memory reference in binary mem op instruction");
   bool IsMemRefGlobalVal = false;
   // If it is an effective address
@@ -2438,9 +2439,55 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
 
     uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
     if (BaseSupReg == x86RegisterInfo->getStackRegister() ||
-        BaseSupReg == x86RegisterInfo->getFramePtr())
+        BaseSupReg == x86RegisterInfo->getFramePtr()) {
       MemoryRefValue = getStackAllocatedValue(MI, MemRef, false);
 
+      // If memory operand has an index register with possibly a non-zero scale
+      // value, add the value represented by IndexReg*Scale to MemoryRefValue.
+      if (MemRef.IndexReg != X86::NoRegister) {
+        assert((MemoryRefValue != nullptr) &&
+               "Unexpected null value of stack or base pointer register");
+        Type *MemRefValTy = MemoryRefValue->getType();
+        assert((MemRefValTy->isPointerTy()) &&
+               "Unexpected non-pointer type of a stack allocated value");
+        // Convert MemRefValue to integer
+        LLVMContext &Ctx(MF.getFunction().getContext());
+        Type *CastTy = Type::getInt64Ty(Ctx);
+        BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+        PtrToIntInst *MemRefValAddr =
+            new PtrToIntInst(MemoryRefValue, CastTy, "", RaisedBB);
+
+        unsigned ScaleAmt = MemRef.Scale;
+        // IndexReg * Scale
+        Value *IndexVal = getPhysRegValue(MI, MemRef.IndexReg);
+        // Cast IndexRegVal as 64-bit integer, if needed.
+        IndexVal = getRaisedValues()->castValue(IndexVal, CastTy, RaisedBB);
+
+        // Generate mul instruction based on Scale value
+        switch (ScaleAmt) {
+        case 0:
+          assert(false && "Unexpected zero-value of scale in memory operand");
+          break;
+        case 1:
+          break;
+        default: {
+          Value *ScaleAmtValue = ConstantInt::get(CastTy, ScaleAmt);
+          Instruction *MulInst = BinaryOperator::CreateMul(
+              ScaleAmtValue, IndexVal, "sc-m", RaisedBB);
+          IndexVal = MulInst;
+        } break;
+        }
+
+        // MemoryRefValue + IndexReg*Scale
+        Instruction *AddInst = BinaryOperator::CreateAdd(
+            MemRefValAddr, IndexVal, "idx-a", RaisedBB);
+        // Propagate any rodata related metadata
+        getRaisedValues()->setInstMetadataRODataIndex(MemoryRefValue, AddInst);
+        // Cast the computed address back to MemRefValTy
+        MemoryRefValue =
+            getRaisedValues()->castValue(AddInst, MemRefValTy, RaisedBB);
+      }
+    }
     // Handle PC-relative addressing.
 
     // NOTE: This tool now raises only shared libraries and executables -

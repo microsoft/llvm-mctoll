@@ -1397,7 +1397,8 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an effective address value.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue) || isa<ConstantExpr>(MemRefValue)) &&
+          isa<GlobalValue>(MemRefValue) || isa<ConstantExpr>(MemRefValue) ||
+          MemRefValue->getType()->isPointerTy()) &&
          "Unexpected type of memory reference in FPU load op instruction");
 
   LLVMContext &llvmContext(MF.getFunction().getContext());
@@ -1436,15 +1437,14 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
       }
     }
   }
-  // If it is an effective address value, convert it to a pointer to
-  // the type of load reg.
-  if (isEffectiveAddrValue(MemRefValue)) {
-    assert(false &&
-           "*** Unhandled situation. Need to implement support correctly");
-    Type *PtrTy = MemRefValue->getType();
-    IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
-    RaisedBB->getInstList().push_back(ConvIntToPtr);
-    MemRefValue = ConvIntToPtr;
+  // If it is non-pointer value, convert it to a pointer type.
+  if (!MemRefValue->getType()->isPointerTy()) {
+    PointerType *PtrTy = MemRefValue->getType()->getPointerTo(0);
+    Instruction *CInst = CastInst::Create(
+        CastInst::getCastOpcode(MemRefValue, true, PtrTy, true), MemRefValue,
+        PtrTy);
+    RaisedBB->getInstList().push_back(CInst);
+    MemRefValue = CInst;
   }
   assert(MemRefValue->getType()->isPointerTy() &&
          "Pointer type expected in load instruction");
@@ -1473,7 +1473,8 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
     // Push value to top of FPU register stack
     FPURegisterStackPush(CInst);
   } break;
-  case X86::LD_F32m: {
+  case X86::LD_F32m:
+  case X86::LD_F64m: {
     Type *FloatTy = Type::getFloatTy(llvmContext);
     // Cast source to float
     Instruction *CInst = CastInst::Create(
@@ -1510,7 +1511,8 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
   // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
   // data access) or an effective address value.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue)) &&
+          isa<GlobalValue>(MemRefValue) ||
+          MemRefValue->getType()->isPointerTy()) &&
          "Unexpected type of memory reference in FPU store op instruction");
 
   LLVMContext &llvmContext(MF.getFunction().getContext());
@@ -1552,13 +1554,16 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
       }
     }
   }
-  // Unwrap any casting to get to the actual memory reference.
-  while (isa<CastInst>(MemRefValue)) {
-    CastInst *B = dyn_cast<CastInst>(MemRefValue);
-    MemRefValue = B->getOperand(0);
+  // Ensure MemRefValue is of pointer type
+  Type *MRTy = MemRefValue->getType();
+  if (!MRTy->isPointerTy()) {
+    PointerType *PtrTy = MRTy->getPointerTo(0);
+    Instruction *CInst = CastInst::Create(
+        CastInst::getCastOpcode(MemRefValue, true, PtrTy, true), MemRefValue,
+        PtrTy);
+    RaisedBB->getInstList().push_back(CInst);
+    MemRefValue = CInst;
   }
-  assert(MemRefValue->getType()->isPointerTy() &&
-         "Pointer type expected in store instruction");
 
   switch (Opcode) {
   default: {
@@ -3857,6 +3862,7 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
   // Construct the appropriate instruction
   unsigned Opcode = MI.getOpcode();
   switch (Opcode) {
+  case X86::ADD_FPrST0:
   case X86::MUL_FPrST0:
   case X86::DIV_FPrST0: {
     Value *St0Val = FPURegisterStackGetValueAt(0);
@@ -3882,12 +3888,14 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
       RaisedBB->getInstList().push_back(CInst);
       StVal = CInst;
     }
-    // Create fmul
+    // Create fp operation
     Instruction *FPRegOpInstr = nullptr;
     if (Opcode == X86::MUL_FPrST0) {
       FPRegOpInstr = BinaryOperator::CreateFMul(StVal, St0Val);
     } else if (Opcode == X86::DIV_FPrST0) {
       FPRegOpInstr = BinaryOperator::CreateFDiv(StVal, St0Val);
+    } else if (Opcode == X86::ADD_FPrST0) {
+      FPRegOpInstr = BinaryOperator::CreateFAdd(StVal, St0Val);
     }
     RaisedBB->getInstList().push_back(FPRegOpInstr);
     // Update the FP register FPRegIndex with FPRegOpInstr

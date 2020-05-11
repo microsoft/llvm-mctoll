@@ -72,18 +72,7 @@ X86RaisedValueTracker::X86RaisedValueTracker(
         unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
         // No value assigned yet for the definition of SuperReg in CurMBBNo.
         // The value will be updated as the block is raised.
-        uint8_t PhysRegSzInBits = 0;
-        if (X86RegisterUtils::is64BitPhysReg(PhysReg))
-          PhysRegSzInBits = 64;
-        else if (X86RegisterUtils::is32BitPhysReg(PhysReg))
-          PhysRegSzInBits = 32;
-        else if (X86RegisterUtils::is16BitPhysReg(PhysReg))
-          PhysRegSzInBits = 16;
-        else if (X86RegisterUtils::is8BitPhysReg(PhysReg))
-          PhysRegSzInBits = 8;
-        else
-          assert(false && "Unexpected Physical register encountered");
-
+        uint8_t PhysRegSzInBits = getPhysRegSizeInBits(PhysReg);
         physRegDefsInMBB[SuperReg][MBBNo] =
             std::make_pair(PhysRegSzInBits, nullptr);
       }
@@ -943,18 +932,28 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
   return true;
 }
 
-// Set FlagBit to 1 if Set is true else to 0.
+// Set FlagBit to Value.
 bool X86RaisedValueTracker::setEflagValue(unsigned int FlagBit, int MBBNo,
-                                          bool Set) {
+                                          Value *Val) {
+  assert((FlagBit >= X86RegisterUtils::EFLAGS::CF) &&
+         (FlagBit < X86RegisterUtils::EFLAGS::UNDEFINED) &&
+         "Unknown EFLAGS bit specified");
+  Val->setName(X86RegisterUtils::getEflagName(FlagBit));
+  physRegDefsInMBB[FlagBit][MBBNo].second = Val;
+  // EFLAGS bit size is 1
+  physRegDefsInMBB[FlagBit][MBBNo].first = 1;
+  return true;
+}
+
+// Set FlagBit to 1 if Set is true else to 0.
+bool X86RaisedValueTracker::setEflagBoolean(unsigned int FlagBit, int MBBNo,
+                                            bool Set) {
   assert((FlagBit >= X86RegisterUtils::EFLAGS::CF) &&
          (FlagBit < X86RegisterUtils::EFLAGS::UNDEFINED) &&
          "Unknown EFLAGS bit specified");
   LLVMContext &Ctx = x86MIRaiser->getMF().getFunction().getContext();
   Value *Val = Set ? ConstantInt::getTrue(Ctx) : ConstantInt::getFalse(Ctx);
-  Val->setName(X86RegisterUtils::getEflagName(FlagBit));
-  physRegDefsInMBB[FlagBit][MBBNo].second = Val;
-  // EFLAGS bit size is 1
-  physRegDefsInMBB[FlagBit][MBBNo].first = 1;
+  setEflagValue(FlagBit, MBBNo, Val);
   return true;
 }
 

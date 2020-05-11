@@ -133,6 +133,8 @@ private:
   bool raiseLoadIntToFloatRegInstr(const MachineInstr &, Value *);
   bool raiseStoreIntToFloatRegInstr(const MachineInstr &, Value *);
   bool raiseFPURegisterOpInstr(const MachineInstr &);
+  bool raiseSSECompareMachineInstr(const MachineInstr &);
+  bool raiseSSEConvertPrecisionMachineInstr(const MachineInstr &);
 
   bool raiseBranchMachineInstrs();
   bool raiseDirectBranchMachineInstr(ControlTransferInfo *);
@@ -165,7 +167,7 @@ private:
 
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
-  Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset, Type *OffsetTy,
+  Value *getOrCreateGlobalRODataValueAtOffset(int64_t Offset,
                                               BasicBlock *InsertBlock);
   Value *getMemoryAddressExprValue(const MachineInstr &);
   Value *createPCRelativeAccesssValue(const MachineInstr &);

@@ -45,6 +45,10 @@ enum InstructionKind : uint8_t {
   INPLACE_MEM_OP,
   SETCC,
   STORE_FPU_REG,
+  SSE_MOV_TO_MEM,
+  SSE_MOV_FROM_MEM,
+  SSE_COMPARE,
+  SSE_CONVERT_SS2SD
 };
 
 struct X86AdditionalInstrInfo {

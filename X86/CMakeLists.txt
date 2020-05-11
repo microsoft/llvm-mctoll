@@ -13,6 +13,7 @@ llvm_add_library(X86Raiser STATIC
   X86ModuleRaiser.cpp
   X86MachineInstructionRaiser.cpp
   X86MachineInstructionRaiserUtils.cpp
+  X86MachineInstructionRaiserSSE.cpp
   X86JumpTables.cpp
   X86RaisedValueTracker.cpp
   X86RegisterUtils.cpp

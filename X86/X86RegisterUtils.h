@@ -60,6 +60,10 @@ bool is64BitPhysReg(unsigned int PReg);
 bool is32BitPhysReg(unsigned int PReg);
 bool is16BitPhysReg(unsigned int PReg);
 bool is8BitPhysReg(unsigned int PReg);
+bool is32BitSSE2Reg(unsigned int PReg);
+bool is64BitSSE2Reg(unsigned int PReg);
+bool isGPReg(unsigned int PReg);
+bool isSSE2Reg(unsigned int PReg);
 unsigned getPhysRegSizeInBits(unsigned int PReg);
 unsigned getArgumentReg(int Index, Type *Ty);
 } // namespace X86RegisterUtils

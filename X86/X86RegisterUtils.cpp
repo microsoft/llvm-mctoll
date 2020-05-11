@@ -79,6 +79,14 @@ string getEflagName(unsigned EFBit) {
   return "";
 }
 
+bool is32BitSSE2Reg(unsigned int PReg) {
+  return X86MCRegisterClasses[X86::FR32RegClassID].contains(PReg);
+}
+
+bool is64BitSSE2Reg(unsigned int PReg) {
+  return X86MCRegisterClasses[X86::FR64RegClassID].contains(PReg);
+}
+
 bool is64BitPhysReg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::GR64RegClassID].contains(PReg);
 }
@@ -96,9 +104,9 @@ bool is8BitPhysReg(unsigned int PReg) {
 }
 
 unsigned int getPhysRegSizeInBits(unsigned int PReg) {
-  if (is64BitPhysReg(PReg))
+  if (is64BitPhysReg(PReg) || is64BitSSE2Reg(PReg))
     return 64;
-  else if (is32BitPhysReg(PReg))
+  else if (is32BitPhysReg(PReg) || is32BitSSE2Reg(PReg))
     return 32;
   else if (is16BitPhysReg(PReg))
     return 16;
@@ -109,6 +117,16 @@ unsigned int getPhysRegSizeInBits(unsigned int PReg) {
 
   llvm_unreachable("Unhandled physical register specified");
 }
+
+bool isSSE2Reg(unsigned int PReg) {
+  return (is32BitSSE2Reg(PReg) || is64BitSSE2Reg(PReg));
+}
+
+bool isGPReg(unsigned int PReg) {
+  return (is8BitPhysReg(PReg) || is16BitPhysReg(PReg) || is32BitPhysReg(PReg) ||
+          is64BitPhysReg(PReg));
+}
+
 unsigned getArgumentReg(int Index, Type *Ty) {
   llvm::LLVMContext &Ctx(Ty->getContext());
 

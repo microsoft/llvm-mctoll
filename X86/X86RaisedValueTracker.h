@@ -49,7 +49,8 @@ public:
   X86RaisedValueTracker(X86MachineInstructionRaiser *);
   bool setPhysRegSSAValue(unsigned int PhysReg, int MBBNo, Value *Val);
   bool testAndSetEflagSSAValue(unsigned Flag, const MachineInstr &MI, Value *);
-  bool setEflagValue(unsigned FlagBit, int MBBNo, bool Set);
+  bool setEflagBoolean(unsigned FlagBit, int MBBNo, bool Set);
+  bool setEflagValue(unsigned FlagBit, int MBBNo, Value *);
 
   // Get the reaching definition of PhysReg. Perform any necessary stack
   // promotions. If AllPreds is true, perform the stack promotions only if

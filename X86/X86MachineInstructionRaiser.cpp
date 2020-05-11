@@ -27,7 +27,6 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
-#include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/Debug.h"
@@ -1017,8 +1016,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       Value *Val = ConstantInt::get(DestTy, 0, false /* isSigned */);
       dstValue = Val;
       // Set SF and ZF knowing that the value is 0
-      raisedValues->setEflagValue(EFLAGS::SF, MBBNo, false);
-      raisedValues->setEflagValue(EFLAGS::ZF, MBBNo, true);
+      raisedValues->setEflagBoolean(EFLAGS::SF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::ZF, MBBNo, true);
     } else {
       Value *Src1Value = ExplicitSrcValues.at(0);
       Value *Src2Value = ExplicitSrcValues.at(1);
@@ -1060,8 +1059,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
     }
     // Clear OF and CF
-    raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-    raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
@@ -1086,8 +1085,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     RaisedBB->getInstList().push_back(BinOpInst);
     dstValue = BinOpInst;
     // Clear OF and CF
-    raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-    raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
     // Set SF and ZF based on dstValue; technically PF also needs
     // to be set but ignoring for now.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
@@ -1361,7 +1360,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   // Clear EFLAGS if any
   int MMBNo = MI.getParent()->getNumber();
   for (auto F : ClearedEFlags)
-    raisedValues->setEflagValue(F, MMBNo, false);
+    raisedValues->setEflagBoolean(F, MMBNo, false);
 
   // Test and set affected flags
   for (auto Flag : AffectedEFlags)
@@ -1641,10 +1640,15 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     // content and should not be loaded from.
     if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
       LoadFromMemrefValue = !(GV->hasInitializer());
-    // If it is not a PC-relative GetElementPtrInst, it is memory content and
-    // should not be loaded from.
-    else
-      LoadFromMemrefValue = isa<GetElementPtrInst>(MemRefValue);
+    // If it is not a PC-relative constant expression accessed using
+    // GetElementPtrInst, it is memory content and should not be loaded from.
+    else {
+      const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(MemRefValue);
+      if (CExpr != nullptr) {
+        LoadFromMemrefValue =
+            (CExpr->getOpcode() == Instruction::GetElementPtr);
+      }
+    }
   }
 
   if (LoadFromMemrefValue) {
@@ -1666,10 +1670,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
     // Load the value from memory location
     Type *LdTy = MemRefValue->getType()->getPointerElementType();
-    unsigned int MemAlignment = LdTy->getPrimitiveSizeInBits() / 8;
-    LoadInst *LdInst =
-        new LoadInst(LdTy, MemRefValue, "memload", false /* isVolatile */,
-                     MaybeAlign(MemAlignment));
+    LoadInst *LdInst = new LoadInst(LdTy, MemRefValue, "memload");
     LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
     RaisedBB->getInstList().push_back(LdInst);
 
@@ -2230,13 +2231,11 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
            "Unhandled second operand type in compare instruction");
 
     if (CmpOp1.isReg()) {
-      OpValues[0] =
-          getRegOrArgValue(CmpOp1.getReg(), MI.getParent()->getNumber());
+      OpValues[0] = getRegOrArgValue(CmpOp1.getReg(), MBBNo);
     }
 
     if (CmpOp2.isReg()) {
-      OpValues[1] =
-          getRegOrArgValue(CmpOp2.getReg(), MI.getParent()->getNumber());
+      OpValues[1] = getRegOrArgValue(CmpOp2.getReg(), MBBNo);
     }
 
     // Construct value if either of the operands is an immediate
@@ -2290,8 +2289,8 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
          "Mis-matched operand types encountered while raising compare "
          "instruction");
 
-  raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-  raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+  raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+  raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
   // CmpInst is of type Value * to allow for a potential need to pass it to
   // castValue(), if needed.
   Value *CmpInst = nullptr;
@@ -2350,8 +2349,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
              "Unexpected number of def operands of sub instruction");
       // Update the DestReg only if this is a sub instruction. Do not update
       // if this is a cmp instruction
-      raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
-                                       CmpInst);
+      raisedValues->setPhysRegSSAValue(DestReg, MBBNo, CmpInst);
     } break;
     default:
       assert(false && "Unhandled sub instruction found");
@@ -2499,8 +2497,9 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     // NOT object files. So, instructions with 0 register (which typically
     // are seen in a relocatable object file for the linker to patch) are
     // not expected to be encountered.
-    else if (BaseSupReg == X86::RIP)
+    else if (BaseSupReg == X86::RIP) {
       MemoryRefValue = createPCRelativeAccesssValue(MI);
+    }
 
     // If this is neither a stack reference nor a pc-relative access, get the
     // associated memory address expression value.
@@ -2531,11 +2530,13 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   switch (getInstructionKind(Opcode)) {
     // Move register or immediate to memory
   case InstructionKind::MOV_TO_MEM:
+  case InstructionKind::SSE_MOV_TO_MEM:
     return raiseMoveToMemInstr(MI, MemoryRefValue);
   case InstructionKind::INPLACE_MEM_OP:
     return raiseInplaceMemOpInstr(MI, MemoryRefValue);
   // Move register from memory
   case InstructionKind::MOV_FROM_MEM:
+  case InstructionKind::SSE_MOV_FROM_MEM:
     return raiseMoveFromMemInstr(MI, MemoryRefValue);
   case InstructionKind::BINARY_OP_RM:
     return raiseBinaryOpMemToRegInstr(MI, MemoryRefValue);
@@ -3119,8 +3120,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Generate and instruction
       BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
       // Clear OF and CF
-      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
@@ -3140,8 +3141,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Generate or instruction
       BinOpInstr = BinaryOperator::CreateOr(SrcOp1Value, SrcOp2Value);
       // Clear OF and CF
-      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
@@ -3203,8 +3204,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Generate xor instruction
       BinOpInstr = BinaryOperator::CreateXor(SrcOp1Value, SrcOp2Value);
       // Clear OF and CF
-      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
@@ -3263,8 +3264,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::TEST32ri:
       BinOpInstr = BinaryOperator::CreateAnd(SrcOp1Value, SrcOp2Value);
       // Clear OF and CF
-      raisedValues->setEflagValue(EFLAGS::OF, MBBNo, false);
-      raisedValues->setEflagValue(EFLAGS::CF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+      raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
       break;
@@ -3636,6 +3637,21 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       BranchCond = BinaryOperator::CreateOr(ZFCond, SFOFCond, "ZFOrSF_JLE");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
+    // Parity flag is set by instructions that abstract unordered
+    // result of SSE compare instructions.
+    // NOTE: Setting of PF is not modeled while abstracting non-SSE2
+    // instructions
+    case X86::COND_P: {
+      // Test PF == 1
+      int PFIndex = getEflagBitIndex(EFLAGS::PF);
+      Value *PFValue = CTRec->RegValues[PFIndex];
+      assert(PFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JP");
+      // Construct a compare instruction
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, PFValue, TrueValue,
+                                "CmpPF_JP");
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
     case X86::COND_INVALID:
       assert(false && "Invalid condition on branch");
       break;
@@ -3703,6 +3719,12 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
         getRegOrArgValue(SrcOp.getReg(), MI.getParent()->getNumber());
     success = raiseDivideInstr(MI, SrcVal);
   } break;
+  case InstructionKind::SSE_COMPARE:
+    success = raiseSSECompareMachineInstr(MI);
+    break;
+  case SSE_CONVERT_SS2SD:
+    success = raiseSSEConvertPrecisionMachineInstr(MI);
+    break;
   default: {
     dbgs() << "*** Generic instruction not raised : " << MF.getName().data()
            << "\n\t";
@@ -4060,7 +4082,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
           ConstantInt *Address = dyn_cast<ConstantInt>(ArgVal);
           if (!Address->isNegative()) {
             Value *RefVal = getOrCreateGlobalRODataValueAtOffset(
-                Address->getSExtValue(), Address->getType(), RaisedBB);
+                Address->getSExtValue(), RaisedBB);
             if (RefVal != nullptr) {
               assert(RefVal->getType()->isPointerTy() &&
                      "Non-pointer type of global value abstracted from "
@@ -4096,8 +4118,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         Type *CastTy = Type::getInt64Ty(Ctx);
         Instruction *castInst = CastInst::Create(
             CastInst::getCastOpcode(callInst, false, CastTy, false), callInst,
-            CastTy);
-        RaisedBB->getInstList().push_back(castInst);
+            CastTy, "", RaisedBB);
         callInst = castInst;
         RetReg = X86::RAX;
       } else {
@@ -4238,7 +4259,7 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
   // entry of each function.
   for (auto b : EFlagBits)
     // raisedValues->setPhysRegSSAValue(b, 0, Zero1BitValue);
-    raisedValues->setEflagValue(b, 0, false);
+    raisedValues->setEflagBoolean(b, 0, false);
 
   // Set values of some registers that appear to be used in main function to
   // 0.

@@ -138,7 +138,20 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
   assert(Op.isReg() && "Attempt to get type of non-register operand");
 
   LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
-  return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
+  auto PReg = Op.getReg();
+  if (isGPReg(PReg))
+    return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
+  else if (isSSE2Reg(PReg)) {
+    auto Sz = getInstructionMemOpSize(MI.getOpcode());
+    if (Sz == 4)
+      return Type::getFloatTy(Ctx);
+    else if (Sz == 8)
+      return Type::getDoubleTy(Ctx);
+    llvm_unreachable("Unexpected memory operation size of instruction that "
+                     "uses SSE register");
+  }
+
+  llvm_unreachable("Unhandled register type encountered");
 }
 
 bool X86MachineInstructionRaiser::isPushToStack(const MachineInstr &MI) const {
@@ -308,6 +321,10 @@ X86MachineInstructionRaiser::find64BitSuperReg(unsigned int PhysReg) {
     return PhysReg;
   }
 
+  // Return PhysReg if it is an xmm register
+  if (is64BitSSE2Reg(PhysReg))
+    return PhysReg;
+
   // The return value.
   unsigned int SuperReg;
 
@@ -323,7 +340,7 @@ X86MachineInstructionRaiser::find64BitSuperReg(unsigned int PhysReg) {
     }
   }
 
-  assert(SuperRegFound && "Super register not found");
+  assert(SuperRegFound && "Unsupported register found");
   return SuperReg;
 }
 
@@ -912,20 +929,31 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   const DataLayout &dataLayout = MR->getModule()->getDataLayout();
   unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
   unsigned stackObjectSize = getInstructionMemOpSize(MI.getOpcode());
-  switch (stackObjectSize) {
-  default:
-    MemOpTy = Type::getInt64Ty(llvmContext);
+  if (IsStackPointerAdjust && (stackObjectSize == 0)) {
     stackObjectSize = 8;
+  }
+  InstructionKind InstrKind = getInstructionKind(MI.getOpcode());
+  bool SSE2MemOp = ((InstrKind == InstructionKind::SSE_MOV_FROM_MEM) ||
+                    (InstrKind == InstructionKind::SSE_MOV_TO_MEM));
+  switch (stackObjectSize) {
+  case 8:
+    MemOpTy = SSE2MemOp ? Type::getDoubleTy(llvmContext)
+                        : Type::getInt64Ty(llvmContext);
     break;
   case 4:
-    MemOpTy = Type::getInt32Ty(llvmContext);
+    MemOpTy = SSE2MemOp ? Type::getFloatTy(llvmContext)
+                        : Type::getInt32Ty(llvmContext);
     break;
-  case 2:
+  case 2: {
+    assert(!SSE2MemOp && "Unexpected memory access sized SSE2 instruction");
     MemOpTy = Type::getInt16Ty(llvmContext);
-    break;
-  case 1:
+  } break;
+  case 1: {
+    assert(!SSE2MemOp && "Unexpected memory access sized SSE2 instruction");
     MemOpTy = Type::getInt8Ty(llvmContext);
-    break;
+  } break;
+  default:
+    llvm_unreachable("Unexpected access size of memory ref instruction");
   }
 
   assert(stackObjectSize != 0 && MemOpTy != nullptr &&
@@ -1181,7 +1209,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
 // can not be used explicitly since it is private to Constants.cpp (See comment
 // in llvm/lib/IR/ConstantsContext.h)
 Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
-    int64_t Offset, Type *OffsetTy1, BasicBlock *InsertBB) {
+    int64_t Offset, BasicBlock *InsertBB) {
   // A negative offset implies that this is not an offset into ro-data
   // section. Just return nullptr.
   if (Offset < 0) {
@@ -1235,7 +1263,7 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
                                                      SecStart);
           RODataSecValue = GlobalStrConstVal;
         }
-        unsigned DataOffset = Offset - SecStart;
+        unsigned DataOffset = (Offset - SecStart);
         // Construct index array for a GEP instruction that accesses
         // byte array
         Value *Zero32Value = ConstantInt::get(Type::getInt32Ty(llvmContext), 0);
@@ -1294,27 +1322,28 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
     }
   }
 
+  // Get memory access size
+  unsigned MemAccessSizeInBytes = getInstructionMemOpSize(MI.getOpcode());
+
+  // If MI is not a memory accessing instruction, determine the access size by
+  // the size of destination register.
+  if (MemAccessSizeInBytes == 0) {
+    MachineOperand MO = MI.getOperand(0);
+    assert(MI.getNumExplicitDefs() == 1 && MO.isReg() &&
+           "Expect one explicit register def operand");
+    MemAccessSizeInBytes = getPhysRegSizeInBits(MO.getReg()) / sizeof(uint64_t);
+  }
+
+  assert((MemAccessSizeInBytes != 0) && "Unknown memory access size");
+
   if (!GlobalDataSymFound) {
     // If Offset does not correspond to a global symbol, get the corresponding
     // rodata value.
-    GlobalVariableValue = getOrCreateGlobalRODataValueAtOffset(
-        Offset, Type::getInt64Ty(MF.getFunction().getContext()), RaisedBB);
+    GlobalVariableValue =
+        getOrCreateGlobalRODataValueAtOffset(Offset, RaisedBB);
   } else {
     // If Offset corresponds to a global symbol, materialize a global
     // variable.
-    unsigned MemAccessSizeInBytes = getInstructionMemOpSize(MI.getOpcode());
-
-    // If MI is not a memory accessing instruction, determine the access size by
-    // the size of destination register.
-    if (MemAccessSizeInBytes == 0) {
-      MachineOperand MO = MI.getOperand(0);
-      assert(MI.getNumExplicitDefs() == 1 && MO.isReg() &&
-             "Expect one explicit register def operand");
-      MemAccessSizeInBytes =
-          getPhysRegSizeInBits(MO.getReg()) / sizeof(uint64_t);
-    }
-
-    assert((MemAccessSizeInBytes != 0) && "Unknown memory access size");
     Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
     assert(GlobalDataSymName && "Failed to find global symbol name.");
     // Find if a global value associated with symbol name is already
@@ -1410,8 +1439,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                 SymArrayElem |= B << (MemAccessSizeInBytes - 1) * 8;
                 // if this is an address in .rodata section
                 Value *RODataValue = getOrCreateGlobalRODataValueAtOffset(
-                    SymArrayElem, Type::getIntNTy(Ctx, MemAccessSizeInBytes),
-                    RaisedBB);
+                    SymArrayElem, RaisedBB);
                 // If the SymArrElem does not correspond to an .rodata address
                 // consider it to be data.
                 if (RODataValue == nullptr) {

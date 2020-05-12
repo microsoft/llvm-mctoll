@@ -224,7 +224,9 @@ void ARMMIRevising::relocateBranch(MachineInstr &MInst) {
   } else {
     uint64_t Offset = getMCInstIndex(MInst);
     const RelocationRef *reloc = MR->getTextRelocAtOffset(Offset, 4);
-    MInst.getOperand(0).setImm((*reloc->getSymbol()).getValue());
+    auto ImmValOrErr = (*reloc->getSymbol()).getValue();
+    assert(ImmValOrErr && "Failed to get immediate value");
+    MInst.getOperand(0).setImm(*ImmValOrErr);
   }
 }
 
@@ -308,7 +310,9 @@ const Value *ARMMIRevising::getGlobalValueByOffset(int64_t MCInstOffset,
         break;
       }
 
-      uint64_t SymVirtAddr = Symbol->getValue();
+      auto SymOrErr = Symbol->getValue();
+      assert(SymOrErr && "Can not find the symbol!");
+      uint64_t SymVirtAddr = *SymOrErr;
       auto SecOrErr = Symbol->getSection();
       assert(SecOrErr && "Can not find the section which is the symbol in!");
 

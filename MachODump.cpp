@@ -193,8 +193,14 @@ struct SymbolSorter {
     if (!BTypeOrErr)
       report_error(BTypeOrErr.takeError(), B.getObject()->getFileName());
     SymbolRef::Type BType = *BTypeOrErr;
-    uint64_t AAddr = (AType != SymbolRef::ST_Function) ? 0 : A.getValue();
-    uint64_t BAddr = (BType != SymbolRef::ST_Function) ? 0 : B.getValue();
+    auto ASymOrErr = A.getValue();
+    if (!ASymOrErr)
+      report_error(ASymOrErr.takeError(), A.getObject()->getFileName());
+    auto BSymOrErr = B.getValue();
+    if (!BSymOrErr)
+      report_error(BSymOrErr.takeError(), B.getObject()->getFileName());
+    uint64_t AAddr = (AType != SymbolRef::ST_Function) ? 0 : *ASymOrErr;
+    uint64_t BAddr = (BType != SymbolRef::ST_Function) ? 0 : *BSymOrErr;
     return AAddr < BAddr;
   }
 };
@@ -597,7 +603,10 @@ static void CreateSymbolAddressMap(MachOObjectFile *O,
     SymbolRef::Type ST = unwrapOrError(Symbol.getType(), FileName);
     if (ST == SymbolRef::ST_Function || ST == SymbolRef::ST_Data ||
         ST == SymbolRef::ST_Other) {
-      uint64_t Address = Symbol.getValue();
+      auto SymOrErr = Symbol.getValue();
+      if (!SymOrErr)
+        report_error(SymOrErr.takeError(), Symbol.getObject()->getFileName());
+      uint64_t Address = *SymOrErr;
       StringRef SymName = unwrapOrError(Symbol.getName(), FileName);
       if (!SymName.startswith(".objc"))
         (*AddrMap)[Address] = SymName;
@@ -2564,7 +2573,10 @@ static const char *get_symbol_64(uint32_t sect_offset, SectionRef S,
   // and return its name.
   const char *SymbolName = nullptr;
   if (reloc_found && isExtern) {
-    n_value = Symbol.getValue();
+    auto SymOrErr = Symbol.getValue();
+    if (!SymOrErr)
+      report_error(SymOrErr.takeError(), Symbol.getObject()->getFileName());
+    n_value = *SymOrErr;
     Expected<StringRef> NameOrError = Symbol.getName();
     if (!NameOrError)
       report_error(NameOrError.takeError(), info->O->getFileName());
@@ -6167,7 +6179,11 @@ static const char *GuessLiteralPointer(uint64_t ReferenceValue,
       if (info->O->getAnyRelocationPCRel(RE)) {
         unsigned Type = info->O->getAnyRelocationType(RE);
         if (Type == MachO::X86_64_RELOC_SIGNED) {
-          ReferenceValue = Symbol.getValue();
+          auto SymOrErr = Symbol.getValue();
+          if (!SymOrErr)
+            report_error(SymOrErr.takeError(),
+                         Symbol.getObject()->getFileName());
+          ReferenceValue = *SymOrErr;
         }
       }
     }
@@ -6637,7 +6653,11 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
       SymbolRef::Type ST = *STOrErr;
       if (ST == SymbolRef::ST_Function || ST == SymbolRef::ST_Data ||
           ST == SymbolRef::ST_Other) {
-        uint64_t Address = Symbol.getValue();
+        auto SymOrErr = Symbol.getValue();
+        if (!SymOrErr)
+          report_error(SymOrErr.takeError(), Symbol.getObject()->getFileName());
+
+        uint64_t Address = *SymOrErr;
         Expected<StringRef> SymNameOrErr = Symbol.getName();
         if (!SymNameOrErr)
           report_error(SymNameOrErr.takeError(), MachOOF->getFileName());
@@ -6737,7 +6757,10 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
 
       // Start at the address of the symbol relative to the section's address.
       uint64_t SectSize = Sections[SectIdx].getSize();
-      uint64_t Start = Symbols[SymIdx].getValue();
+      auto SymOrErr = Symbols[SymIdx].getValue();
+      if (!SymOrErr)
+        report_error(SymOrErr.takeError(), Symbols[SymIdx].getObject()->getFileName());
+      uint64_t Start = *SymOrErr;
       uint64_t SectionAddress = Sections[SectIdx].getAddress();
       Start -= SectionAddress;
 
@@ -6760,7 +6783,12 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
         if (NextSymType == SymbolRef::ST_Function) {
           containsNextSym =
               Sections[SectIdx].containsSymbol(Symbols[NextSymIdx]);
-          NextSym = Symbols[NextSymIdx].getValue();
+          auto SymOrErr = Symbols[NextSymIdx].getValue();
+          if (!SymOrErr)
+            report_error(SymOrErr.takeError(),
+            		Symbols[NextSymIdx].getObject()->getFileName());
+
+          NextSym = *SymOrErr;
           NextSym -= SectionAddress;
           break;
         }
@@ -7421,7 +7449,10 @@ void llvm::printMachOUnwindInfo(const MachOObjectFile *Obj) {
     if (Section == Obj->section_end())
       continue;
 
-    uint64_t Addr = SymRef.getValue();
+    auto SymOrErr = SymRef.getValue();
+    if (!SymOrErr)
+      report_error(SymOrErr.takeError(), SymRef.getObject()->getFileName());
+    uint64_t Addr = *SymOrErr;
     Symbols.insert(std::make_pair(Addr, SymRef));
   }
 

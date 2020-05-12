@@ -5,22 +5,15 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 6c881bf1fec2288907cd87a7895c863243bba7c5
-Author: David Tenty <daltenty@ibm.com>
-Date:   Fri Apr 17 13:06:08 2020 -0400
+commit 89d3031b3ce13cc453d04cf02036a5e7d6b72524
+Author: Nico Weber <thakis@chromium.org>
+Date:   Mon May 11 19:04:28 2020 -0400
 
-    [AIX] Return the correct set of callee saved regs
+    llvm-lit.in: Use a raw string for LLVM_SOURCE_DIR
     
-    Summary:
-    r13 isn't reserved on 32-bit AIX, which is reflected in our calling
-    convention but not callee saved regs.
+    In case the path from cmake build dir contains a backslash
+    escape on Windows (which uses \ as path separator).
     
-    Reviewers: sfertile, ZarkoCA, cebowleratibm, jasonliu
+    While here, consistently use one form of quotes in this file.
     
-    Reviewed By: sfertile
-    
-    Subscribers: lei, wuzish, nemanjai, hiraditya, kbarton, llvm-commits
-    
-    Tags: #llvm
-    
-    Differential Revision: https://reviews.llvm.org/D77101
+    No intended behavior change.

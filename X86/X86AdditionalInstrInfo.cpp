@@ -13912,7 +13912,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::XOR32mi8, {4, Unknown}},
     {X86::XOR32mr, {4, Unknown}},
     {X86::XOR32ri, {0, BINARY_OP_WITH_IMM}},
-    {X86::XOR32ri8, {0, Unknown}},
+    {X86::XOR32ri8, {0, BINARY_OP_WITH_IMM}},
     {X86::XOR32rm, {4, BINARY_OP_RM}},
     {X86::XOR32rr, {0, BINARY_OP_RR}},
     {X86::XOR32rr_REV, {0, Unknown}},

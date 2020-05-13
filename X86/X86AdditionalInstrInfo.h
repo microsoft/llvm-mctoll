@@ -45,10 +45,13 @@ enum InstructionKind : uint8_t {
   INPLACE_MEM_OP,
   SETCC,
   STORE_FPU_REG,
+  SSE_KIND_BEGIN,
   SSE_MOV_TO_MEM,
   SSE_MOV_FROM_MEM,
   SSE_COMPARE,
-  SSE_CONVERT_SS2SD
+  SSE_CONVERT_SS2SD,
+  SSE_KIND_END,
+  INSTR_KIND_END
 };
 
 struct X86AdditionalInstrInfo {
@@ -83,6 +86,11 @@ static inline bool isNoop(unsigned int Opcode) {
   return (getInstructionKind(Opcode) == mctoll::InstructionKind::NOOP);
 }
 
+static inline bool isSSE2Instruction(unsigned int Opcode) {
+	auto Kind = getInstructionKind(Opcode);
+	return ((Kind > InstructionKind::SSE_KIND_BEGIN) &&
+			(Kind < InstructionKind::SSE_KIND_END));
+}
 } // namespace mctoll
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H

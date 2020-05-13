@@ -1822,7 +1822,21 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   Type *DstMemTy = MemRefVal->getType();
   if (!DstMemTy->isPointerTy()) {
     // Cast it as pointer to SrcOpTy
-    PointerType *PtrTy = PointerType::get(SrcOpTy, 0);
+    PointerType *PtrTy = nullptr;
+    auto Opc = MI.getOpcode();
+    auto MemSzInBits = getInstructionMemOpSize(Opc) * 8;
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    if (isSSE2Instruction(Opc)) {
+      if (MemSzInBits == 4)
+        PtrTy = Type::getFloatPtrTy(Ctx);
+      else if (MemSzInBits == 8)
+        PtrTy = Type::getDoublePtrTy(Ctx);
+      else
+        llvm_unreachable("Unhandled memory access size of SSE2 instruction");
+    } else {
+      assert(MemSzInBits > 0 && "Unexpected memory access size of instruction");
+      PtrTy = Type::getIntNPtrTy(Ctx, MemSzInBits);
+    }
     IntToPtrInst *convIntToPtr = new IntToPtrInst(MemRefVal, PtrTy);
     RaisedBB->getInstList().push_back(convIntToPtr);
     MemRefVal = convIntToPtr;
@@ -3198,6 +3212,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::XOR8ri:
     case X86::XOR16ri:
     case X86::XOR32ri:
+    case X86::XOR32ri8:
     case X86::XOR8i8:
     case X86::XOR16i16:
     case X86::XOR32i32:

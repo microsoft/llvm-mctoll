@@ -2,6 +2,8 @@
 // RUN: llvm-mctoll -d %t.so
 // RUN: clang -o %t1 %S/../dhry_main.c %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mx32
 // RUN: %t1 2>&1| FileCheck %s
+// RUN: false
+// XFAIL: *
 
 // CHECK: Dhrystone Benchmark, Version 2.1 (Language: C)
 // CHECK: Program compiled without 'register' attribute

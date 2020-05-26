@@ -1269,14 +1269,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   if (IsMemRefGlobalVal) {
     // Load the global value.
     auto Op = dyn_cast<LoadInst>(MemRefValue)->getPointerOperand();
-    LoadInst *LdInst =
-        new LoadInst(Op->getType()->getPointerElementType(), Op, "globalload",
-                     false, MaybeAlign(MemAlignment));
+    LoadInst *LdInst = new LoadInst(Op->getType()->getPointerElementType(), Op,
+                                    "globalload", false, Align(MemAlignment));
     LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
   } else {
     LoadInst *LdInst =
         new LoadInst(MemRefValue->getType()->getPointerElementType(),
-                     MemRefValue, "memload", false, MaybeAlign(MemAlignment));
+                     MemRefValue, "memload", false, Align(MemAlignment));
     LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
   }
 
@@ -1585,8 +1584,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
       MemRefValue = CInst;
     }
     // Create the store
-    StoreInst *StInst = new StoreInst(ST0Val, MemRefValue);
-    RaisedBB->getInstList().push_back(StInst);
+    new StoreInst(ST0Val, MemRefValue, RaisedBB);
 
     // Pop value to top of FPU register stack
     FPURegisterStackPop();
@@ -1670,7 +1668,8 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
     // Load the value from memory location
     Type *LdTy = MemRefValue->getType()->getPointerElementType();
-    LoadInst *LdInst = new LoadInst(LdTy, MemRefValue, "memload");
+    LoadInst *LdInst =
+        new LoadInst(LdTy, MemRefValue, "memload", false, Align());
     LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
     RaisedBB->getInstList().push_back(LdInst);
 
@@ -1904,10 +1903,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
   assert((SrcValue != nullptr) && "Unexpected null value to be stored while "
                                   "raising binary mem op instruction");
-  StInst = new StoreInst(SrcValue, MemRefVal);
-  // Push the store instruction.
-  StInst->setAlignment(MaybeAlign(memAlignment));
-  RaisedBB->getInstList().push_back(StInst);
+  StInst =
+      new StoreInst(SrcValue, MemRefVal, false, Align(memAlignment), RaisedBB);
 
   return true;
 }
@@ -1945,8 +1942,8 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
          "Expect value of load instruction to be of pointer type");
   // Load the value from memory location
   Instruction *SrcValue =
-      new LoadInst(SrcTy->getPointerElementType(), MemRefVal, "memload", false);
-  RaisedBB->getInstList().push_back(SrcValue);
+      new LoadInst(SrcTy->getPointerElementType(), MemRefVal, "memload", false,
+                   Align(), RaisedBB);
 
   switch (MI.getOpcode()) {
   case X86::NOT16m:
@@ -1969,10 +1966,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   RaisedBB->getInstList().push_back(SrcValue);
 
   // Store the result back in MemRefVal
-  StoreInst *StInst = new StoreInst(SrcValue, MemRefVal);
-
-  StInst->setAlignment(MaybeAlign(memAlignment));
-  RaisedBB->getInstList().push_back(StInst);
+  new StoreInst(SrcValue, MemRefVal, false, Align(memAlignment), RaisedBB);
   return true;
 }
 
@@ -2351,8 +2345,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
 
       // Store CmpInst to MemRefValue only if this is a sub MI or MR
       // instruction. Do not update if this is a cmp instruction.
-      StoreInst *StInst = new StoreInst(CmpInst, MemRefValue);
-      RaisedBB->getInstList().push_back(StInst);
+      StoreInst *StInst = new StoreInst(CmpInst, MemRefValue, RaisedBB);
     } break;
     case X86::SUB32rr:
     case X86::SUB64rr:

@@ -326,7 +326,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     StringRef PhysRegName = TRI->getRegAsmName(PhysReg);
     // Create alloca instruction to allocate stack slot
     AllocaInst *Alloca =
-        new AllocaInst(AllocTy, allocaAddrSpace, 0, MaybeAlign(typeAlignment),
+        new AllocaInst(AllocTy, allocaAddrSpace, 0, Align(typeAlignment),
                        PhysRegName + "-SKT-LOC");
 
     // Create a stack slot associated with the alloca instruction of size 8
@@ -362,9 +362,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
         getInBlockRegOrArgDefVal(PhysReg, MBBNo);
     Value *DefValue = MBBNoRDPair.second;
     if (DefValue != nullptr) {
-      StoreInst *StInst = new StoreInst(DefValue, Alloca);
-      x86MIRaiser->getRaisedFunction()->getEntryBlock().getInstList().push_back(
-          StInst);
+      BasicBlock &RaisedBB = x86MIRaiser->getRaisedFunction()->getEntryBlock();
+      new StoreInst(DefValue, Alloca, &RaisedBB);
     }
     // The store instruction simply stores value defined on stack. No defines
     // are affected. So, no PhysReg to SSA mapping needs to be updated.
@@ -391,8 +390,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
       }
     }
     // 3. load from the stack slot for use in current block
-    Instruction *LdReachingVal =
-        new LoadInst(Alloca->getType()->getPointerElementType(), Alloca);
+    Instruction *LdReachingVal = new LoadInst(
+        Alloca->getType()->getPointerElementType(), Alloca, "", false, Align());
     LdReachingVal =
         setInstMetadataRODataContent(dyn_cast<LoadInst>(LdReachingVal));
     // Insert load instruction
@@ -1081,7 +1080,7 @@ X86RaisedValueTracker::setInstMetadataRODataContent(LoadInst *LdInst) {
         // function is expected to do so.
         NewLdInst = new LoadInst(LdPtrTy->getPointerElementType(), ModSrcValue,
                                  "rodata-reloc", LdInst->isVolatile(),
-                                 MaybeAlign(LdInst->getAlignment()));
+                                 Align(LdInst->getAlignment()));
         // Copy metadata of the new load instruction to indicate that the loaded
         // value is content of rodata by propagating the metadata from
         // SrcValueAsInst.

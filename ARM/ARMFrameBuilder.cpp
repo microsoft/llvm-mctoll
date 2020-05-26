@@ -261,7 +261,7 @@ void ARMFrameBuilder::searchStackObjects(MachineFunction &mf) {
   for (auto ii = SPOffElementMap.begin(), ie = SPOffElementMap.end(); ii != ie;
        ++ii) {
     StackElement *sem = ii->second;
-    MaybeAlign MALG(sem->Size);
+    Align MALG(sem->Size);
     AllocaInst *alc =
         new AllocaInst(getStackType(sem->Size), 0, nullptr, MALG, "", pBB);
     int idx = MFI->CreateStackObject(sem->Size, 4, false, alc);

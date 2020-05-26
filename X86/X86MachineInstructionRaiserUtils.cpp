@@ -690,7 +690,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
       CInst->insertBefore(TermInst);
     ReachingValue = CInst;
   }
-  StInst = new StoreInst(ReachingValue, Alloca);
+  StInst = new StoreInst(ReachingValue, Alloca, false, Align());
   if (TermInst == nullptr)
     ReachingBB->getInstList().push_back(StInst);
   else

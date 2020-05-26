@@ -5,15 +5,10 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 89d3031b3ce13cc453d04cf02036a5e7d6b72524
-Author: Nico Weber <thakis@chromium.org>
-Date:   Mon May 11 19:04:28 2020 -0400
+commit 792575ff323b714d03215951c6fff105f1074aac
+Author: Sam Parker <sam.parker@arm.com>
+Date:   Tue May 26 14:47:02 2020 +0100
 
-    llvm-lit.in: Use a raw string for LLVM_SOURCE_DIR
+    [NFC][ARM][AArch64] More code size tests
     
-    In case the path from cmake build dir contains a backslash
-    escape on Windows (which uses \ as path separator).
-    
-    While here, consistently use one form of quotes in this file.
-    
-    No intended behavior change.
+    Add analysis runs for icmp, fcmp and select instructions.

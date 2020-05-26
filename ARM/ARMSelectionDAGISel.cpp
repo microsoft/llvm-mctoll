@@ -88,7 +88,7 @@ void ARMSelectionDAGISel::emitDAG() {
 void ARMSelectionDAGISel::initEntryBasicBlock() {
   BasicBlock *bb = &RF->getEntryBlock();
   for (unsigned i = 0; i < 4; i++) {
-    MaybeAlign MALG(32);
+    Align MALG(32);
     AllocaInst *Alloc = new AllocaInst(Type::getInt1Ty(RF->getContext()), 0,
                                        nullptr, MALG, "", bb);
     FuncInfo->AllocaMap[i] = Alloc;

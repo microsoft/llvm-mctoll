@@ -2312,28 +2312,20 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   // block is correct since it is known to be specifically of type Instruction.
   RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CmpInst));
 
-  if (isSUBInst || isTESTInst) {
+  if (isSUBInst) {
     switch (MI.getOpcode()) {
     case X86::SUB8mi:
-    case X86::TEST8mi:
     case X86::SUB8mi8:
     case X86::SUB8mr:
-    case X86::TEST8mr:
     case X86::SUB16mi:
-    case X86::TEST16mi:
     case X86::SUB16mi8:
     case X86::SUB16mr:
-    case X86::TEST16mr:
     case X86::SUB32mi:
-    case X86::TEST32mi:
     case X86::SUB32mi8:
     case X86::SUB32mr:
-    case X86::TEST32mr:
     case X86::SUB64mi8:
     case X86::SUB64mi32:
-    case X86::TEST64mi32:
-    case X86::SUB64mr:
-    case X86::TEST64mr: {
+    case X86::SUB64mr: {
       // This instruction moves a source value to memory. So, if the types of
       // the source value and that of the memory pointer content are not the
       // same, it is the source value that needs to be cast to match the type of
@@ -2345,7 +2337,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
 
       // Store CmpInst to MemRefValue only if this is a sub MI or MR
       // instruction. Do not update if this is a cmp instruction.
-      StoreInst *StInst = new StoreInst(CmpInst, MemRefValue, RaisedBB);
+      new StoreInst(CmpInst, MemRefValue, RaisedBB);
     } break;
     case X86::SUB32rr:
     case X86::SUB64rr:

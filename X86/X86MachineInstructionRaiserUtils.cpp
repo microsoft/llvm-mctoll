@@ -1033,14 +1033,14 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
           MFrameInfo.getObjectAllocation(StackSlotIndex));
       int Stride = MIStackOffset - StackSlotOffset;
       assert(Stride > 0 && "Unexpected stack slot stride");
+      // Convert pointer to int with size of the source binary ISA pointer
+      Type *PtrCastIntTy =
+          Type::getIntNTy(llvmContext, dataLayout.getPointerSizeInBits());
 
-      PtrToIntInst *AllocaAsInt = new PtrToIntInst(
-          StackSlotAllocaInst,
-          StackSlotAllocaInst->getType()->getPointerElementType(), "",
-          RaisedBB);
+      PtrToIntInst *AllocaAsInt =
+          new PtrToIntInst(StackSlotAllocaInst, PtrCastIntTy, "", RaisedBB);
       Instruction *AddStride = BinaryOperator::CreateAdd(
-          AllocaAsInt, ConstantInt::get(AllocaAsInt->getType(), Stride), "",
-          RaisedBB);
+          AllocaAsInt, ConstantInt::get(PtrCastIntTy, Stride), "", RaisedBB);
       return AddStride;
     }
   }

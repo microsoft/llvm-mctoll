@@ -696,6 +696,34 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   else
     StInst->insertBefore(TermInst);
 
+  // Construct a list of instructions that use ReachingValue, if it is not a
+  // Constant or an argument. This list holds instructions that use
+  // ReachingValue that is neither a Constant nor an argument value and are in
+  // a basic block other than DefiningMBB.
+  SmallVector<Instruction *, 4> UsageInstList;
+
+  // Nothing to do if ReachingValue is either a Constant or an argument value.
+  if (isa<Constant>(ReachingValue) ||
+      ReachingValue->getName().startswith("arg"))
+    return StInst;
+
+  // Construct instructions that use ReachingValue and are in a basic block
+  // other than DefiningMBB.
+  for (auto U : ReachingValue->users()) {
+    if (auto I = dyn_cast<Instruction>(U)) {
+      if (I->getParent() != ReachingBB)
+        UsageInstList.push_back(I);
+    }
+  }
+
+  // Replace all uses of ReachingValue with that loaded from stack location at
+  // which ReachingValue is stored.
+  for (auto I : UsageInstList) {
+    LoadInst *LdFromStkSlot = new LoadInst(
+        Alloca->getType()->getPointerElementType(), Alloca, "ld-stk-prom", I);
+    I->replaceUsesOfWith(ReachingValue, LdFromStkSlot);
+  }
+
   return StInst;
 }
 

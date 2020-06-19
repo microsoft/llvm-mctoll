@@ -1775,7 +1775,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  unsigned int memAlignment = getInstructionMemOpSize(MI.getOpcode());
   Value *SrcValue = nullptr;
   Type *SrcOpTy = nullptr;
 
@@ -1819,12 +1818,12 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
   // If memory reference is not a pointer type, cast it to a pointer
   Type *DstMemTy = MemRefVal->getType();
+  LLVMContext &Ctx(MF.getFunction().getContext());
   if (!DstMemTy->isPointerTy()) {
     // Cast it as pointer to SrcOpTy
     PointerType *PtrTy = nullptr;
     auto Opc = MI.getOpcode();
     auto MemSzInBits = getInstructionMemOpSize(Opc) * 8;
-    LLVMContext &Ctx(MF.getFunction().getContext());
     if (isSSE2Instruction(Opc)) {
       if (MemSzInBits == 4)
         PtrTy = Type::getFloatPtrTy(Ctx);
@@ -1851,11 +1850,24 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   }
 
   // This instruction moves a source value to memory. So, if the types of
-  // the source value and that of the memory pointer content are not the
-  // same, it is the source value that needs to be cast to match the type of
-  // destination (i.e., memory). It needs to be sign extended as needed.
-  Type *MatchTy = MemRefVal->getType()->getPointerElementType();
-  SrcValue = getRaisedValues()->castValue(SrcValue, MatchTy, RaisedBB);
+  // the source value and that of the memory pointer element are not the
+  // same as that of the store size of the instruction, cast them as needed.
+  unsigned int memSzInBits = getInstructionMemOpSize(MI.getOpcode()) * 8;
+  // Consider store value type to be the same as source value type, by default.
+  Type *StoreTy = SrcValue->getType();
+  if (SrcValue->getType()->isIntegerTy())
+    StoreTy = Type::getIntNTy(Ctx, memSzInBits);
+  else if (SrcValue->getType()->isFloatTy()) {
+    if (memSzInBits == 32)
+      StoreTy = Type::getFloatTy(Ctx);
+    else if (memSzInBits == 64)
+      StoreTy = Type::getDoublePtrTy(Ctx);
+  }
+
+  // Cast SrcValue and MemRefVal as needed.
+  MemRefVal = getRaisedValues()->castValue(MemRefVal, StoreTy->getPointerTo(),
+                                           RaisedBB);
+  SrcValue = getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB);
 
   StoreInst *StInst = nullptr;
   if (!isMovInst) {
@@ -1903,8 +1915,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
   assert((SrcValue != nullptr) && "Unexpected null value to be stored while "
                                   "raising binary mem op instruction");
-  StInst =
-      new StoreInst(SrcValue, MemRefVal, false, Align(memAlignment), RaisedBB);
+  StInst = new StoreInst(SrcValue, MemRefVal, false, Align(), RaisedBB);
 
   return true;
 }
@@ -4316,11 +4327,8 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
       }
     }
   }
-  if (createFunctionStackFrame()) {
-    return raiseBranchMachineInstrs() && handleUnpromotedReachingDefs();
-  }
-
-  return false;
+  return createFunctionStackFrame() && raiseBranchMachineInstrs() &&
+         handleUnpromotedReachingDefs();
 }
 
 bool X86MachineInstructionRaiser::raise() { return raiseMachineFunction(); }

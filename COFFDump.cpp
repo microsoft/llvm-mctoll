@@ -300,8 +300,10 @@ static void printTLSDirectory(const COFFObjectFile *Obj) {
   if (!PE32Header && !PE32PlusHeader)
     return;
 
-  const data_directory *DataDir;
-  error(Obj->getDataDirectory(COFF::TLS_TABLE, DataDir));
+  const data_directory *DataDir = Obj->getDataDirectory(COFF::TLS_TABLE);
+  if (!DataDir)
+    report_error("missing data dir for TLS table", Obj->getFileName());
+
   uintptr_t IntPtr = 0;
   if (DataDir->RelativeVirtualAddress == 0)
     return;
@@ -327,8 +329,11 @@ static void printLoadConfiguration(const COFFObjectFile *Obj) {
   if (Obj->getMachine() != COFF::IMAGE_FILE_MACHINE_I386)
     return;
 
-  const data_directory *DataDir;
-  error(Obj->getDataDirectory(COFF::LOAD_CONFIG_TABLE, DataDir));
+  const data_directory *DataDir =
+      Obj->getDataDirectory(COFF::LOAD_CONFIG_TABLE);
+  if (!DataDir)
+    report_error("missing data dir for TLS table", Obj->getFileName());
+
   uintptr_t IntPtr = 0;
   if (DataDir->RelativeVirtualAddress == 0)
     return;

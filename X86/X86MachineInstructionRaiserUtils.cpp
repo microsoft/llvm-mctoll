@@ -704,7 +704,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
 
   // Nothing to do if ReachingValue is either a Constant or an argument value.
   if (isa<Constant>(ReachingValue) ||
-      ReachingValue->getName().startswith("arg"))
+      ReachingValue->getName().startswith("arg") ||
+      isa<LoadInst>(ReachingValue))
     return StInst;
 
   // Construct instructions that use ReachingValue and are in a basic block

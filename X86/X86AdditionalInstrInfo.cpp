@@ -477,7 +477,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::CMP32rm, {4, Unknown}},
     {X86::CMP32rr, {0, COMPARE}},
     {X86::CMP32rr_REV, {0, Unknown}},
-    {X86::CMP64i32, {0, Unknown}},
+    {X86::CMP64i32, {0, COMPARE}},
     {X86::CMP64mi32, {8, Unknown}},
     {X86::CMP64mi8, {8, Unknown}},
     {X86::CMP64mr, {8, Unknown}},

@@ -5,10 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit a3adfb400ef7bd0c3152184d41283d35aa617be2
-Author: Thomas Preud'homme <thomasp@graphcore.ai>
-Date:   Fri Jun 19 15:52:07 2020 +0100
+commit 6e1b11087f080b1cb9a023f9f920d29d5465633e
+Author: Jon Chesterfield <jonathanchesterfield@gmail.com>
+Date:   Wed Aug 19 15:44:30 2020 +0100
 
-    Revert "[FileCheck, unittest] Improve readability of ExpressionFormat"
-    
-    This reverts commit cd2553de77f2c3206deaa261a15cc7520ff2ff56.
+    [libomptarget][amdgpu] Support building with static rocm libraries

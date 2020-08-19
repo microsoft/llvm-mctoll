@@ -2779,7 +2779,6 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::UCOM_Fpr64, {0, Unknown}},
     {X86::UCOM_Fpr80, {0, Unknown}},
     {X86::UCOM_Fr, {0, Unknown}},
-    {X86::UD2B, {0, Unknown}},
     {X86::UNPCKHPDrm, {0, Unknown}},
     {X86::UNPCKHPDrr, {0, Unknown}},
     {X86::UNPCKHPSrm, {0, Unknown}},

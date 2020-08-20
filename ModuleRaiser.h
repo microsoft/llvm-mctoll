@@ -22,6 +22,7 @@ using namespace llvm;
 using namespace std;
 
 class MachineFunctionRaiser;
+class MachineInstructionRaiser;
 
 using namespace object;
 
@@ -124,6 +125,7 @@ public:
 
   int64_t getTextSectionAddress() const;
 
+  bool changeRaisedFunctionReturnType(Function *, Type *);
   virtual ~ModuleRaiser() {
     if (FFT != nullptr)
       delete FFT;

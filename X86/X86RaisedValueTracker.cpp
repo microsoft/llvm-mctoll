@@ -320,19 +320,18 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
       }
     }
 
-    unsigned int typeAlignment = DL.getPrefTypeAlignment(AllocTy);
+    Align typeAlign(DL.getPrefTypeAlignment(AllocTy));
+    auto typeSize = AllocTy->getPrimitiveSizeInBits() / 8;
 
     const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
     StringRef PhysRegName = TRI->getRegAsmName(PhysReg);
     // Create alloca instruction to allocate stack slot
-    AllocaInst *Alloca =
-        new AllocaInst(AllocTy, allocaAddrSpace, 0, Align(typeAlignment),
-                       PhysRegName + "-SKT-LOC");
+    AllocaInst *Alloca = new AllocaInst(AllocTy, allocaAddrSpace, 0, typeAlign,
+                                        PhysRegName + "-SKT-LOC");
 
     // Create a stack slot associated with the alloca instruction of size 8
     unsigned int StackFrameIndex = MF.getFrameInfo().CreateStackObject(
-        typeAlignment, DL.getPrefTypeAlignment(AllocTy), true /* isSpillSlot */,
-        Alloca);
+        typeSize, typeAlign, true /* isSpillSlot */, Alloca);
 
     // Compute size of new stack object.
     const MachineFrameInfo &MFI = MF.getFrameInfo();

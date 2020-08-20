@@ -30,7 +30,7 @@ public:
   MachineFunctionRaiser(Module &M, MachineFunction &MF, const ModuleRaiser *MR,
                         uint64_t Start, uint64_t End)
       : MF(MF), M(M), machineInstRaiser(nullptr), MR(MR) {
-    
+
     mcInstRaiser = new MCInstRaiser(Start, End);
 
     // The new MachineFunction is not in SSA form, yet
@@ -48,17 +48,14 @@ public:
 
   Module &getModule() { return M; }
 
-  MachineInstructionRaiser *getMachineInstrRaiser() {
-    return machineInstRaiser;
-  }
+  MachineInstructionRaiser *getMachineInstrRaiser();
 
   void setMachineInstrRaiser(MachineInstructionRaiser *MIR) {
     machineInstRaiser = MIR;
   }
 
-  Function *getRaisedFunction() {
-    return machineInstRaiser->getRaisedFunction();
-  }
+  Function *getRaisedFunction();
+  void setRaisedFunction(Function *);
 
   const ModuleRaiser *getModuleRaiser() { return MR; }
 

@@ -72,7 +72,7 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
                 // but most likely data bytes embedded in instruction stream.
                 // TODO: How to handle any branches out of these bounds?
                 // Does such a situation exist?
-                if ((Target >= FuncStart) && (Target <= FuncEnd)) {
+                if ((Target >= FuncStart) && (Target < FuncEnd)) {
                   prevMCInstTargets.push_back(Target);
                   // If previous instruction is a conditional branch, the
                   // next instruction is also a target
@@ -120,7 +120,7 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
     }
   }
 
-  // Add the entry intruction -> MBB map entry for the last MBB
+  // Add the entry instruction -> MBB map entry for the last MBB
   if (MF.size()) {
     MBBNumToMCInstTargetsMap.insert(
         std::make_pair(MF.back().getNumber(), std::vector<uint64_t>()));

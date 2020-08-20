@@ -29,9 +29,12 @@
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include <X86InstrBuilder.h>
 #include <X86Subtarget.h>
 #include <set>
@@ -3802,8 +3805,9 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   Type *RaisedFuncReturnTy = raisedFunction->getReturnType();
   if (RetValue == nullptr) {
     if (!RaisedFuncReturnTy->isVoidTy()) {
-      changeRaisedFunctionReturnType(
-          Type::getVoidTy(MF.getFunction().getContext()));
+      ModuleRaiser *NonConstMR = const_cast<ModuleRaiser *>(MR);
+      NonConstMR->changeRaisedFunctionReturnType(
+          raisedFunction, Type::getVoidTy(MF.getFunction().getContext()));
     }
   }
 
@@ -4156,11 +4160,15 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     if (MI.isBranch()) {
       // Emit appropriate ret instruction. There will be no ret instruction
       // in the binary since this is a tail call.
-      Instruction *RetInstr;
+      ReturnInst *RetInstr;
       if (RetType->isVoidTy())
         RetInstr = ReturnInst::Create(Ctx);
-      else
+      else {
         RetInstr = ReturnInst::Create(Ctx, callInst);
+        ModuleRaiser *NonConstMR = const_cast<ModuleRaiser *>(MR);
+        NonConstMR->changeRaisedFunctionReturnType(raisedFunction,
+                                                   callInst->getType());
+      }
       RaisedBB->getInstList().push_back(RetInstr);
     }
     // Add 'unreachable' instruction after callInst if it is a call to glibc
@@ -4331,7 +4339,25 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
          handleUnpromotedReachingDefs();
 }
 
-bool X86MachineInstructionRaiser::raise() { return raiseMachineFunction(); }
+bool X86MachineInstructionRaiser::raise() {
+  bool Success = raiseMachineFunction();
+  if (Success) {
+    // Delete empty basic blocks with no predecessors
+    SmallVector<BasicBlock *, 4> UnConnectedBEmptyBs;
+    for (BasicBlock &BB : *raisedFunction) {
+      if (BB.hasNPredecessors(0) && BB.size() == 0)
+        UnConnectedBEmptyBs.push_back(&BB);
+    }
+
+    DeleteDeadBlocks(ArrayRef<BasicBlock *>(UnConnectedBEmptyBs));
+
+    // Unify all exit nodes of the raised function
+    legacy::PassManager PM;
+    PM.add(createUnifyFunctionExitNodesPass());
+    PM.run(*(raisedFunction->getParent()));
+  }
+  return Success;
+}
 
 // NOTE : The following X86ModuleRaiser class function is defined here as
 // they reference MachineFunctionRaiser class that has a forward declaration

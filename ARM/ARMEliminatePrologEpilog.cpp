@@ -175,13 +175,12 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
       unsigned Size = RegInfo->getSpillSize(*RC);
       if (FixedSlot == FixedSpillSlots + NumFixedSpillSlots) {
         // Nope, just spill it anywhere convenient.
-        unsigned Align = RegInfo->getSpillAlignment(*RC);
-        unsigned StackAlign = TFI->getStackAlignment();
+        Align Alignment(RegInfo->getSpillAlignment(*RC));
 
         // The alignment is the minimum of the desired alignment of the
         // TargetRegisterClass and the stack alignment, whichever is smaller.
-        Align = std::min(Align, StackAlign);
-        FrameIdx = MFI.CreateStackObject(Size, Align, true);
+        Alignment = std::min(Alignment, TFI->getStackAlign());
+        FrameIdx = MFI.CreateStackObject(Size, Alignment, true);
         Offset += Size;
 
         // Set the object offset

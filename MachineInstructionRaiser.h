@@ -57,6 +57,7 @@ public:
                                       std::vector<Type *> &) = 0;
 
   Function *getRaisedFunction() { return raisedFunction; }
+  void setRaisedFunction(Function *F) { raisedFunction = F; }
   MCInstRaiser *getMCInstRaiser() { return mcInstRaiser; }
   MachineFunction &getMF() { return MF; };
   const ModuleRaiser *getModuleRaiser() { return MR; }
@@ -68,7 +69,7 @@ public:
 protected:
   MachineFunction &MF;
   // This is the Function object that holds the raised abstraction of MF.
-  // Not the the function associated with MF should not be referenced or
+  // Note that the function associated with MF should not be referenced or
   // updated. It was created just to enable the creation of MF.
   Function *raisedFunction;
   MCInstRaiser *mcInstRaiser;

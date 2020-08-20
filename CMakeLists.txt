@@ -58,6 +58,7 @@ add_llvm_tool(llvm-mctoll
   ExternalFunctions.cpp
   FunctionFilter.cpp
   MachODump.cpp
+  ModuleRaiser.cpp
   MachineFunctionRaiser.cpp
   MCInstOrData.cpp
   MCInstRaiser.cpp

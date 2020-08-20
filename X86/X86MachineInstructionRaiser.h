@@ -202,7 +202,6 @@ private:
   bool isPushToStack(const MachineInstr &MI) const;
   bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
-  void changeRaisedFunctionReturnType(Type *);
 
   std::vector<JumpTableInfo> jtList;
   // Set of MBBNos that end with tail calls

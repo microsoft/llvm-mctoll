@@ -264,7 +264,7 @@ void ARMFrameBuilder::searchStackObjects(MachineFunction &mf) {
     Align MALG(sem->Size);
     AllocaInst *alc =
         new AllocaInst(getStackType(sem->Size), 0, nullptr, MALG, "", pBB);
-    int idx = MFI->CreateStackObject(sem->Size, 4, false, alc);
+    int idx = MFI->CreateStackObject(sem->Size, Align(4), false, alc);
     alc->setName("stack." + std::to_string(idx));
     MFI->setObjectOffset(idx, sem->SPOffset);
     sem->ObjectIndex = idx;

@@ -162,7 +162,7 @@ int64_t ModuleRaiser::getTextSectionAddress() const {
 bool ModuleRaiser::changeRaisedFunctionReturnType(Function *TargetFunc,
                                                   Type *NewRetTy) {
   Type *TgtFuncRetTy = TargetFunc->getReturnType();
-  // Was the cahnge affected?
+  // Was the change affected?
   bool Changed = false;
 
   // Get the MachineFunction of TargetFunc

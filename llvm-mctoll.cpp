@@ -1070,6 +1070,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() >
          0);
 
+    DebugFlag = PrintAll;
+
     if (PrintAll) {
       if ((SectionAddr <= StopAddress) &&
           (SectionAddr + SectSize) >= StartAddress) {

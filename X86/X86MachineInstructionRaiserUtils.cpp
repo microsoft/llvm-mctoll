@@ -1112,7 +1112,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
   for (section_iterator SecIter : Elf64LEObjFile->sections()) {
     uint64_t SecStart = SecIter->getAddress();
     uint64_t SecEnd = SecStart + SecIter->getSize();
-    if ((SecStart <= pltEntOff) && (SecEnd >= pltEntOff)) {
+    if ((SecStart <= pltEntOff) && (SecEnd > pltEntOff)) {
       StringRef SecName;
       if (auto NameOrErr = SecIter->getName())
         SecName = *NameOrErr;
@@ -1120,7 +1120,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
         consumeError(NameOrErr.takeError());
         assert(false && "Failed to get section name with PLT offset");
       }
-      if (SecName.compare(".plt") != 0)
+      if (!SecName.startswith(".plt"))
         continue;
       StringRef SecData = unwrapOrError(SecIter->getContents(),
                                         MR->getObjectFile()->getFileName());
@@ -1128,11 +1128,24 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
                               SecData.size());
       // Disassemble the first instruction at the offset
       MCInst Inst;
-      uint64_t InstSz;
+      uint64_t jmpInstSz;
+      uint64_t jmpInstOff = pltEntOff;
       bool Success = MR->getMCDisassembler()->getInstruction(
-          Inst, InstSz, Bytes.slice(pltEntOff - SecStart), pltEntOff, nulls());
+          Inst, jmpInstSz, Bytes.slice(jmpInstOff - SecStart), pltEntOff,
+          nulls());
       assert(Success && "Failed to disassemble instruction in PLT");
       unsigned int Opcode = Inst.getOpcode();
+      // If the first instruction of the PLT stub is ENDBR32/ENDBR64 - the
+      // instructions used for Indirect Branch Tracking - get to the next
+      // instruction that is expected to be the jump to target.
+      if ((Opcode == X86::ENDBR32) || (Opcode == X86::ENDBR64)) {
+        jmpInstOff += jmpInstSz;
+        Success = MR->getMCDisassembler()->getInstruction(
+            Inst, jmpInstSz, Bytes.slice(jmpInstOff - SecStart), jmpInstOff,
+            nulls());
+        assert(Success && "Failed to disassemble instruction in PLT");
+        Opcode = Inst.getOpcode();
+      }
       MCInstrDesc MCID = MR->getMCInstrInfo()->get(Opcode);
       if ((Opcode != X86::JMP64m) || (MCID.getNumOperands() != 5)) {
         assert(false && "Unexpected non-jump instruction or number of operands "
@@ -1200,7 +1213,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       //    a) offset of jmp instruction + size of the instruction
       //    (representing pc-related addressing) b) jmp target offset in the
       //    instruction
-      uint64_t GotPltRelocOffset = pltEntOff + InstSz + PCOffset;
+      uint64_t GotPltRelocOffset = jmpInstOff + jmpInstSz + PCOffset;
       const RelocationRef *GotPltReloc =
           MR->getDynRelocAtOffset(GotPltRelocOffset);
       assert(GotPltReloc != nullptr &&

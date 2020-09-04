@@ -36,6 +36,7 @@ const std::map<StringRef, ExternalFunctions::RetAndArgs>
         {"printf", {"i32", {"i8*"}, true}},
         {"putchar", {"i32", {"i32"}, false}},
         {"puts", {"i32", {"i8*"}, false}},
+        {"putc", {"i32", {"i32", "i8*"}, false}},
         {"realloc", {"i8*", {"i8*", "i64"}, false}},
         {"round", {"float", {"float"}, false}},
         {"sleep", {"i32", {"i32"}, false}},

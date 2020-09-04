@@ -23,9 +23,7 @@ typedef unsigned int ee_u32;
 void matrix_add_const(ee_u32 N, ee_s32 *A, ee_s32 val) {
   ee_u32 i, j;
   for (i = 0; i < N; i++) {
-    for (j = 0; j < N; j++) {
-      A[i * N + j] += val;
-    }
+      A[i] += val;
   }
 }
 

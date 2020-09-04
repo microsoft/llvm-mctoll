@@ -4315,9 +4315,12 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     // Walk MachineInsts of the MachineBasicBlock
     for (MachineInstr &MI : MBB.instrs()) {
       // Ignore padding instructions. ld uses nop and lld uses int3 for
-      // alignment padding in text section
+      // alignment padding in text section.
+      // TODO : For now ignore ENDBR instructions. These can be used as clues
+      // for functions that are indirect branch targets.
       auto Opcode = MI.getOpcode();
-      if (isNoop(Opcode) || (Opcode == X86::INT3)) {
+      if (isNoop(Opcode) || (Opcode == X86::INT3) || (Opcode == X86::ENDBR32) ||
+          (Opcode == X86::ENDBR64)) {
         continue;
       }
       // If this is a terminator instruction, record

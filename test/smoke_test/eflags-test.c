@@ -46,7 +46,8 @@ core_init_state(unsigned int size, signed short seed, unsigned char *p) {
 }
 
 int main(int argc, char **argv) {
-  unsigned char *p = (unsigned char *)malloc(sizeof(unsigned char));
-  core_init_state(666, 0, p);
+  unsigned int sz = 666;
+  unsigned char *p = (unsigned char *)malloc(sizeof(unsigned char)*sz+1);
+  core_init_state(sz, 0, p);
   return 0;
 }

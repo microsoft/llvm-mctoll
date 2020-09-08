@@ -151,16 +151,6 @@ cl::alias static FilterFunctionSetF(
     cl::aliasopt(llvm::FilterFunctionSet), cl::cat(LLVMMCToLLCategory),
     cl::NotHidden);
 
-cl::opt<bool> llvm::SectionHeaders("section-headers",
-                                   cl::desc("Display summaries of the "
-                                            "headers for each section."));
-static cl::alias SectionHeadersShort("headers",
-                                     cl::desc("Alias for --section-headers"),
-                                     cl::aliasopt(SectionHeaders));
-static cl::alias SectionHeadersShorter("h",
-                                       cl::desc("Alias for --section-headers"),
-                                       cl::aliasopt(SectionHeaders));
-
 cl::list<std::string>
     llvm::FilterSections("section",
                          cl::desc("Operate on the specified sections only. "
@@ -168,31 +158,6 @@ cl::list<std::string>
 
 cl::alias static FilterSectionsj("j", cl::desc("Alias for --section"),
                                  cl::aliasopt(llvm::FilterSections));
-
-cl::opt<bool> llvm::NoShowRawInsn("no-show-raw-insn",
-                                  cl::desc("When disassembling "
-                                           "instructions, do not print "
-                                           "the instruction bytes."));
-cl::opt<bool> llvm::NoLeadingAddr("no-leading-addr",
-                                  cl::desc("Print no leading address"));
-
-cl::opt<bool> llvm::UnwindInfo("unwind-info",
-                               cl::desc("Display unwind information"));
-
-static cl::alias UnwindInfoShort("u", cl::desc("Alias for --unwind-info"),
-                                 cl::aliasopt(UnwindInfo));
-
-cl::opt<bool>
-    llvm::PrivateHeaders("private-headers",
-                         cl::desc("Display format specific file headers"));
-
-cl::opt<bool> llvm::FirstPrivateHeader(
-    "private-header", cl::desc("Display only the first format specific file "
-                               "header"));
-
-static cl::alias PrivateHeadersShort("p",
-                                     cl::desc("Alias for --private-headers"),
-                                     cl::aliasopt(PrivateHeaders));
 
 cl::opt<bool>
     llvm::PrintImmHex("print-imm-hex",
@@ -536,12 +501,9 @@ public:
                          ArrayRef<uint8_t> Bytes, uint64_t Address,
                          raw_ostream &OS, StringRef Annot,
                          MCSubtargetInfo const &STI) {
-    if (!NoLeadingAddr)
-      OS << format("%8" PRIx64 ":", Address);
-    if (!NoShowRawInsn) {
-      OS << "\t";
-      dumpBytes(Bytes, OS);
-    }
+    OS << format("%8" PRIx64 ":", Address);
+    OS << "\t";
+    dumpBytes(Bytes, OS);
     if (MI)
       IP.printInst(MI, 0, "", STI, OS);
     else
@@ -1498,227 +1460,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
   cl::PrintOptionValues();
   PM.run(module);
-}
-
-void llvm::PrintSectionHeaders(const ObjectFile *Obj) {
-  outs() << "Sections:\n"
-            "Idx Name          Size      Address          Type\n";
-  unsigned i = 0;
-  for (const SectionRef &Section : ToolSectionFilter(*Obj)) {
-    StringRef Name = unwrapOrError(Section.getName(), Obj->getFileName());
-
-    uint64_t Address = Section.getAddress();
-    uint64_t Size = Section.getSize();
-    bool Text = Section.isText();
-    bool Data = Section.isData();
-    bool BSS = Section.isBSS();
-    std::string Type = (std::string(Text ? "TEXT " : "") +
-                        (Data ? "DATA " : "") + (BSS ? "BSS" : ""));
-    outs() << format("%3d %-13s %08" PRIx64 " %016" PRIx64 " %s\n", i,
-                     Name.str().c_str(), Size, Address, Type.c_str());
-    ++i;
-  }
-}
-
-void llvm::PrintSymbolTable(const ObjectFile *o, StringRef ArchiveName,
-                            StringRef ArchitectureName) {
-  outs() << "SYMBOL TABLE:\n";
-
-  if (const COFFObjectFile *coff = dyn_cast<const COFFObjectFile>(o)) {
-    printCOFFSymbolTable(coff);
-    return;
-  }
-
-  const StringRef FileName = o->getFileName();
-
-  for (const SymbolRef &Symbol : o->symbols()) {
-    Expected<uint64_t> AddressOrError = Symbol.getAddress();
-    if (!AddressOrError)
-      report_error(AddressOrError.takeError(), FileName, ArchiveName,
-                   ArchitectureName);
-    uint64_t Address = *AddressOrError;
-    if ((Address < StartAddress) || (Address > StopAddress))
-      continue;
-
-    Expected<SymbolRef::Type> TypeOrError = Symbol.getType();
-    if (!TypeOrError)
-      report_error(TypeOrError.takeError(), FileName, ArchiveName,
-                   ArchitectureName);
-
-    SymbolRef::Type Type = *TypeOrError;
-    uint32_t Flags = unwrapOrError(Symbol.getFlags(), FileName, ArchiveName,
-                                   ArchitectureName);
-
-    Expected<section_iterator> SectionOrErr = Symbol.getSection();
-    if (!SectionOrErr)
-      report_error(SectionOrErr.takeError(), FileName, ArchiveName,
-                   ArchitectureName);
-
-    section_iterator Section = *SectionOrErr;
-    StringRef Name;
-    if (Type == SymbolRef::ST_Debug && Section != o->section_end()) {
-      if (auto NameOrErr = Section->getName())
-        Name = *NameOrErr;
-      else
-        consumeError(NameOrErr.takeError());
-
-    } else {
-      Expected<StringRef> NameOrErr = Symbol.getName();
-      if (!NameOrErr)
-        report_error(NameOrErr.takeError(), FileName, ArchiveName,
-                     ArchitectureName);
-      Name = *NameOrErr;
-    }
-
-    bool Global = Flags & SymbolRef::SF_Global;
-    bool Weak = Flags & SymbolRef::SF_Weak;
-    bool Absolute = Flags & SymbolRef::SF_Absolute;
-    bool Common = Flags & SymbolRef::SF_Common;
-    bool Hidden = Flags & SymbolRef::SF_Hidden;
-
-    char GlobLoc = ' ';
-    if (Type != SymbolRef::ST_Unknown)
-      GlobLoc = Global ? 'g' : 'l';
-    char Debug =
-        (Type == SymbolRef::ST_Debug || Type == SymbolRef::ST_File) ? 'd' : ' ';
-    char FileFunc = ' ';
-    if (Type == SymbolRef::ST_File)
-      FileFunc = 'f';
-    else if (Type == SymbolRef::ST_Function)
-      FileFunc = 'F';
-
-    const char *Fmt = o->getBytesInAddress() > 4 ? "%016" PRIx64 : "%08" PRIx64;
-
-    outs() << format(Fmt, Address) << " "
-           << GlobLoc            // Local -> 'l', Global -> 'g', Neither -> ' '
-           << (Weak ? 'w' : ' ') // Weak?
-           << ' '                // Constructor. Not supported yet.
-           << ' '                // Warning. Not supported yet.
-           << ' '                // Indirect reference to another symbol.
-           << Debug              // Debugging (d) or dynamic (D) symbol.
-           << FileFunc // Name of function (F), file (f) or object (O).
-           << ' ';
-    if (Absolute) {
-      outs() << "*ABS*";
-    } else if (Common) {
-      outs() << "*COM*";
-    } else if (Section == o->section_end()) {
-      outs() << "*UND*";
-    } else {
-      if (const MachOObjectFile *MachO = dyn_cast<const MachOObjectFile>(o)) {
-        DataRefImpl DR = Section->getRawDataRefImpl();
-        StringRef SegmentName = MachO->getSectionFinalSegmentName(DR);
-        outs() << SegmentName << ",";
-      }
-      StringRef SectionName = unwrapOrError(Section->getName(), FileName);
-
-      outs() << SectionName;
-    }
-
-    outs() << '\t';
-    if (Common || isa<ELFObjectFileBase>(o)) {
-      uint64_t Val =
-          Common ? Symbol.getAlignment() : ELFSymbolRef(Symbol).getSize();
-      outs() << format("\t %08" PRIx64 " ", Val);
-    }
-
-    if (Hidden) {
-      outs() << ".hidden ";
-    }
-    outs() << Name << '\n';
-  }
-}
-
-void llvm::printExportsTrie(const ObjectFile *o) {
-  outs() << "Exports trie:\n";
-  if (const MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
-    printMachOExportsTrie(MachO);
-  else {
-    errs() << "This operation is only currently supported "
-              "for Mach-O executable files.\n";
-    return;
-  }
-}
-
-void llvm::printRebaseTable(ObjectFile *o) {
-  outs() << "Rebase table:\n";
-  if (MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
-    printMachORebaseTable(MachO);
-  else {
-    errs() << "This operation is only currently supported "
-              "for Mach-O executable files.\n";
-    return;
-  }
-}
-
-void llvm::printBindTable(ObjectFile *o) {
-  outs() << "Bind table:\n";
-  if (MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
-    printMachOBindTable(MachO);
-  else {
-    errs() << "This operation is only currently supported "
-              "for Mach-O executable files.\n";
-    return;
-  }
-}
-
-void llvm::printLazyBindTable(ObjectFile *o) {
-  outs() << "Lazy bind table:\n";
-  if (MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
-    printMachOLazyBindTable(MachO);
-  else {
-    errs() << "This operation is only currently supported "
-              "for Mach-O executable files.\n";
-    return;
-  }
-}
-
-void llvm::printWeakBindTable(ObjectFile *o) {
-  outs() << "Weak bind table:\n";
-  if (MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
-    printMachOWeakBindTable(MachO);
-  else {
-    errs() << "This operation is only currently supported "
-              "for Mach-O executable files.\n";
-    return;
-  }
-}
-
-/// Dump the raw contents of the __clangast section so the output can be piped
-/// into llvm-bcanalyzer.
-void llvm::printRawClangAST(const ObjectFile *Obj) {
-  if (outs().is_displayed()) {
-    errs() << "The -raw-clang-ast option will dump the raw binary contents of "
-              "the clang ast section.\n"
-              "Please redirect the output to a file or another program such as "
-              "llvm-bcanalyzer.\n";
-    return;
-  }
-
-  StringRef ClangASTSectionName("__clangast");
-  if (isa<COFFObjectFile>(Obj)) {
-    ClangASTSectionName = "clangast";
-  }
-
-  Optional<object::SectionRef> ClangASTSection;
-  for (auto Sec : ToolSectionFilter(*Obj)) {
-    StringRef Name;
-    if (auto NameOrErr = Sec.getName())
-      Name = *NameOrErr;
-    else
-      consumeError(NameOrErr.takeError());
-
-    if (Name == ClangASTSectionName) {
-      ClangASTSection = Sec;
-      break;
-    }
-  }
-  if (!ClangASTSection)
-    return;
-
-  StringRef ClangASTContents = unwrapOrError(
-      ClangASTSection.getValue().getContents(), Obj->getFileName());
-  outs().write(ClangASTContents.data(), ClangASTContents.size());
 }
 
 static void DumpObject(ObjectFile *o, const Archive *a = nullptr) {

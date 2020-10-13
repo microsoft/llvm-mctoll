@@ -1529,7 +1529,7 @@ static void DumpInput(StringRef file) {
     if (o->getArch() == Triple::x86_64) {
       const ELF64LEObjectFile *Elf64LEObjFile = dyn_cast<ELF64LEObjectFile>(o);
       // Raise x86_64 relocatable binaries (.o files) is not supported.
-      auto EType = Elf64LEObjFile->getELFFile()->getHeader()->e_type;
+      auto EType = Elf64LEObjFile->getELFFile()->getHeader().e_type;
       if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC))
         DumpObject(o);
       else {

@@ -28,7 +28,9 @@ using namespace llvm::object;
 
 char ARMMIRevising::ID = 0;
 
-ARMMIRevising::ARMMIRevising(ARMModuleRaiser &MRsr) : ARMRaiserBase(ID, MRsr) {}
+ARMMIRevising::ARMMIRevising(ARMModuleRaiser &MRsr) : ARMRaiserBase(ID, MRsr) {
+  MCIR = nullptr;
+}
 
 ARMMIRevising::~ARMMIRevising() {}
 
@@ -81,7 +83,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
       dyn_cast<ELF32LEObjectFile>(MR->getObjectFile());
   assert(Elf32LEObjFile != nullptr &&
          "Only 32-bit ELF binaries supported at present!");
-  unsigned char ExecType = Elf32LEObjFile->getELFFile()->getHeader()->e_type;
+  unsigned char ExecType = Elf32LEObjFile->getELFFile()->getHeader().e_type;
 
   assert((ExecType == ELF::ET_DYN) || (ExecType == ELF::ET_EXEC));
   // Find the section that contains the offset. That must be the PLT section
@@ -186,7 +188,7 @@ void ARMMIRevising::relocateBranch(MachineInstr &MInst) {
   assert(Elf32LEObjFile != nullptr &&
          "Only 32-bit ELF binaries supported at present.");
 
-  auto EType = Elf32LEObjFile->getELFFile()->getHeader()->e_type;
+  auto EType = Elf32LEObjFile->getELFFile()->getHeader().e_type;
   if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC)) {
     int64_t textSectionAddress = MR->getTextSectionAddress();
     assert(textSectionAddress >= 0 && "Failed to find text section address");

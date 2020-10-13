@@ -5,16 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 54205f0bd2377503b818d7f62cc4ed63ef5b1e94
-Author: Nemanja Ivanovic <nemanja.i.ibm@gmail.com>
-Date:   Fri Sep 4 13:54:21 2020 -0400
+commit 76c7a6d6cd152dcddae977fefe5fe0420da467af
+Author: LLVM GN Syncbot <llvmgnsyncbot@gmail.com>
+Date:   Tue Oct 13 20:50:32 2020 +0000
 
-    [PowerPC] Allow const pointers for load builtins in altivec.h
-
-    The load builtins in altivec.h do not have const in the signature
-    for the pointer parameter. This prevents using them for loading
-    from constant pointers. A notable case for such a use is Eigen.
-
-    This patch simply adds the missing const.
-
-    Fixes: https://bugs.llvm.org/show_bug.cgi?id=47408
+    [gn build] Port f0875971249

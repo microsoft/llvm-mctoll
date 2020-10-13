@@ -426,7 +426,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
   assert(Elf64LEObjFile != nullptr &&
          "Only 64-bit ELF binaries supported at present.");
 
-  auto EType = Elf64LEObjFile->getELFFile()->getHeader()->e_type;
+  auto EType = Elf64LEObjFile->getELFFile()->getHeader().e_type;
   if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC)) {
     uint64_t PCOffset = TextSectionAddress + MCInstOffset + MCInstSz + Disp;
     const RelocationRef *DynReloc = MR->getDynRelocAtOffset(PCOffset);
@@ -1106,7 +1106,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
   assert(Elf64LEObjFile != nullptr &&
          "Only 64-bit ELF binaries supported at present.");
-  unsigned char ExecType = Elf64LEObjFile->getELFFile()->getHeader()->e_type;
+  unsigned char ExecType = Elf64LEObjFile->getELFFile()->getHeader().e_type;
   assert((ExecType == ELF::ET_DYN) || (ExecType == ELF::ET_EXEC));
   // Find the section that contains the offset. That must be the PLT section
   for (section_iterator SecIter : Elf64LEObjFile->sections()) {

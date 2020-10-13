@@ -1113,7 +1113,6 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::LCMPXCHG64, {0, Unknown}},
     {X86::LCMPXCHG8, {0, Unknown}},
     {X86::LCMPXCHG8B, {0, Unknown}},
-    {X86::LCMPXCHG8B_SAVE_EBX, {0, Unknown}},
     {X86::LDDQUrm, {0, Unknown}},
     {X86::LDMXCSR, {0, Unknown}},
     {X86::LDS16rm, {2, Unknown}},

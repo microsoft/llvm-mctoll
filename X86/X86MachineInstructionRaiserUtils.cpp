@@ -1472,6 +1472,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             // addresses in .rodata.
             StringRef SymbolBytes(beg, SymbSize);
             unsigned BytesRead = 0;
+            // Symbol represents addresses into .rodata section.
+            bool SymHasRODataAddrs = false;
             // Symbol array values greater that 8 bytes are not yet supported.
             uint64_t SymArrayElem = 0;
             for (unsigned char B : SymbolBytes) {
@@ -1479,12 +1481,17 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
               if (ByteNum == 0) {
                 // Finish reading one symbol data item of size.
                 SymArrayElem |= B << (MemAccessSizeInBytes - 1) * 8;
-                // if this is an address in .rodata section
+                // Get the value representing .rodata content if it is .rodata
+                // section address.
                 Value *RODataValue = getOrCreateGlobalRODataValueAtOffset(
                     SymArrayElem, RaisedBB);
+                // Note if the first unit of data read is an address of .rodata
+                // content.
+                if (BytesRead == MemAccessSizeInBytes)
+                  SymHasRODataAddrs = (RODataValue != nullptr);
                 // If the SymArrElem does not correspond to an .rodata address
                 // consider it to be data.
-                if (RODataValue == nullptr) {
+                if (!SymHasRODataAddrs) {
                   Constant *ConstVal = ConstantInt::get(
                       Ctx, APInt(MemAccessSizeInBytes * 8, SymArrayElem));
                   ConstantVec.push_back(ConstVal);
@@ -1506,6 +1513,15 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                    "Incorrect number of symbol bytes read");
           }
           break;
+        }
+      }
+
+      // Check for consistency of the types of symbol data.
+      if (ConstantVec.size()) {
+        auto Ty = ConstantVec[0]->getType();
+        for (auto V : ConstantVec) {
+          assert((V->getType() == Ty) &&
+                 "Inconsistent types in constant array of global variable.");
         }
       }
 

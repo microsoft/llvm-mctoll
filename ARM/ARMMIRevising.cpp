@@ -170,7 +170,9 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
         // for emit CallInst use.
         Function *CalledFunc =
             ExternalFunctions::Create(*CalledFuncSymName, *MR);
-
+        // Bail out if function prototype is not available
+        if (!CalledFunc)
+          exit(-1);
         MR->setSyscallMapping(PLTEndOff, CalledFunc);
         MR->fillInstAddrFuncMap(CallAddr, CalledFunc);
       }

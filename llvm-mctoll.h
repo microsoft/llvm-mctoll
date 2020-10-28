@@ -38,6 +38,7 @@ extern cl::opt<bool> SymbolTable;
 extern cl::opt<bool> UnwindInfo;
 extern cl::opt<bool> PrintImmHex;
 extern cl::opt<DIDumpType> DwarfDumpType;
+extern cl::list<std::string> IncludeFileNames;
 
 // Various helper functions.
 void error(std::error_code ec);

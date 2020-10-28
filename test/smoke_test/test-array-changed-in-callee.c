@@ -1,5 +1,5 @@
 // RUN: clang -o %t-opt %s
-// RUN: llvm-mctoll -d %t-opt
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h -I /usr/include/string.h %t-opt
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll
 // RUN: %t-opt-dis 2>&1 | FileCheck %s
 // CHECK:arr[0] = 2147483647, arr[1] = 2147483646, arr[2] = 2147483645, arr[3] = 2147483644, arr[4] = 2147483643 

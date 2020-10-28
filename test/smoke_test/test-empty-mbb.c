@@ -1,7 +1,7 @@
 // REQUIRES: system-linux
 // Test code generated using default system linker (typically ld)
 // RUN: clang -o %t-ld-opt %s -O2 -mno-sse -fuse-ld=ld
-// RUN: llvm-mctoll -d %t-ld-opt
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t-ld-opt
 // RUN: clang -o %t-ld-opt-dis %t-ld-opt-dis.ll
 // RUN: %t-ld-opt-dis 2>&1 | FileCheck %s -check-prefix=CHECK-LD
 // CHECK-LD: Array[0]: 3
@@ -12,7 +12,7 @@
 
 // Test code generated using lld linker
 // RUN: clang -o %t-lld-opt %s -O2 -mno-sse -fuse-ld=lld
-// RUN: llvm-mctoll -d %t-lld-opt
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t-lld-opt
 // RUN: clang -o %t-lld-opt-dis %t-lld-opt-dis.ll
 // RUN: %t-lld-opt-dis 2>&1 | FileCheck %s -check-prefix=CHECK-LLD
 // CHECK-LLD: Array[0]: 3

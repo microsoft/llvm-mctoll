@@ -6,46 +6,154 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the table of known external functions.
+// This file builds the table of external functions prototypes from
+// user-specified input via -I option.
 //
 //===----------------------------------------------------------------------===//
 
 #include "ExternalFunctions.h"
+#include "clang/AST/ASTConsumer.h"
+#include "clang/AST/ASTContext.h"
+#include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendActions.h"
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/CompilationDatabase.h"
+#include "clang/Tooling/Tooling.h"
+#include "llvm/Support/raw_ostream.h"
+#include <clang-c/Index.h>
+#include <memory>
+#include <sstream>
+#include <string>
 
-const std::map<StringRef, ExternalFunctions::RetAndArgs>
-    ExternalFunctions::GlibcFunctions = {
-        {"_IO_putc", {"i32", {"i32", "i64"}, false}},
-        {"__assert_fail", {"void", {"i8*", "i8*", "i32", "i8*"}, false}},
-        {"__isoc99_scanf", {"i32", {"i8*"}, true}},
-        {"__printf_chk", {"i32", {"i8*"}, true}},
-        {"atoi", {"i32", {"i8*"}, false}},
-        {"calloc", {"i8*", {"i64", "i64"}, false}},
-        {"clock", {"i64", {}, false}},
-        {"clock_gettime", {"i32", {"i64", "i64*"}, false}},
-        {"exit", {"void", {"i32"}, false}},
-        {"exp", {"float", {"float"}, false}},
-        {"feof", {"i32", {"i64*"}, false}},
-        {"floor", {"float", {"float"}, false}},
-        {"fopen", {"i64*", {"i8*", "i8*"}, false}},
-        {"free", {"void", {"i8*"}, false}},
-        {"lgamma", {"float", {"float"}, false}},
-        {"malloc", {"i8*", {"i64"}, false}},
-        {"memcpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
-        {"memset", {"i8*", {"i8*", "i32", "i64"}, false}},
-        {"pow", {"float", {"float", "float"}, false}},
-        {"printf", {"i32", {"i8*"}, true}},
-        {"putchar", {"i32", {"i32"}, false}},
-        {"puts", {"i32", {"i8*"}, false}},
-        {"putc", {"i32", {"i32", "i8*"}, false}},
-        {"realloc", {"i8*", {"i8*", "i64"}, false}},
-        {"round", {"float", {"float"}, false}},
-        {"sleep", {"i32", {"i32"}, false}},
-        {"strcpy", {"i8*", {"i8*", "i8*"}, false}},
-        {"strlen", {"i64", {"i8*"}, false}},
-        {"strncpy", {"i8*", {"i8*", "i8*", "i64"}, false}},
-        {"strtol", {"i64", {"i8*", "i8**", "i32"}, false}},
-        {"tanh", {"float", {"float"}, false}},
-        {"time", {"i64", {"i64*"}, false}}};
+// NOTE: Not using namespace clang to highlight the fact that certain types such
+// as Type being used in this file are from clang namespace and not from llvm
+// namespace.
+
+std::map<std::string, ExternalFunctions::RetAndArgs>
+    ExternalFunctions::UserSpecifiedFunctions;
+
+// FuncDeclVisitor
+
+class FuncDeclVisitor : public clang::RecursiveASTVisitor<FuncDeclVisitor> {
+
+public:
+  bool VisitFunctionDecl(clang::FunctionDecl *FuncDecl) {
+    ExternalFunctions::RetAndArgs Entry;
+    clang::QualType RetTy = FuncDecl->getDeclaredReturnType();
+    Entry.ReturnType =
+        getUnqualifiedTypeString(RetTy, FuncDecl->getASTContext());
+    for (auto Param : FuncDecl->parameters()) {
+      clang::QualType ParamTy = Param->getOriginalType();
+      std::string ParamTyStr =
+          getUnqualifiedTypeString(ParamTy, FuncDecl->getASTContext());
+      Entry.Arguments.push_back(ParamTyStr);
+    }
+    Entry.isVariadic = FuncDecl->isVariadic();
+    ExternalFunctions::UserSpecifiedFunctions.insert(
+        std::pair<std::string, ExternalFunctions::RetAndArgs>(
+            FuncDecl->getQualifiedNameAsString(), Entry));
+    return true;
+  }
+
+private:
+  std::string getUnqualifiedTypeString(clang::QualType &QTy,
+                                       clang::ASTContext &ASTCtx) {
+    std::string PointerStr;
+    std::string UnQTyStr;
+    clang::SplitQualType SplitCurQTy = QTy.split();
+    // Get unqualified, de-sugared type
+    const clang::Type *CurUnQTy = SplitCurQTy.Ty->getUnqualifiedDesugaredType();
+    while (true) {
+      if (CurUnQTy->isPointerType()) {
+        PointerStr.append("*");
+        // Get unqualified, de-sugared pointee type
+        CurUnQTy = CurUnQTy->getPointeeType()
+                       .split()
+                       .Ty->getUnqualifiedDesugaredType();
+      } else
+        break;
+    }
+
+    // Construct type string corresponding to the buitl-in type
+    if (CurUnQTy->isBuiltinType()) {
+      std::string TypeStr;
+      const clang::BuiltinType *BltInTy = CurUnQTy->getAs<clang::BuiltinType>();
+      switch (BltInTy->getKind()) {
+      case clang::BuiltinType::Kind::Char_S:
+      case clang::BuiltinType::Kind::Char_U:
+      case clang::BuiltinType::Kind::UChar:
+      case clang::BuiltinType::Kind::Bool:
+        UnQTyStr.append("i8");
+        break;
+      case clang::BuiltinType::Kind::Short:
+      case clang::BuiltinType::Kind::UShort:
+        UnQTyStr.append("i16");
+        break;
+      case clang::BuiltinType::Kind::Int:
+      case clang::BuiltinType::Kind::UInt:
+      case clang::BuiltinType::Kind::Long:
+      case clang::BuiltinType::Kind::ULong:
+        UnQTyStr.append("i32");
+        break;
+      case clang::BuiltinType::Kind::LongLong:
+      case clang::BuiltinType::Kind::ULongLong:
+        UnQTyStr.append("i64");
+        break;
+      case clang::BuiltinType::Kind::Float:
+        UnQTyStr.append("float");
+        break;
+      case clang::BuiltinType::Kind::Double:
+        UnQTyStr.append("double");
+        break;
+      case clang::BuiltinType::Kind::LongDouble:
+        UnQTyStr.append("ldouble");
+        break;
+      case clang::BuiltinType::Kind::Void:
+        UnQTyStr.append("void");
+        break;
+      default:
+        assert(false && "Unhandled builtin type found in include file");
+      }
+      // Append any pointer qualifiers
+      UnQTyStr.append(PointerStr);
+    } else
+      // If it is not a builtin type consider it to be an int64 type
+      UnQTyStr.append("i64").append(PointerStr);
+    return UnQTyStr;
+  }
+};
+
+class FuncDeclFinder : public clang::ASTConsumer {
+  clang::SourceManager &SourceManager;
+  FuncDeclVisitor Visitor;
+
+public:
+  FuncDeclFinder(clang::SourceManager &SM) : SourceManager(SM) {}
+
+  void HandleTranslationUnit(clang::ASTContext &Context) final {
+    auto Decls = Context.getTranslationUnitDecl()->decls();
+    for (auto &Decl : Decls) {
+      if (!Decl->isFunctionOrFunctionTemplate())
+        continue;
+      const auto &FileID = SourceManager.getFileID(Decl->getLocation());
+      if (FileID != SourceManager.getMainFileID())
+        continue;
+      clang::FunctionDecl *FuncDecl = Decl->getAsFunction();
+      Visitor.TraverseFunctionDecl(FuncDecl);
+    }
+  }
+};
+
+class FuncDeclFindingAction : public clang::ASTFrontendAction {
+public:
+  std::unique_ptr<clang::ASTConsumer>
+  CreateASTConsumer(clang::CompilerInstance &CI, clang::StringRef) final {
+    return std::unique_ptr<clang::ASTConsumer>(
+        new FuncDeclFinder(CI.getSourceManager()));
+  }
+};
 
 // Construct and return a Function* corresponding to a known external function
 Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
@@ -56,10 +164,12 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
   if (Func != nullptr)
     return Func;
 
-  auto iter = ExternalFunctions::GlibcFunctions.find(CFuncName);
-  if (iter == ExternalFunctions::GlibcFunctions.end()) {
-    errs() << CFuncName.data() << "\n";
-    llvm_unreachable("Unsupported undefined function");
+  auto iter = ExternalFunctions::UserSpecifiedFunctions.find(CFuncName.str());
+  if (iter == ExternalFunctions::UserSpecifiedFunctions.end()) {
+    errs() << "Unknown prototype for function : " << CFuncName.data() << "\n";
+    errs() << "Use -I </full/path/to/file>, where /full/path/to/file declares "
+              "its prototype\n";
+    return nullptr;
   }
 
   const ExternalFunctions::RetAndArgs &retAndArgs = iter->second;
@@ -72,7 +182,7 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
   }
 
   ArrayRef<Type *> Args(ArgVec);
-  if (FunctionType *FuncType =
+  if (llvm::FunctionType *FuncType =
           FunctionType::get(RetType, Args, retAndArgs.isVariadic)) {
     FunctionCallee FunCallee = M->getOrInsertFunction(CFuncName, FuncType);
     assert(isa<Function>(FunCallee.getCallee()) && "Expect Function");
@@ -83,5 +193,43 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
   }
 
   errs() << CFuncName.data() << "\n";
-  llvm_unreachable("Failed to construct external function's type");
+  errs() << "Failed to construct external function's type for : "
+         << CFuncName.data() << "\n";
+  errs() << "Use -I </full/path/to/file>, where /full/path/to/file declares "
+            "its prototype\n";
+  return nullptr;
+}
+
+bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
+    std::vector<std::string> &FileNames) {
+  static llvm::cl::OptionCategory InclFileParseCategory("my-tool options");
+  const int ToolArgc = 3; // 3 arguments viz., "dummy-tool IncludeFileName --"
+  const char *ToolArgv[ToolArgc];
+  ToolArgv[0] = "dummy-tool";
+  ToolArgv[2] = "--";
+
+  // Add each include file as second argument to parse it for function
+  // declarations.
+  for (auto FileName : FileNames) {
+    // CommandOptionParser constructor can change the contents for its first
+    // argument. reset it to ToolArgc in preparation for parsing the next
+    // include file.
+    int ArgSz = ToolArgc;
+    ToolArgv[1] = FileName.c_str();
+    clang::tooling::CommonOptionsParser OptParser(
+        ArgSz, const_cast<const char **>(ToolArgv), InclFileParseCategory);
+    clang::tooling::ClangTool Tool(OptParser.getCompilations(),
+                                   OptParser.getSourcePathList());
+    int Success = Tool.run(
+        clang::tooling::newFrontendActionFactory<FuncDeclFindingAction>()
+            .get());
+    switch (Success) {
+    case 0:
+      break;
+    default:
+      // TODO : Expand
+      dbgs() << "Error\n";
+    }
+  }
+  return true;
 }

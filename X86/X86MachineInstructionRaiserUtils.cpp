@@ -1235,9 +1235,13 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
 
       if (CalledFunc == nullptr) {
         // This is an undefined function symbol. Look through the list of
-        // known glibc interfaces and construct a Function accordingly.
+        // user provided function prototypes and construct a Function
+        // accordingly.
         CalledFunc = ExternalFunctions::Create(*CalledFuncSymName,
                                                *const_cast<ModuleRaiser *>(MR));
+        // Bail out if function prototype is not available
+        if (!CalledFunc)
+          exit(-1);
       }
       // Found the section we are looking for
       break;

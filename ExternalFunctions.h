@@ -23,17 +23,18 @@ class ExternalFunctions {
   ExternalFunctions(){};
   ~ExternalFunctions(){};
 
+public:
   typedef struct RetAndArgs_t {
-    StringRef ReturnType;
-    std::vector<StringRef> Arguments;
+    std::string ReturnType;
+    std::vector<std::string> Arguments;
     bool isVariadic;
   } RetAndArgs;
 
-public:
   static Function *Create(StringRef &CFuncName, ModuleRaiser &MR);
-  // Table of known glibc function prototypes
-  static const std::map<StringRef, ExternalFunctions::RetAndArgs>
-      GlibcFunctions;
+  // Table of user specified function prototypes
+  static std::map<std::string, ExternalFunctions::RetAndArgs>
+      UserSpecifiedFunctions;
+  static bool getUserSpecifiedFuncPrototypes(std::vector<string> &FileNames);
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_EXTERNALFUNCTIONS_H

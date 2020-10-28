@@ -1,6 +1,6 @@
 // REQUIRES: x86_64-linux
 // RUN: clang -o %t %s
-// RUN: llvm-mctoll -d %t
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
 // CHECK: ret val: 5

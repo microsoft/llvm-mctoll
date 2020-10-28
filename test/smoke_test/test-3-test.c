@@ -1,6 +1,6 @@
 // REQUIRES: system-linux
 // RUN: clang -o %t.so %S/Inputs/test-3.c -shared -fPIC
-// RUN: llvm-mctoll -d %t.so
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t.so
 // RUN: clang -o %t1 %s %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s
 // CHECK: test_3_func result 66

@@ -1,7 +1,7 @@
 // REQUIRES: system-linux
 // RUN: clang -o %T/libexternvar-lib.so %S/Inputs/externvar-lib.c -fPIC -shared
 // RUN: clang %s -o %t -L%T/ -lexternvar-lib
-// RUN: llvm-mctoll -d %t
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
 // RUN: clang -o %t1 %t-dis.ll -L%T/ -lexternvar-lib
 // RUN: export  LD_LIBRARY_PATH=%T/:$PATH
 // RUN: %t1 2>&1 | FileCheck %s

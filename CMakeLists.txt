@@ -66,8 +66,10 @@ add_llvm_tool(llvm-mctoll
   RuntimeFunction.cpp
 )
 
+include_directories(${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/include ${LLVM_BINARY_DIR}/tools/clang/include)
+
 # Link against LLVM libraries and target-specific Raiser libraries
-target_link_libraries(llvm-mctoll PRIVATE ${LLVM_MCTOLL_LIB_DEPS})
+target_link_libraries(llvm-mctoll PRIVATE ${LLVM_MCTOLL_LIB_DEPS} clangTooling clangBasic clangASTMatchers)
 
 if(HAVE_LIBXAR)
   message(STATUS "Linking xar")

@@ -1,6 +1,6 @@
 // REQUIRES: system-linux
 // RUN: clang -o %t-opt %s -mno-sse
-// RUN: llvm-mctoll -d %t-opt
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t-opt
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll
 // RUN: %t-opt-dis 2>&1 | FileCheck %s
 // CHECK:34.0

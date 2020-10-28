@@ -67,9 +67,11 @@ ninja check-mctoll
 
 | Command | Description |
 | --- | --- |
+| `-dh` or `--help` |  Display available options |
 | `-d <binary>` | Generate LLVM IR for a binary and place the result in `<binary>-dis.ll` |
 | `--filter-functions-file=<file>` | Text file with C functions to exclude or include during raising |
 | `-print-after-all` | Print the LLVM IR after each pass of the raiser |
+| `--include-files=[file1,file2,file3,...]` or  `-I file1 -I file2 -I file3` | Specify full path of one or more files with function prototypes to use|
 
 ## Raising a binary to LLVM IR
 
@@ -78,36 +80,9 @@ This is what you came here for :-). Please [file an issue](https://github.com/mi
 llvm-mctoll -d a.out
 ```
 
-## Raising specific functions in a binary
+See [usage document](./doc/Usage.md) for additional details of command-line options.
 
-You can specify the C functions to include or exclude during raising with the `--filter-functions-file` option.
-
-```
-llvm-mctoll -d --filter-functions-file=restrict.txt a.out
-```
-
-Provide a plain text file with `exclude-functions` and `include-functions` sections. Inside each section list the file and function prototype seperated by a colon. Use [LLVM IR function types](https://llvm.org/docs/LangRef.html#function-type) when defining the return and argument types for a function prototype. Here is a simple example.
-
-```
-; exclude `int bar(int)` defined in a.out
-exclude-functions {
-  a.out:i32 bar(i32)   
-}
-
-; include `int foo(void)` defined in a.out
-include-functions {
-  a.out:i32 foo(void)   
-}
-```
-
-## Debugging the raiser
-
-If you build `llvm-mctoll` with assertions enabled you can print the LLVM IR after each pass of the raiser to assist with debugging.
-```
-llvm-mctoll -d -print-after-all a.out
-```
-
-## Checking a translation is correct
+## Checking correctness of translation
 
 The easiest way to check the raised LLVM IR `<binary>-dis.ll` is correct is to compile the IR to an executable using `clang` and run the resulting executable. The tests in the repository follow this methodology. 
 

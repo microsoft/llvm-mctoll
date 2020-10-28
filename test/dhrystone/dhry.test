@@ -1,7 +1,7 @@
 // Test raising of dhrystone executable
 // REQUIRES: system-linux
 // RUN: clang -o %t %S/dhry_main.c %S/dhry_funcs_mod.c -DTIME -DHZ=2133 -DNOSTRUCTASSIGN -mno-sse
-// RUN: llvm-mctoll -d %t
+// RUN: llvm-mctoll -d -I /usr/include/stdlib.h  -I /usr/include/string.h  -I /usr/include/stdio.h  -I /usr/include/time.h %t
 // RUN: clang -o %t-dis %t-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
 // RUN: %t-dis 2>&1| FileCheck %s -check-prefix=EXEC
 
@@ -43,7 +43,7 @@
 
 // Test raising of DSO with all dhrystone functions except main()
 // RUN: clang -o %t.so %S/dhry_funcs_mod.c -shared -fPIC -g -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
-// RUN: llvm-mctoll -d %t.so -o %t-so-dis.ll
+// RUN: llvm-mctoll -d -I /usr/include/stdlib.h -I /usr/include/string.h -I /usr/include/stdio.h -I /usr/include/time.h %t.so -o %t-so-dis.ll
 // RUN: clang -o %t-so-dis %S/dhry_main.c %t-so-dis.ll -DTIME -DHZ=2133 -DNOSTRUCTASSIGN
 // RUN: %t-so-dis 2>&1| FileCheck %s -check-prefix=DSO
 

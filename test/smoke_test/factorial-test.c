@@ -1,6 +1,6 @@
 // REQUIRES: system-linux
 // RUN: clang -o %t.so %S/Inputs/factorial.c -shared -fPIC
-// RUN: llvm-mctoll -d %t.so
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t.so
 // RUN: clang -o %t1 %s %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s
 // CHECK: Factorial of 10 3628800

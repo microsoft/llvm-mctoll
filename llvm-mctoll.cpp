@@ -12,6 +12,7 @@
 
 #include "llvm-mctoll.h"
 #include "EmitRaisedOutputPass.h"
+#include "ExternalFunctions.h"
 #include "MCInstOrData.h"
 #include "MachineFunctionRaiser.h"
 #include "ModuleRaiser.h"
@@ -173,6 +174,16 @@ cl::opt<unsigned long long> StopAddress("stop-address",
                                         cl::desc("Stop disassembly at address"),
                                         cl::value_desc("address"),
                                         cl::init(UINT64_MAX));
+cl::list<std::string> llvm::IncludeFileNames(
+    "include-files", cl::CommaSeparated,
+    cl::desc("Header files with function prototypes using standard C syntax."),
+    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+
+cl::alias static IncludeFileNamesShort("I",
+                                       cl::desc("Alias for --include-files"),
+                                       cl::aliasopt(llvm::IncludeFileNames),
+                                       cl::cat(LLVMMCToLLCategory),
+                                       cl::NotHidden);
 
 namespace {
 static ManagedStatic<std::vector<std::string>> RunPassNames;
@@ -484,7 +495,6 @@ bool llvm::RelocAddressLess(RelocationRef a, RelocationRef b) {
 }
 
 namespace {
-
 static bool isArmElf(const ObjectFile *Obj) {
   return (Obj->isELF() &&
           (Obj->getArch() == Triple::aarch64 ||
@@ -1508,7 +1518,6 @@ static void DumpArchive(const Archive *a) {
 
 /// @brief Open file and figure out how to dump it.
 static void DumpInput(StringRef file) {
-
   // If we are using the Mach-O specific object file parser, then let it parse
   // the file and process the command line options.  So the -arch flags can
   // be used to select specific slices, etc.
@@ -1579,6 +1588,16 @@ int main(int argc, char **argv) {
   // Defaults to a.out if no filenames specified.
   if (InputFilenames.size() == 0)
     InputFilenames.push_back("a.out");
+
+  // Read declarations in user-specified include files
+  std::set<string> InclFNameSet(IncludeFileNames.begin(),
+                                IncludeFileNames.end());
+  std::vector<string> InclFNames(InclFNameSet.begin(), InclFNameSet.end());
+  if (!InclFNames.empty()) {
+    if (!ExternalFunctions::getUserSpecifiedFuncPrototypes(InclFNames)) {
+      dbgs() << "Unable to read external function prototype. Ignoring\n";
+    }
+  }
 
   // Disassemble contents of .text section.
   Disassemble = true;

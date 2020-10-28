@@ -1,5 +1,5 @@
 // RUN: clang -o %t-opt %s -O2 -mno-sse
-// RUN: llvm-mctoll -d %t-opt
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h -I /usr/include/stdlib.h  %t-opt
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll
 // RUN: %t-opt-dis 2>&1 | FileCheck --check-prefix=RESULT %s
 // RESULT:buf = 2d

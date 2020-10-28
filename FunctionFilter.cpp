@@ -29,34 +29,46 @@ FunctionFilter::~FunctionFilter() {
         delete FII;
 }
 
-/// Get the data type corresponding to type string.
+/// Get the data type corresponding to type string. These correspond to type
+/// strings generated in ExternalFunctions.cpp upon parsing user specified
+/// include files with external function prototypes.
 Type *FunctionFilter::getPrimitiveDataType(const StringRef &TypeStr) {
   LLVMContext &CTX = M.getContext();
+  Type *RetTy = nullptr;
+  // Get the base type
+  if (TypeStr.startswith("void"))
+    RetTy = Type::getVoidTy(CTX);
+  else if (TypeStr.startswith("i1"))
+    RetTy = Type::getInt1Ty(CTX);
+  else if (TypeStr.startswith("i8"))
+    RetTy = Type::getInt8Ty(CTX);
+  else if (TypeStr.startswith("i16"))
+    RetTy = Type::getInt16Ty(CTX);
+  else if (TypeStr.startswith("i32"))
+    RetTy = Type::getInt32Ty(CTX);
+  else if (TypeStr.startswith("i64"))
+    RetTy = Type::getInt64Ty(CTX);
+  else if (TypeStr.startswith("float"))
+    RetTy = Type::getFloatTy(CTX);
+  else if (TypeStr.startswith("double"))
+    RetTy = Type::getDoubleTy(CTX);
+  // most x86 compilers implement long double as 80-bit extension precision
+  // type.
+  // TODO : Exception MSVC long double is a synonym of double. Add the necessary
+  // support when Windows binary support is implemented.
+  else if (TypeStr.startswith("ldouble"))
+    RetTy = Type::getX86_FP80Ty(CTX);
 
-  if (TypeStr.equals("void"))
-    return Type::getVoidTy(CTX);
-  else if (TypeStr.equals("i1"))
-    return Type::getInt1Ty(CTX);
-  else if (TypeStr.equals("i1*"))
-    return Type::getInt1PtrTy(CTX);
-  else if (TypeStr.equals("i8"))
-    return Type::getInt8Ty(CTX);
-  else if (TypeStr.equals("i8*"))
-    return Type::getInt8PtrTy(CTX);
-  else if (TypeStr.equals("i16"))
-    return Type::getInt16Ty(CTX);
-  else if (TypeStr.equals("i16*"))
-    return Type::getInt16PtrTy(CTX);
-  else if (TypeStr.equals("i32"))
-    return Type::getInt32Ty(CTX);
-  else if (TypeStr.equals("i32*"))
-    return Type::getInt32PtrTy(CTX);
-  else if (TypeStr.equals("i64"))
-    return Type::getInt64Ty(CTX);
-  else if (TypeStr.equals("i64*"))
-    return Type::getInt64PtrTy(CTX);
-
-  llvm_unreachable_internal("Invalid data type string!");
+  assert((RetTy != nullptr) && "Invalid data type string!");
+  // Is this a pointer type. Flatten out any T**** to just T*
+  if (TypeStr.find_first_of("*") != std::string::npos) {
+    // Special case void* to i8*. There is no Type::getVoidPtrTy()
+    if (RetTy->isVoidTy())
+      RetTy = Type::getInt8PtrTy(CTX);
+    else
+      RetTy = RetTy->getPointerTo();
+  }
+  return RetTy;
 }
 
 /// Parse input string as symbol name and function type.

@@ -1,5 +1,5 @@
 // RUN: clang -o %t %s -O2 --target=%arm_triple -fuse-ld=lld
-// RUN: llvm-mctoll -d %t
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
 // RUN: clang -o %t1 %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s
 // CHECK: Value 12
@@ -15,7 +15,7 @@
 
 void call_me(int i, int j) {
   int a;
-  if (j  == 0) {
+  if (j == 0) {
     a = 4;
   } else {
     a = i + j;
@@ -25,7 +25,7 @@ void call_me(int i, int j) {
 }
 
 int main(int argc, char **argv) {
-  call_me(10,2);
-  call_me(10,0);
+  call_me(10, 2);
+  call_me(10, 0);
   return 0;
 }

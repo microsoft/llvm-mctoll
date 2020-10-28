@@ -37,6 +37,10 @@ std::map<std::string, ExternalFunctions::RetAndArgs>
 // FuncDeclVisitor
 
 class FuncDeclVisitor : public clang::RecursiveASTVisitor<FuncDeclVisitor> {
+  clang::SourceManager &SrcManager;
+
+public:
+  FuncDeclVisitor(clang::SourceManager &SM) : SrcManager(SM) {}
 
 public:
   bool VisitFunctionDecl(clang::FunctionDecl *FuncDecl) {
@@ -51,9 +55,22 @@ public:
       Entry.Arguments.push_back(ParamTyStr);
     }
     Entry.isVariadic = FuncDecl->isVariadic();
-    ExternalFunctions::UserSpecifiedFunctions.insert(
-        std::pair<std::string, ExternalFunctions::RetAndArgs>(
-            FuncDecl->getQualifiedNameAsString(), Entry));
+    // TODO: Raising binaries compiled from C++ sources is not yet supported. C
+    // does not support function overloading. So, for now, trivially check for
+    // function name to detect duplicate function prototype specification. Need
+    // to update this check to include argument types when support to raise C++
+    // binary is added.
+    if (ExternalFunctions::UserSpecifiedFunctions.find(
+            FuncDecl->getQualifiedNameAsString()) !=
+        ExternalFunctions::UserSpecifiedFunctions.end()) {
+      errs() << FuncDecl->getQualifiedNameAsString()
+             << " : Ignoring duplicate entry in "
+             << SrcManager.getFilename(FuncDecl->getLocation()) << "\n";
+    } else {
+      ExternalFunctions::UserSpecifiedFunctions.insert(
+          std::pair<std::string, ExternalFunctions::RetAndArgs>(
+              FuncDecl->getQualifiedNameAsString(), Entry));
+    }
     return true;
   }
 
@@ -130,7 +147,7 @@ class FuncDeclFinder : public clang::ASTConsumer {
   FuncDeclVisitor Visitor;
 
 public:
-  FuncDeclFinder(clang::SourceManager &SM) : SourceManager(SM) {}
+  FuncDeclFinder(clang::SourceManager &SM) : SourceManager(SM), Visitor(SM) {}
 
   void HandleTranslationUnit(clang::ASTContext &Context) final {
     auto Decls = Context.getTranslationUnitDecl()->decls();

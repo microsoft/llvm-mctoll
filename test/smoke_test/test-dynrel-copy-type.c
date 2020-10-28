@@ -1,6 +1,6 @@
 // REQUIRES: system-linux
 // RUN: clang -o %t %s -O2
-// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h -I %S/test-dynrel-copy-type.h %t
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
 // CHECK: EDCBA

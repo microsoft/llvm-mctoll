@@ -327,8 +327,7 @@ void ARMEliminatePrologEpilog::analyzeFrameAdjustment(MachineFunction &mf) {
 }
 
 bool ARMEliminatePrologEpilog::eliminate() {
-  if (PrintPass)
-    dbgs() << "ARMEliminatePrologEpilog start.\n";
+  LLVM_DEBUG(dbgs() << "ARMEliminatePrologEpilog start.\n");
 
   analyzeStackSize(*MF);
   analyzeFrameAdjustment(*MF);
@@ -339,11 +338,9 @@ bool ARMEliminatePrologEpilog::eliminate() {
   }
 
   // For debugging.
-  if (PrintPass) {
-    LLVM_DEBUG(MF->dump());
-    LLVM_DEBUG(getCRF()->dump());
-    dbgs() << "ARMEliminatePrologEpilog end.\n";
-  }
+  LLVM_DEBUG(MF->dump());
+  LLVM_DEBUG(getCRF()->dump());
+  LLVM_DEBUG(dbgs() << "ARMEliminatePrologEpilog end.\n");
 
   return !success;
 }
@@ -354,6 +351,8 @@ bool ARMEliminatePrologEpilog::runOnMachineFunction(MachineFunction &mf) {
   rtn = eliminate();
   return rtn;
 }
+
+#undef DEBUG_TYPE
 
 #ifdef __cplusplus
 extern "C" {

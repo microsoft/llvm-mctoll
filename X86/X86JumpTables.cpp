@@ -364,10 +364,8 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
     MBB->eraseFromParent();
   }
 
-  if (PrintPass) {
-    outs() << "CFG : After Raising Jump Tables\n";
-    LLVM_DEBUG(MF.dump());
-  }
+  LLVM_DEBUG(outs() << "CFG : After Raising Jump Tables\n");
+  LLVM_DEBUG(MF.dump());
   return true;
 }
 
@@ -471,3 +469,5 @@ X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
 
   return switchOnVal;
 }
+
+#undef DEBUG_TYPE

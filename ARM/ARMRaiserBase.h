@@ -27,9 +27,6 @@ protected:
   ARMRaiserBase() = delete;
   ARMRaiserBase(char &PassID, ARMModuleRaiser &mr)
       : FunctionPass(PassID), MR(&mr) {
-    PrintPass =
-        (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() >
-         0);
     M = MR->getModule();
   }
   ~ARMRaiserBase() override {}
@@ -49,7 +46,6 @@ protected:
   /// Get current raised llvm::Function.
   Function *getCRF() { return RF; }
 
-  bool PrintPass;
   ARMModuleRaiser *MR;
   /// Current raised llvm::Function.
   Function *RF;

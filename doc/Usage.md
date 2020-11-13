@@ -60,6 +60,6 @@ int puts(const char *s);
 
 If you build `llvm-mctoll` with assertions enabled you can print the LLVM IR after each pass of the raiser to assist with debugging.
 ```
-llvm-mctoll -d -print-after-all a.out
+llvm-mctoll -d -debug a.out
 ```
 

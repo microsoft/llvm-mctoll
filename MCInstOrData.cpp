@@ -40,12 +40,12 @@ MCInstOrData &MCInstOrData::operator=(const MCInstOrData &E) {
   if (Type == Tag::INSTRUCTION) {
     if (E.Type == Tag::INSTRUCTION) {
       // Usual MCInst assignment
-      Inst = E.Inst; 
+      Inst = E.Inst;
       return *this;
     }
     // Explicit destroy
-    Inst.~MCInst(); 
-  }   
+    Inst.~MCInst();
+  }
 
   switch (E.Type) {
   case Tag::DATA:
@@ -74,3 +74,5 @@ MCInstOrData::~MCInstOrData() {
   if (Type == Tag::INSTRUCTION)
     Inst.~MCInst(); // explicit destroy
 }
+
+#undef DEBUG_TYPE

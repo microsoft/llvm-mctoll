@@ -21,11 +21,14 @@
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "clang/Tooling/Tooling.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <clang-c/Index.h>
 #include <memory>
 #include <sstream>
 #include <string>
+
+#define DEBUG_TYPE "prototypes"
 
 // NOTE: Not using namespace clang to highlight the fact that certain types such
 // as Type being used in this file are from clang namespace and not from llvm
@@ -40,9 +43,10 @@ class FuncDeclVisitor : public clang::RecursiveASTVisitor<FuncDeclVisitor> {
   clang::SourceManager &SrcManager;
 
 public:
-  FuncDeclVisitor(clang::SourceManager &SM) : SrcManager(SM) {}
+  FuncDeclVisitor(clang::SourceManager &SM) : SrcManager(SM) {
+    llvm::setCurrentDebugType(DEBUG_TYPE);
+  }
 
-public:
   bool VisitFunctionDecl(clang::FunctionDecl *FuncDecl) {
     ExternalFunctions::RetAndArgs Entry;
     clang::QualType RetTy = FuncDecl->getDeclaredReturnType();
@@ -63,9 +67,10 @@ public:
     if (ExternalFunctions::UserSpecifiedFunctions.find(
             FuncDecl->getQualifiedNameAsString()) !=
         ExternalFunctions::UserSpecifiedFunctions.end()) {
-      errs() << FuncDecl->getQualifiedNameAsString()
-             << " : Ignoring duplicate entry in "
-             << SrcManager.getFilename(FuncDecl->getLocation()) << "\n";
+      LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
+                        << " : Ignoring duplicate entry in "
+                        << SrcManager.getFilename(FuncDecl->getLocation())
+                        << "\n");
     } else {
       ExternalFunctions::UserSpecifiedFunctions.insert(
           std::pair<std::string, ExternalFunctions::RetAndArgs>(
@@ -220,23 +225,28 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
 bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
     std::vector<std::string> &FileNames) {
   static llvm::cl::OptionCategory InclFileParseCategory("my-tool options");
-  const int ToolArgc = 3; // 3 arguments viz., "dummy-tool IncludeFileName --"
-  const char *ToolArgv[ToolArgc];
+  // 3 arguments viz., "dummy-tool IncludeFileName --", with no -debug
+  // 4 arguments viz., "dummy-tool -debug IncludeFileName --", with -debug
+  const int ToolArgc = llvm::DebugFlag ? 4 : 3;
+  const char **ToolArgv = new const char *[ToolArgc];
   ToolArgv[0] = "dummy-tool";
-  ToolArgv[2] = "--";
+  if (llvm::DebugFlag)
+    ToolArgv[ToolArgc - 3] = "-debug";
+  ToolArgv[ToolArgc - 1] = "--";
 
   // Add each include file as second argument to parse it for function
   // declarations.
   for (auto FileName : FileNames) {
     // CommandOptionParser constructor can change the contents for its first
-    // argument. reset it to ToolArgc in preparation for parsing the next
+    // argument. Reset it to ToolArgc in preparation for parsing the next
     // include file.
     int ArgSz = ToolArgc;
-    ToolArgv[1] = FileName.c_str();
+    ToolArgv[ToolArgc - 2] = FileName.c_str();
     clang::tooling::CommonOptionsParser OptParser(
         ArgSz, const_cast<const char **>(ToolArgv), InclFileParseCategory);
     clang::tooling::ClangTool Tool(OptParser.getCompilations(),
                                    OptParser.getSourcePathList());
+
     int Success = Tool.run(
         clang::tooling::newFrontendActionFactory<FuncDeclFindingAction>()
             .get());
@@ -248,5 +258,9 @@ bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
       dbgs() << "Error\n";
     }
   }
+
+  delete[] ToolArgv;
+
   return true;
 }
+#undef DEBUG_TYPE

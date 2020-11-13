@@ -45,8 +45,7 @@ public:
   MachineInstructionRaiser() = delete;
   MachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
                            MCInstRaiser *mcir = nullptr)
-      : MF(machFunc), raisedFunction(nullptr), mcInstRaiser(mcir), MR(mr),
-        PrintPass(false) {}
+      : MF(machFunc), raisedFunction(nullptr), mcInstRaiser(mcir), MR(mr) {}
   virtual ~MachineInstructionRaiser(){};
 
   virtual bool raise() { return true; };
@@ -78,7 +77,5 @@ protected:
   // A vector of information to be used for raising of control transfer
   // (i.e., Call and Terminator) instructions.
   std::vector<ControlTransferInfo *> CTInfo;
-
-  bool PrintPass;
 };
 #endif // LLVM_TOOLS_LLVM_MCTOLL_MACHINEINSTRUCTIONRAISER_H

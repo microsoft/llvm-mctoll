@@ -342,17 +342,14 @@ bool ARMCreateJumpTable::getJTlist(std::vector<JumpTableInfo> &List) {
 }
 
 bool ARMCreateJumpTable::create() {
-  if (PrintPass)
-    dbgs() << "ARMCreateJumpTable start.\n";
+  LLVM_DEBUG(dbgs() << "ARMCreateJumpTable start.\n");
 
   raiseMaichineJumpTable(*MF);
 
   // For debugging.
-  if (PrintPass) {
-    LLVM_DEBUG(MF->dump());
-    LLVM_DEBUG(getCRF()->dump());
-    dbgs() << "ARMCreateJumpTable end.\n";
-  }
+  LLVM_DEBUG(MF->dump());
+  LLVM_DEBUG(getCRF()->dump());
+  LLVM_DEBUG(dbgs() << "ARMCreateJumpTable end.\n");
 
   return false;
 }
@@ -363,6 +360,8 @@ bool ARMCreateJumpTable::runOnMachineFunction(MachineFunction &mf) {
   rtn = create();
   return rtn;
 }
+
+#undef DEBUG_TYPE
 
 #ifdef __cplusplus
 extern "C" {

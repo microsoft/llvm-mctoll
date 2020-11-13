@@ -1,5 +1,5 @@
 // RUN: clang -o %t-opt %s -O2 -mno-sse
-// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t-opt
+// RUN: llvm-mctoll -d --include-files="/usr/include/stdio.h,/usr/include/stdlib.h,/usr/include/string.h" %t-opt
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll
 // RUN: %t-opt-dis 2>&1 | FileCheck %s
 //CHECK:arr3[1] = -127
@@ -10,6 +10,8 @@
 
 #include <stdio.h>
 #include <limits.h>
+#include <string.h>
+#include <stdlib.h>
 
 int __attribute__((noinline))
 foo(char *a3, const int num) {
@@ -21,7 +23,7 @@ foo(char *a3, const int num) {
 
 int main() {
   const int num = 5;
-  char arr3[num] = {0};
+  char *arr3 = (char *) calloc(num, sizeof(int));
 
   foo(arr3, num);
 

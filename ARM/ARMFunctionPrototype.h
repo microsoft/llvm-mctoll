@@ -44,7 +44,6 @@ private:
   /// Get return type of current MachineFunction.
   Type *genReturnType();
 
-  bool PrintPass;
   MachineFunction *MF;
   LLVMContext *CTX;
 };

@@ -17,10 +17,7 @@
 
 void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
                             const MCInstrInfo *MII) {
-  bool PrintAll =
-      (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
-  if (PrintAll)
-    outs() << "Parsed MCInst List\n";
+  LLVM_DEBUG(dbgs() << "Parsed MCInst List\n");
 
   // Set the first instruction index as the entry of current MBB
   // Walk the mcInstMap
@@ -36,8 +33,7 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
        mcInstorDataIter != mcInstMap.end(); mcInstorDataIter++) {
     uint64_t mcInstIndex = mcInstorDataIter->first;
     MCInstOrData mcInstorData = mcInstorDataIter->second;
-    if (PrintAll)
-      mcInstorData.dump();
+    LLVM_DEBUG(mcInstorData.dump());
 
     // If the current mcInst is a target of some instruction,
     // i) record the target of previous instruction and fall-through as
@@ -157,10 +153,8 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
 
   // Print the Machine function (which contains the reconstructed
   // MachineBasicBlocks.
-  if (PrintAll) {
-    outs() << "Generated CFG\n";
-    LLVM_DEBUG(MF.dump());
-  }
+  LLVM_DEBUG(dbgs() << "Generated CFG\n");
+  LLVM_DEBUG(MF.dump());
 }
 
 static inline int64_t raiseSignedImm(int64_t val, const DataLayout &dl) {
@@ -320,3 +314,5 @@ uint64_t MCInstRaiser::getMCInstIndex(const MachineInstr &MI) const {
   APInt ArbPrecInt = CI->getValue();
   return ArbPrecInt.getSExtValue();
 }
+
+#undef DEBUG_TYPE

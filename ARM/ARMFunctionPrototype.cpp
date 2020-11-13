@@ -24,10 +24,7 @@ using namespace llvm;
 
 char ARMFunctionPrototype::ID = 0;
 
-ARMFunctionPrototype::ARMFunctionPrototype() : MachineFunctionPass(ID) {
-  PrintPass =
-      (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
-}
+ARMFunctionPrototype::ARMFunctionPrototype() : MachineFunctionPass(ID) {}
 
 ARMFunctionPrototype::~ARMFunctionPrototype() {}
 
@@ -181,8 +178,7 @@ Type *ARMFunctionPrototype::genReturnType() {
 }
 
 Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
-  if (PrintPass)
-    dbgs() << "ARMFunctionPrototype start.\n";
+  LLVM_DEBUG(dbgs() << "ARMFunctionPrototype start.\n");
 
   MF = &mf;
   Function &fn = const_cast<Function &>(mf.getFunction());
@@ -202,11 +198,9 @@ Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
   // EntryBlock at here.
   BasicBlock::Create(pnfn->getContext(), "EntryBlock", pnfn);
 
-  if (PrintPass) {
-    LLVM_DEBUG(MF->dump());
-    LLVM_DEBUG(pnfn->dump());
-    dbgs() << "ARMFunctionPrototype end.\n";
-  }
+  LLVM_DEBUG(MF->dump());
+  LLVM_DEBUG(pnfn->dump());
+  LLVM_DEBUG(dbgs() << "ARMFunctionPrototype end.\n");
 
   return pnfn;
 }
@@ -215,6 +209,8 @@ bool ARMFunctionPrototype::runOnMachineFunction(MachineFunction &mf) {
   discover(mf);
   return true;
 }
+
+#undef DEBUG_TYPE
 
 #ifdef __cplusplus
 extern "C" {

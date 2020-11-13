@@ -1,5 +1,5 @@
 // RUN: clang -o %t-opt %s
-// RUN: llvm-mctoll -d -I /usr/include/stdio.h -I /usr/include/string.h %t-opt
+// RUN: llvm-mctoll -d --include-files="/usr/include/stdio.h,/usr/include/stdlib.h" %t-opt
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll
 // RUN: %t-opt-dis 2>&1 | FileCheck %s
 // CHECK:arr[0] = 2147483647, arr[1] = 2147483646, arr[2] = 2147483645, arr[3] = 2147483644, arr[4] = 2147483643 
@@ -10,6 +10,7 @@
 
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int __attribute__((noinline))
 foo(int *a, unsigned int *a1, short *a2, char *a3, long *a4, const int num) {
@@ -25,11 +26,11 @@ foo(int *a, unsigned int *a1, short *a2, char *a3, long *a4, const int num) {
 
 int main() {
   const int num = 5;
-  int arr[num] = {0};
-  unsigned int arr1[num] = {0};
-  short arr2[num] = {0};
-  char arr3[num] = {0};
-  long arr4[num] = {0};
+  int *arr = (int*) calloc(num, sizeof(int));
+  unsigned int *arr1 = (unsigned  int*) calloc(num, sizeof(unsigned int));
+  short *arr2 = (short*) calloc(num, sizeof(short));
+  char *arr3 = (char**) calloc(num, sizeof(char));
+  long *arr4 = (long*) calloc(num, sizeof(long));
 
   foo(arr, arr1, arr2, arr3, arr4, num);
 

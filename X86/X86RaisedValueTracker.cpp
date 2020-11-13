@@ -1212,3 +1212,5 @@ Value *X86RaisedValueTracker::getRelocOffsetForRODataAddress(
   }
   return RelocRODataAddrVal;
 }
+
+#undef DEBUG_TYPE

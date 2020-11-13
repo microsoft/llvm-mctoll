@@ -55,8 +55,6 @@ X86MachineInstructionRaiser::X86MachineInstructionRaiser(MachineFunction &MF,
       x86TargetInfo(MF.getSubtarget<X86Subtarget>()) {
   x86InstrInfo = x86TargetInfo.getInstrInfo();
   x86RegisterInfo = x86TargetInfo.getRegisterInfo();
-  PrintPass =
-      (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
 
   FPUStack.TOP = 0;
   for (int i = 0; i < FPUSTACK_SZ; i++)
@@ -3815,10 +3813,8 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
 }
 
 bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
-  if (PrintPass) {
-    outs() << "CFG : Before Raising Terminator Instructions\n";
-    LLVM_DEBUG(raisedFunction->dump());
-  }
+  LLVM_DEBUG(outs() << "CFG : Before Raising Terminator Instructions\n");
+  LLVM_DEBUG(raisedFunction->dump());
 
   // Raise branch instructions with control transfer records
   bool success = true;
@@ -3880,10 +3876,8 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
       }
     }
   }
-  if (PrintPass) {
-    outs() << "CFG : After Raising Terminator Instructions\n";
-    LLVM_DEBUG(raisedFunction->dump());
-  }
+  LLVM_DEBUG(outs() << "CFG : After Raising Terminator Instructions\n");
+  LLVM_DEBUG(raisedFunction->dump());
 
   return true;
 }
@@ -4378,3 +4372,5 @@ MachineFunctionRaiser *X86ModuleRaiser::CreateAndAddMachineFunctionRaiser(
   mfRaiserVector.push_back(MFR);
   return MFR;
 }
+
+#undef DEBUG_TYPE

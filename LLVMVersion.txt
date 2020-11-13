@@ -5,8 +5,14 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 76c7a6d6cd152dcddae977fefe5fe0420da467af
-Author: LLVM GN Syncbot <llvmgnsyncbot@gmail.com>
-Date:   Tue Oct 13 20:50:32 2020 +0000
+commit 0ae2ea8f83e3b79c587f0461b5cac98de1be220d
+Author: Peter Collingbourne <peter@pcc.me.uk>
+Date:   Tue Nov 10 15:50:04 2020 -0800
 
-    [gn build] Port f0875971249
+    hwasan: Bring back operator {new,delete} interceptors on Android.
+    
+    It turns out that we can't remove the operator new and delete
+    interceptors on Android without breaking ABI, so bring them back
+    as forwards to the malloc and free functions.
+    
+    Differential Revision: https://reviews.llvm.org/D91219

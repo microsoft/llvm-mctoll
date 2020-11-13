@@ -153,8 +153,7 @@ void ARMArgumentRaiser::updateParameterInstr(MachineFunction &mf) {
 }
 
 bool ARMArgumentRaiser::raiseArgs() {
-  if (PrintPass)
-    dbgs() << "ARMArgumentRaiser start.\n";
+  LLVM_DEBUG(dbgs() << "ARMArgumentRaiser start.\n");
 
   Function *fn = getCRF();
 
@@ -171,11 +170,9 @@ bool ARMArgumentRaiser::raiseArgs() {
   updateParameterInstr(*MF);
 
   // For debugging.
-  if (PrintPass) {
-    LLVM_DEBUG(MF->dump());
-    LLVM_DEBUG(getCRF()->dump());
-    dbgs() << "ARMArgumentRaiser end.\n";
-  }
+  LLVM_DEBUG(MF->dump());
+  LLVM_DEBUG(getCRF()->dump());
+  LLVM_DEBUG(dbgs() << "ARMArgumentRaiser end.\n");
 
   return true;
 }
@@ -186,6 +183,8 @@ bool ARMArgumentRaiser::runOnMachineFunction(MachineFunction &mf) {
   rtn = raiseArgs();
   return rtn;
 }
+
+#undef DEBUG_TYPE
 
 #ifdef __cplusplus
 extern "C" {

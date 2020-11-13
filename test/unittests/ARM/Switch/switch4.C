@@ -1,5 +1,5 @@
 // RUN: clang -target arm -mfloat-abi=soft -c -o %t.o %s
-// RUN: llvm-mctoll -d -print-after-all %t.o 2>&1 | FileCheck %s
+// RUN: llvm-mctoll -d  %t.o 2>&1 | FileCheck %s
 
 // CHECK: switch i32 %2, label %3 [
 // CHECK-NEXT:   i32 0, label %sw.bb0

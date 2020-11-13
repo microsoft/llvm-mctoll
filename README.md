@@ -70,8 +70,10 @@ ninja check-mctoll
 | `-dh` or `--help` |  Display available options |
 | `-d <binary>` | Generate LLVM IR for a binary and place the result in `<binary>-dis.ll` |
 | `--filter-functions-file=<file>` | Text file with C functions to exclude or include during raising |
-| `-print-after-all` | Print the LLVM IR after each pass of the raiser |
 | `--include-files=[file1,file2,file3,...]` or  `-I file1 -I file2 -I file3` | Specify full path of one or more files with function prototypes to use|
+| `-debug` | Print all debug output |
+| `-debug-only=mctoll` | Print the LLVM IR after each pass of the raiser |
+| `-debug-only=prototypes` | Print ignored duplicate function prototypes in --include-files |
 
 ## Raising a binary to LLVM IR
 

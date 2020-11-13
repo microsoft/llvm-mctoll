@@ -17,6 +17,8 @@ using namespace llvm;
 
 char ARMSelectionDAGISel::ID = 0;
 
+#define DEBUG_TYPE "mctoll"
+
 ARMSelectionDAGISel::ARMSelectionDAGISel(ARMModuleRaiser &mr)
     : ARMRaiserBase(ID, mr) {}
 
@@ -97,8 +99,7 @@ void ARMSelectionDAGISel::initEntryBasicBlock() {
 }
 
 bool ARMSelectionDAGISel::doSelection() {
-  if (PrintPass)
-    dbgs() << "ARMSelectionDAGISel start.\n";
+  LLVM_DEBUG(dbgs() << "ARMSelectionDAGISel start.\n");
 
   MachineFunction &mf = *MF;
   CurDAG->init(mf, *ORE.get(), this, nullptr, nullptr, nullptr, nullptr);
@@ -134,8 +135,7 @@ bool ARMSelectionDAGISel::doSelection() {
 
   FuncInfo->clear();
 
-  if (PrintPass)
-    dbgs() << "ARMSelectionDAGISel end.\n";
+  LLVM_DEBUG(dbgs() << "ARMSelectionDAGISel end.\n");
 
   return true;
 }
@@ -151,6 +151,7 @@ bool ARMSelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
   rtn = doSelection();
   return rtn;
 }
+#undef DEBUG_TYPE
 
 #ifdef __cplusplus
 extern "C" {

@@ -549,8 +549,7 @@ bool ARMMIRevising::reviseMI(MachineInstr &MInst) {
 
 bool ARMMIRevising::revise() {
   bool rtn = false;
-  if (PrintPass)
-    dbgs() << "ARMMIRevising start.\n";
+  LLVM_DEBUG(dbgs() << "ARMMIRevising start.\n");
 
   vector<MachineInstr *> RMVec;
   for (MachineFunction::iterator mbbi = MF->begin(), mbbe = MF->end();
@@ -569,11 +568,9 @@ bool ARMMIRevising::revise() {
     PMI->eraseFromParent();
 
   // For debugging.
-  if (PrintPass) {
-    LLVM_DEBUG(MF->dump());
-    LLVM_DEBUG(getCRF()->dump());
-    dbgs() << "ARMMIRevising end.\n";
-  }
+  LLVM_DEBUG(MF->dump());
+  LLVM_DEBUG(getCRF()->dump());
+  LLVM_DEBUG(dbgs() << "ARMMIRevising end.\n");
 
   return rtn;
 }
@@ -584,6 +581,8 @@ bool ARMMIRevising::runOnMachineFunction(MachineFunction &mf) {
   rtn = revise();
   return rtn;
 }
+
+#undef DEBUG_TYPE
 
 #ifdef __cplusplus
 extern "C" {

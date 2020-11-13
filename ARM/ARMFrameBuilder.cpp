@@ -288,17 +288,14 @@ void ARMFrameBuilder::searchStackObjects(MachineFunction &mf) {
 }
 
 bool ARMFrameBuilder::build() {
-  if (PrintPass)
-    dbgs() << "ARMFrameBuilder start.\n";
+  LLVM_DEBUG(dbgs() << "ARMFrameBuilder start.\n");
 
   searchStackObjects(*MF);
 
   // For debugging.
-  if (PrintPass) {
-    LLVM_DEBUG(MF->dump());
-    LLVM_DEBUG(getCRF()->dump());
-    dbgs() << "ARMFrameBuilder end.\n";
-  }
+  LLVM_DEBUG(MF->dump());
+  LLVM_DEBUG(getCRF()->dump());
+  LLVM_DEBUG(dbgs() << "ARMFrameBuilder end.\n");
 
   return true;
 }
@@ -309,6 +306,8 @@ bool ARMFrameBuilder::runOnMachineFunction(MachineFunction &mf) {
   rtn = build();
   return rtn;
 }
+
+#undef DEBUG_TYPE
 
 #ifdef __cplusplus
 extern "C" {

@@ -200,6 +200,8 @@ struct RunPassOption {
 };
 } // namespace
 
+#define DEBUG_TYPE "mctoll"
+
 static RunPassOption RunPassOpt;
 
 static cl::opt<RunPassOption, true, cl::parser<std::string>> RunPass(
@@ -1038,20 +1040,12 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     StringRef name;
 
-    bool PrintAll =
-        (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() >
-         0);
-
-    DebugFlag = PrintAll;
-
-    if (PrintAll) {
-      if ((SectionAddr <= StopAddress) &&
-          (SectionAddr + SectSize) >= StartAddress) {
-        outs() << "Disassembling section ";
-        if (!SegmentName.empty())
-          outs() << SegmentName << ",";
-        outs() << name << "\n";
-      }
+    if ((SectionAddr <= StopAddress) &&
+        (SectionAddr + SectSize) >= StartAddress) {
+      LLVM_DEBUG(dbgs() << "Disassembling section ");
+      if (!SegmentName.empty())
+        LLVM_DEBUG(dbgs() << SegmentName << ",");
+      LLVM_DEBUG(dbgs() << name << "\n");
     }
 
     // If the section has no symbol at the start, just insert a dummy one.
@@ -1202,8 +1196,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         // TODO: As of now, we will only raise functions with all instructions
         // decoded.
         // bool allInstructionsDecoded = true;
-        if (PrintAll)
-          outs() << "\nFunction " << Symbols[si].Name << ":\n";
+        LLVM_DEBUG(dbgs() << "\nFunction " << Symbols[si].Name << ":\n");
       } else {
         // Continue using to the most recent MachineFunctionRaiser
         // Get current MachineFunctionRaiser
@@ -1473,17 +1466,13 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 }
 
 static void DumpObject(ObjectFile *o, const Archive *a = nullptr) {
-  bool PrintAll =
-      (cl::getRegisteredOptions()["print-after-all"]->getNumOccurrences() > 0);
   // Avoid other output when using a raw option.
-  if (PrintAll) {
-    outs() << '\n';
-    if (a)
-      outs() << a->getFileName() << "(" << o->getFileName() << ")";
-    else
-      outs() << "; " << o->getFileName();
-    outs() << ":\tfile format " << o->getFileFormatName() << "\n\n";
-  }
+  LLVM_DEBUG(dbgs() << '\n');
+  if (a)
+    LLVM_DEBUG(dbgs() << a->getFileName() << "(" << o->getFileName() << ")");
+  else
+    LLVM_DEBUG(dbgs() << "; " << o->getFileName());
+  LLVM_DEBUG(dbgs() << ":\tfile format " << o->getFileFormatName() << "\n\n");
 
   assert(Disassemble && "Disassemble not set!");
   DisassembleObject(o, /* InlineRelocations */ false);
@@ -1572,15 +1561,6 @@ int main(int argc, char **argv) {
 
   cl::HideUnrelatedOptions(LLVMMCToLLCategory);
 
-  StringMap<cl::Option *> &Map = cl::getRegisteredOptions();
-
-  // Unhide print-after-all option and place it in LLVMMCToLLCategory
-  // Change its help string value appropriately
-  assert(Map.count("print-after-all") > 0);
-  Map["print-after-all"]->setHiddenFlag(cl::NotHidden);
-  Map["print-after-all"]->addCategory(LLVMMCToLLCategory);
-  Map["print-after-all"]->setDescription("Print IR after each raiser pass");
-
   cl::ParseCommandLineOptions(argc, argv, "MC to LLVM IR dumper\n");
 
   ToolName = argv[0];
@@ -1603,7 +1583,9 @@ int main(int argc, char **argv) {
   Disassemble = true;
   FilterSections.addValue(".text");
 
+  llvm::setCurrentDebugType(DEBUG_TYPE);
   std::for_each(InputFilenames.begin(), InputFilenames.end(), DumpInput);
 
   return EXIT_SUCCESS;
 }
+#undef DEBUG_TYPE

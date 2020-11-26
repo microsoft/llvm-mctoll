@@ -21,12 +21,12 @@ public:
   ARMMachineInstructionRaiser() = delete;
   ARMMachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
                               MCInstRaiser *mcir);
-  bool raise();
-  FunctionType *getRaisedFunctionPrototype();
-  int getArgumentNumber(unsigned PReg);
-  Value *getRegOrArgValue(unsigned PReg, int MBBNo);
+  bool raise() override;
+  FunctionType *getRaisedFunctionPrototype() override;
+  int getArgumentNumber(unsigned PReg) override;
+  Value *getRegOrArgValue(unsigned PReg, int MBBNo) override;
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
-                              std::vector<Type *> &);
+                              std::vector<Type *> &) override;
 
   std::vector<JumpTableInfo> jtList;
 

@@ -5,14 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 0ae2ea8f83e3b79c587f0461b5cac98de1be220d
-Author: Peter Collingbourne <peter@pcc.me.uk>
-Date:   Tue Nov 10 15:50:04 2020 -0800
+commit e5cc7baf67dbd53d282bd9dff3f2241ca1d33f1d
+Author: Louis Dionne <ldionne.2@gmail.com>
+Date:   Wed Nov 25 16:14:28 2020 -0500
 
-    hwasan: Bring back operator {new,delete} interceptors on Android.
-    
-    It turns out that we can't remove the operator new and delete
-    interceptors on Android without breaking ABI, so bring them back
-    as forwards to the malloc and free functions.
-    
-    Differential Revision: https://reviews.llvm.org/D91219
+    [libc++] NFC: Reindent non-lockfree-atomics feature

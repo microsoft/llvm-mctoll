@@ -27,7 +27,7 @@ public:
   virtual ~ARMFunctionPrototype();
 
   Function *discover(MachineFunction &mf);
-  bool runOnMachineFunction(MachineFunction &mf);
+  bool runOnMachineFunction(MachineFunction &mf) override;
 
   static char ID;
 

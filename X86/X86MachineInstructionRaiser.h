@@ -51,7 +51,7 @@ public:
   X86MachineInstructionRaiser() = delete;
   X86MachineInstructionRaiser(MachineFunction &MF, const ModuleRaiser *MR,
                               MCInstRaiser *MIR);
-  bool raise();
+  bool raise() override;
 
   // Return the 64-bit super-register of PhysReg.
   unsigned int find64BitSuperReg(unsigned int PhysReg);
@@ -64,7 +64,7 @@ public:
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
   StoreInst *promotePhysregToStackSlot(int PhysReg, Value *ReachingValue,
                                        int MBBNo, Instruction *Alloca);
-  int getArgumentNumber(unsigned PReg);
+  int getArgumentNumber(unsigned PReg) override;
   auto getRegisterInfo() const { return x86RegisterInfo; }
   bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
   X86RaisedValueTracker *getRaisedValues() { return raisedValues; }
@@ -100,8 +100,12 @@ private:
   const X86InstrInfo *x86InstrInfo;
   const X86RegisterInfo *x86RegisterInfo;
 
+  bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
+                              std::vector<Type *> &) override;
+  Value *getRegOrArgValue(unsigned PReg, int MBBNo) override;
+
   bool raiseMachineFunction();
-  FunctionType *getRaisedFunctionPrototype();
+  FunctionType *getRaisedFunctionPrototype() override;
   // This raises MachineInstr to MachineInstruction
   bool raiseMachineInstr(MachineInstr &);
 
@@ -181,9 +185,6 @@ private:
   Type *getReturnTypeFromMBB(const MachineBasicBlock &MBB, bool &HasCall);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
   Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);
-  bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
-                              std::vector<Type *> &);
-  Value *getRegOrArgValue(unsigned PReg, int MBBNo);
   Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex);
 
   bool handleUnpromotedReachingDefs();

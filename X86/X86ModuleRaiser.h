@@ -24,8 +24,8 @@ public:
 
   MachineFunctionRaiser *
   CreateAndAddMachineFunctionRaiser(Function *F, const ModuleRaiser *MR,
-                                    uint64_t Start, uint64_t End);
-  bool collectDynamicRelocations();
+                                    uint64_t Start, uint64_t End) override;
+  bool collectDynamicRelocations() override;
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULERAISER_H

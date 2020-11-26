@@ -13,9 +13,7 @@
 
 #include "ExternalFunctions.h"
 #include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
@@ -40,10 +38,10 @@ std::map<std::string, ExternalFunctions::RetAndArgs>
 // FuncDeclVisitor
 
 class FuncDeclVisitor : public clang::RecursiveASTVisitor<FuncDeclVisitor> {
-  clang::SourceManager &SrcManager;
+  clang::ASTContext &Context;
 
 public:
-  FuncDeclVisitor(clang::SourceManager &SM) : SrcManager(SM) {
+  FuncDeclVisitor(clang::ASTContext &Context) : Context(Context) {
     llvm::setCurrentDebugType(DEBUG_TYPE);
   }
 
@@ -69,7 +67,8 @@ public:
         ExternalFunctions::UserSpecifiedFunctions.end()) {
       LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
                         << " : Ignoring duplicate entry in "
-                        << SrcManager.getFilename(FuncDecl->getLocation())
+                        << Context.getSourceManager().getFilename(
+                               FuncDecl->getLocation())
                         << "\n");
     } else {
       ExternalFunctions::UserSpecifiedFunctions.insert(
@@ -148,14 +147,14 @@ private:
 };
 
 class FuncDeclFinder : public clang::ASTConsumer {
-  clang::SourceManager &SourceManager;
   FuncDeclVisitor Visitor;
 
 public:
-  FuncDeclFinder(clang::SourceManager &SM) : SourceManager(SM), Visitor(SM) {}
+  FuncDeclFinder(clang::ASTContext &Context) : Visitor(Context) {}
 
   void HandleTranslationUnit(clang::ASTContext &Context) final {
     auto Decls = Context.getTranslationUnitDecl()->decls();
+    clang::SourceManager &SourceManager(Context.getSourceManager());
     for (auto &Decl : Decls) {
       if (!Decl->isFunctionOrFunctionTemplate())
         continue;
@@ -171,9 +170,10 @@ public:
 class FuncDeclFindingAction : public clang::ASTFrontendAction {
 public:
   std::unique_ptr<clang::ASTConsumer>
-  CreateASTConsumer(clang::CompilerInstance &CI, clang::StringRef) final {
+  CreateASTConsumer(clang::CompilerInstance &CI,
+                    clang::StringRef InFile) final {
     return std::unique_ptr<clang::ASTConsumer>(
-        new FuncDeclFinder(CI.getSourceManager()));
+        new FuncDeclFinder(CI.getASTContext()));
   }
 };
 
@@ -226,12 +226,12 @@ bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
     std::vector<std::string> &FileNames) {
   static llvm::cl::OptionCategory InclFileParseCategory("my-tool options");
   // 3 arguments viz., "dummy-tool IncludeFileName --", with no -debug
-  // 4 arguments viz., "dummy-tool -debug IncludeFileName --", with -debug
+  // 4 arguments viz., "dummy-tool IncludeFileName -debug --", with -debug
   const int ToolArgc = llvm::DebugFlag ? 4 : 3;
   const char **ToolArgv = new const char *[ToolArgc];
   ToolArgv[0] = "dummy-tool";
   if (llvm::DebugFlag)
-    ToolArgv[ToolArgc - 3] = "-debug";
+    ToolArgv[ToolArgc - 2] = "-debug";
   ToolArgv[ToolArgc - 1] = "--";
 
   // Add each include file as second argument to parse it for function
@@ -241,7 +241,7 @@ bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
     // argument. Reset it to ToolArgc in preparation for parsing the next
     // include file.
     int ArgSz = ToolArgc;
-    ToolArgv[ToolArgc - 2] = FileName.c_str();
+    ToolArgv[1] = FileName.c_str();
     clang::tooling::CommonOptionsParser OptParser(
         ArgSz, const_cast<const char **>(ToolArgv), InclFileParseCategory);
     clang::tooling::ClangTool Tool(OptParser.getCompilations(),

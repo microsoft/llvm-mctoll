@@ -29,8 +29,8 @@ public:
   // MachineFunction raiser objects of this module.
   MachineFunctionRaiser *
   CreateAndAddMachineFunctionRaiser(Function *f, const ModuleRaiser *mr,
-                                    uint64_t start, uint64_t end);
-  bool collectDynamicRelocations();
+                                    uint64_t start, uint64_t end) override;
+  bool collectDynamicRelocations() override;
 
   void collectRodataInstAddr(uint64_t instAddr) {
     InstArgCollect.push_back(instAddr);

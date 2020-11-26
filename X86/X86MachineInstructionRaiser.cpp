@@ -1870,7 +1870,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
                                            RaisedBB);
   SrcValue = getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB);
 
-  StoreInst *StInst = nullptr;
   if (!isMovInst) {
     // If this is not an instruction that just moves SrcValue, generate the
     // instruction that performs the appropriate operation and then store the
@@ -1916,7 +1915,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
   assert((SrcValue != nullptr) && "Unexpected null value to be stored while "
                                   "raising binary mem op instruction");
-  StInst = new StoreInst(SrcValue, MemRefVal, false, Align(), RaisedBB);
+  new StoreInst(SrcValue, MemRefVal, false, Align(), RaisedBB);
 
   return true;
 }

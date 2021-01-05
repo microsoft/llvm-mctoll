@@ -83,7 +83,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
       dyn_cast<ELF32LEObjectFile>(MR->getObjectFile());
   assert(Elf32LEObjFile != nullptr &&
          "Only 32-bit ELF binaries supported at present!");
-  unsigned char ExecType = Elf32LEObjFile->getELFFile()->getHeader().e_type;
+  unsigned char ExecType = Elf32LEObjFile->getELFFile().getHeader().e_type;
 
   assert((ExecType == ELF::ET_DYN) || (ExecType == ELF::ET_EXEC));
   // Find the section that contains the offset. That must be the PLT section
@@ -190,7 +190,7 @@ void ARMMIRevising::relocateBranch(MachineInstr &MInst) {
   assert(Elf32LEObjFile != nullptr &&
          "Only 32-bit ELF binaries supported at present.");
 
-  auto EType = Elf32LEObjFile->getELFFile()->getHeader().e_type;
+  auto EType = Elf32LEObjFile->getELFFile().getHeader().e_type;
   if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC)) {
     int64_t textSectionAddress = MR->getTextSectionAddress();
     assert(textSectionAddress >= 0 && "Failed to find text section address");
@@ -286,86 +286,97 @@ const Value *ARMMIRevising::getGlobalValueByOffset(int64_t MCInstOffset,
     GlobVal = M->getGlobalVariable(SymName);
     if (GlobVal == nullptr) {
       DataRefImpl SymImpl = Symbol->getRawDataRefImpl();
-      auto Symb = ObjFile->getSymbol(SymImpl);
-      assert((Symb->getType() == ELF::STT_OBJECT) &&
-             "Object symbol type is expected. But not found!");
-      GlobalValue::LinkageTypes Linkage;
-      switch (Symb->getBinding()) {
-      case ELF::STB_GLOBAL:
-        Linkage = GlobalValue::ExternalLinkage;
-        break;
-      default:
-        assert(false && "Unhandled dynamic symbol");
-      }
-      uint64_t SymSz = Symb->st_size;
-      Type *GlobValTy = nullptr;
-      switch (SymSz) {
-      case 4:
-        GlobValTy = Type::getInt32Ty(LCTX);
-        break;
-      case 2:
-        GlobValTy = Type::getInt16Ty(LCTX);
-        break;
-      case 1:
-        GlobValTy = Type::getInt8Ty(LCTX);
-        break;
-      default:
-        GlobValTy = ArrayType::get(Type::getInt8Ty(LCTX), SymSz);
-        break;
-      }
-
-      auto SymOrErr = Symbol->getValue();
-      assert(SymOrErr && "Can not find the symbol!");
-      uint64_t SymVirtAddr = *SymOrErr;
-      auto SecOrErr = Symbol->getSection();
-      assert(SecOrErr && "Can not find the section which is the symbol in!");
-
-      section_iterator SecIter = *SecOrErr;
-      Constant *GlobInit = nullptr;
-      if (SecIter->isBSS()) {
-        Linkage = GlobalValue::CommonLinkage;
-        if (ArrayType::classof(GlobValTy))
-          GlobInit = ConstantAggregateZero::get(GlobValTy);
-        else
-          GlobInit = ConstantInt::get(GlobValTy, 0);
-      } else {
-        auto StrOrErr = SecIter->getContents();
-        assert(StrOrErr && "Failed to get the content of section!");
-        StringRef SecData = *StrOrErr;
-        // Currently, Symbol->getValue() is virtual address.
-        unsigned Index = SymVirtAddr - SecIter->getAddress();
-        const unsigned char *Beg = SecData.bytes_begin() + Index;
-        char Shift = 0;
-        uint64_t InitVal = 0;
-        while (SymSz-- > 0) {
-          // We know this is little-endian
-          InitVal = ((*Beg++) << Shift) | InitVal;
-          Shift += 8;
+      auto SymbOrErr = ObjFile->getSymbol(SymImpl);
+      if (!SymbOrErr)
+        consumeError(SymbOrErr.takeError());
+      else {
+        auto Symb = SymbOrErr.get();
+        assert((Symb->getType() == ELF::STT_OBJECT) &&
+               "Object symbol type is expected. But not found!");
+        GlobalValue::LinkageTypes Linkage;
+        switch (Symb->getBinding()) {
+        case ELF::STB_GLOBAL:
+          Linkage = GlobalValue::ExternalLinkage;
+          break;
+        default:
+          assert(false && "Unhandled dynamic symbol");
         }
-        GlobInit = ConstantInt::get(GlobValTy, InitVal);
-      }
+        uint64_t SymSz = Symb->st_size;
+        Type *GlobValTy = nullptr;
+        switch (SymSz) {
+        case 4:
+          GlobValTy = Type::getInt32Ty(LCTX);
+          break;
+        case 2:
+          GlobValTy = Type::getInt16Ty(LCTX);
+          break;
+        case 1:
+          GlobValTy = Type::getInt8Ty(LCTX);
+          break;
+        default:
+          GlobValTy = ArrayType::get(Type::getInt8Ty(LCTX), SymSz);
+          break;
+        }
 
-      auto GlobVar = new GlobalVariable(*M, GlobValTy, false /* isConstant */,
-                                        Linkage, GlobInit, SymName);
-      uint64_t Align = 32;
-      switch (SymSz) {
-      default:
-      case 4:
-        // When the symbol size is bigger than 4 bytes, identify the object as
-        // array or struct and set alignment to 32 bits.
-        Align = 32;
-        break;
-      case 2:
-        Align = 16;
-        break;
-      case 1:
-        Align = 8;
-        break;
+        auto SymOrErr = Symbol->getValue();
+        if (!SymOrErr)
+          report_error(SymOrErr.takeError(), "Can not find the symbol!");
+
+        uint64_t SymVirtAddr = *SymOrErr;
+        auto SecOrErr = Symbol->getSection();
+        if (!SecOrErr)
+          report_error(SecOrErr.takeError(),
+                       "Can not find the section which is the symbol in!");
+
+        section_iterator SecIter = *SecOrErr;
+        Constant *GlobInit = nullptr;
+        if (SecIter->isBSS()) {
+          Linkage = GlobalValue::CommonLinkage;
+          if (ArrayType::classof(GlobValTy))
+            GlobInit = ConstantAggregateZero::get(GlobValTy);
+          else
+            GlobInit = ConstantInt::get(GlobValTy, 0);
+        } else {
+          auto StrOrErr = SecIter->getContents();
+          if (!StrOrErr)
+            report_error(StrOrErr.takeError(),
+                         "Failed to get the content of section!");
+          StringRef SecData = *StrOrErr;
+          // Currently, Symbol->getValue() is virtual address.
+          unsigned Index = SymVirtAddr - SecIter->getAddress();
+          const unsigned char *Beg = SecData.bytes_begin() + Index;
+          char Shift = 0;
+          uint64_t InitVal = 0;
+          while (SymSz-- > 0) {
+            // We know this is little-endian
+            InitVal = ((*Beg++) << Shift) | InitVal;
+            Shift += 8;
+          }
+          GlobInit = ConstantInt::get(GlobValTy, InitVal);
+        }
+
+        auto GlobVar = new GlobalVariable(*M, GlobValTy, false /* isConstant */,
+                                          Linkage, GlobInit, SymName);
+        uint64_t Align = 32;
+        switch (SymSz) {
+        default:
+        case 4:
+          // When the symbol size is bigger than 4 bytes, identify the object as
+          // array or struct and set alignment to 32 bits.
+          Align = 32;
+          break;
+        case 2:
+          Align = 16;
+          break;
+        case 1:
+          Align = 8;
+          break;
+        }
+        MaybeAlign MA(Align);
+        GlobVar->setAlignment(MA);
+        GlobVar->setDSOLocal(true);
+        GlobVal = GlobVar;
       }
-      MaybeAlign MA(Align);
-      GlobVar->setAlignment(MA);
-      GlobVar->setDSOLocal(true);
-      GlobVal = GlobVar;
     }
   } else {
     // If can not find the corresponding symbol.

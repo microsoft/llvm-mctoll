@@ -159,28 +159,23 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
     returnType = getReachingReturnType(*MBB);
   }
 
-  // If we are unable to discover the return type, check if the function has
-  // tail calls
+  // If we are unable to discover the return type, check if return register is
+  // defined.
   if (returnType == nullptr) {
     for (MachineBasicBlock &MBB : MF) {
       int MBBNo = MBB.getNumber();
-      if (tailCallMBBNos.find(MBBNo) != tailCallMBBNos.end()) {
-        // Get the register definition map of MBB
-        auto MBBDefinedPhysRegIter = PerMBBDefinedPhysRegMap.find(MBBNo);
-        if (MBBDefinedPhysRegIter != PerMBBDefinedPhysRegMap.end()) {
-          // If found, get the value defined for X86::RAX
-          MCPhysRegSizeMap DefinedPhysRegMap = MBBDefinedPhysRegIter->second;
-          auto DefinedPhysRegMapIter = DefinedPhysRegMap.find(X86::RAX);
-          // If RAX is defined by the end of the block, get the type. If found,
-          // this is a block with tail call. So, the return of the tail call is
-          // the return of this function as well.
-          if (DefinedPhysRegMapIter != DefinedPhysRegMap.end()) {
-            returnType = Type::getIntNTy(MF.getFunction().getContext(),
-                                         DefinedPhysRegMapIter->second * 8);
-            // We do not need to look for other blocks with tail calls because
-            // all of them should have the same return values.
-            break;
-          }
+      // Get the register definition map of MBB
+      auto MBBDefinedPhysRegIter = PerMBBDefinedPhysRegMap.find(MBBNo);
+      if (MBBDefinedPhysRegIter != PerMBBDefinedPhysRegMap.end()) {
+        // If found, get the value defined for X86::RAX
+        MCPhysRegSizeMap DefinedPhysRegMap = MBBDefinedPhysRegIter->second;
+        auto DefinedPhysRegMapIter = DefinedPhysRegMap.find(X86::RAX);
+        // If RAX is defined by the end of the block, get the type. If found,
+        // this is a block with tail call. So, the return of the tail call is
+        // the return of this function as well.
+        if (DefinedPhysRegMapIter != DefinedPhysRegMap.end()) {
+          returnType = Type::getIntNTy(MF.getFunction().getContext(),
+                                       DefinedPhysRegMapIter->second * 8);
         }
       }
     }
@@ -207,7 +202,6 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   unlinkEmptyMBBs();
 
   MF.getRegInfo().freezeReservedRegs(MF);
-  Type *returnType = nullptr;
   std::vector<Type *> argTypeVector;
 
   // 1. Discover function arguments.
@@ -223,6 +217,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // since it only adds the reg and its sub-registers.
   MCPhysRegSizeMap MBBDefRegs;
 
+  PerMBBDefinedPhysRegMap.clear();
+
   // Walk the CFG DFS to discover first register usage
   LoopTraversal Traversal;
   LoopTraversal::TraversalOrder TraversedMBBOrder = Traversal.traverse(MF);
@@ -232,7 +228,6 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
       continue;
 
     int MBBNo = MBB->getNumber();
-    tailCallMBBNos.clear();
     MBBDefRegs.clear();
     // TODO: LoopTraversal assumes fully-connected CFG. However, need to
     // handle blocks with terminator instruction that could potentially
@@ -405,8 +400,6 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
                 // Mark it as defined register
                 MBBDefRegs[find64BitSuperReg(RetReg)] = RetRegSizeInBits / 8;
               }
-              // Record MBBNo as a block with tail call
-              tailCallMBBNos.insert(MBBNo);
             }
           } else if (Opcode != X86::CALL64r) {
             // Not possible to statically determine the target of register-based
@@ -471,7 +464,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // first argument register usage.
   buildFuncArgTypeVector(FunctionLiveInRegs, argTypeVector);
   // 2. Discover function return type
-  returnType = getFunctionReturnType();
+  Type *returnType = getFunctionReturnType();
+  if (returnType == nullptr)
+    return nullptr;
 
   // The Function object associated with current MachineFunction object
   // is only a place holder. It was created to facilitate creation of
@@ -540,44 +535,44 @@ Type *X86MachineInstructionRaiser::getReachingReturnType(
   // register.
   if (!HasCall) {
     if (ReturnType == nullptr) {
+      // Initialize a bit vector tracking visited basic blocks
+      BitVector BlockVisited(MF.getNumBlockIDs(), false);
+      SmallVector<MachineBasicBlock *, 8> WorkList;
+      Type *ReturnTypeOnPath = nullptr;
+
       for (auto P : MBB.predecessors()) {
-        // Initialize a bit vector tracking visited basic blocks
-        BitVector BlockVisited(MF.getNumBlockIDs(), false);
-        SmallVector<MachineBasicBlock *, 8> WorkList;
-        Type *ReturnTypeOnPath = nullptr;
+        WorkList.insert(WorkList.begin(), P);
+      }
 
-        WorkList.push_back(P);
-
-        while (!WorkList.empty() && !ReturnType) {
-          MachineBasicBlock *PredMBB = WorkList.pop_back_val();
-          int CurPredMBBNo = PredMBB->getNumber();
-          if (!BlockVisited[CurPredMBBNo]) {
-            // Mark block as visited
-            BlockVisited.set(CurPredMBBNo);
-            // Get function return type from MBB
-            ReturnTypeOnPath = getReturnTypeFromMBB(*PredMBB, HasCall);
-            // Check out whether the ReturnType get from called instruction.
-            // Only keep the first find called function return type, continue
-            // to find other reach tree which has not call instruction.
-            // If the MBB has no call instruction and return type is not found,
-            // continue traversal up its predecessors.
-            if (!HasCall && ReturnTypeOnPath == nullptr) {
-              // Continue traversal
-              for (auto Pred : PredMBB->predecessors()) {
-                if (!BlockVisited[Pred->getNumber()])
-                  WorkList.push_back(Pred);
-              }
-            } else {
-              // ReturnTypeOnPath is found
-              if (ReturnTypeOnPath) {
-                // Ensure it is the same as any found along other reverse
-                // traversals.
-                if (ReturnType)
-                  assert(ReturnType == ReturnTypeOnPath);
-                else
-                  // Return type found on this traversal
-                  ReturnType = ReturnTypeOnPath;
-              }
+      while (!WorkList.empty() && !ReturnType) {
+        MachineBasicBlock *PredMBB = WorkList.pop_back_val();
+        int CurPredMBBNo = PredMBB->getNumber();
+        if (!BlockVisited[CurPredMBBNo]) {
+          // Mark block as visited
+          BlockVisited.set(CurPredMBBNo);
+          // Get function return type from MBB
+          ReturnTypeOnPath = getReturnTypeFromMBB(*PredMBB, HasCall);
+          // Check out whether the ReturnType get from called instruction.
+          // Only keep the first find called function return type, continue
+          // to find other reach tree which has not call instruction.
+          // If the MBB has no call instruction and return type is not found,
+          // continue traversal up its predecessors.
+          if (!HasCall && ReturnTypeOnPath == nullptr) {
+            // Continue traversal
+            for (auto Pred : PredMBB->predecessors()) {
+              if (!BlockVisited[Pred->getNumber()])
+                WorkList.insert(WorkList.begin(), Pred);
+            }
+          } else {
+            // ReturnTypeOnPath is found
+            if (ReturnTypeOnPath) {
+              // Ensure it is the same as any found along other reverse
+              // traversals.
+              if (ReturnType)
+                assert(ReturnType == ReturnTypeOnPath);
+              else
+                // Return type found on this traversal
+                ReturnType = ReturnTypeOnPath;
             }
           }
         }
@@ -609,11 +604,13 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     // function.
     if (I->isCall()) {
       Function *CalledFunc = getCalledFunction(*I);
-      assert(
-          (CalledFunc != nullptr) &&
-          "No called function prototype found while determining return type");
       HasCall = true;
-      ReturnType = CalledFunc->getReturnType();
+      // Raised function prototype of the called function may not yet be
+      // constructed. In that case, consider return type to be void.
+      ReturnType =
+          (CalledFunc == nullptr)
+              ? nullptr /* Type::getVoidTy(MF.getFunction().getContext()) */
+              : CalledFunc->getReturnType();
       break;
     }
 
@@ -780,9 +777,9 @@ X86MachineInstructionRaiser::getCalledFunction(const MachineInstr &MI) {
 
     // Compute the MCInst index of the call target
     MCInstRaiser *MCIR = getMCInstRaiser();
+    assert(MCIR != nullptr && "MCInstRaiser not initialized");
     // Get MCInst offset of the corresponding call instruction in the binary.
     uint64_t MCInstOffset = MCIR->getMCInstIndex(MI);
-    assert(MCIR != nullptr && "MCInstRaiser not initialized");
     uint64_t MCInstSize = MCIR->getMCInstSize(MCInstOffset);
     // First check if PC-relative call target embedded in the call
     // instruction can be used to get called function.

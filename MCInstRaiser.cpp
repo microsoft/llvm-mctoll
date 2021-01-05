@@ -17,8 +17,6 @@
 
 void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
                             const MCInstrInfo *MII) {
-  LLVM_DEBUG(dbgs() << "Parsed MCInst List\n");
-
   // Set the first instruction index as the entry of current MBB
   // Walk the mcInstMap
   //     a) if the current instruction is a target instruction
@@ -33,7 +31,6 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
        mcInstorDataIter != mcInstMap.end(); mcInstorDataIter++) {
     uint64_t mcInstIndex = mcInstorDataIter->first;
     MCInstOrData mcInstorData = mcInstorDataIter->second;
-    LLVM_DEBUG(mcInstorData.dump());
 
     // If the current mcInst is a target of some instruction,
     // i) record the target of previous instruction and fall-through as
@@ -222,8 +219,10 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
 
 void MCInstRaiser::dump() const {
   for (auto in : mcInstMap) {
-    outs() << in.first << " : ";
-    in.second.dump();
+    uint64_t mcInstIndex = in.first;
+    MCInstOrData mcInstorData = in.second;
+    LLVM_DEBUG(dbgs() << "0x" << format("%016" PRIx64, mcInstIndex) << ": ");
+    LLVM_DEBUG(mcInstorData.dump());
   }
 }
 

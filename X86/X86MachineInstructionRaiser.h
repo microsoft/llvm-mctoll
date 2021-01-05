@@ -205,8 +205,6 @@ private:
   bool isEffectiveAddrValue(Value *Val);
 
   std::vector<JumpTableInfo> jtList;
-  // Set of MBBNos that end with tail calls
-  std::set<int> tailCallMBBNos;
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MACHINEINSTRUCTIONRAISER_H

@@ -11,6 +11,9 @@
 #include "MachineFunctionRaiser.h"
 #include "MachineInstructionRaiser.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "mctoll"
 
 Function *ModuleRaiser::getRaisedFunctionAt(uint64_t Index) const {
   int64_t TextSecAddr = getTextSectionAddress();
@@ -71,26 +74,49 @@ Function *ModuleRaiser::getCalledFunctionUsingTextReloc(uint64_t Loc,
 bool ModuleRaiser::runMachineFunctionPasses() {
   bool Success = true;
 
+  for (auto MFR : mfRaiserVector) {
+    LLVM_DEBUG(dbgs() << "Function: "
+                      << MFR->getMachineFunction().getName().data() << "\n");
+    LLVM_DEBUG(dbgs() << "Parsed MCInst List\n");
+    LLVM_DEBUG(MFR->getMCInstRaiser()->dump());
+  }
+
   // For each of the functions, run passes to set up for instruction raising.
   for (auto MFR : mfRaiserVector) {
     // 1. Build CFG
     MCInstRaiser *MCIR = MFR->getMCInstRaiser();
     // Populates the MachineFunction with CFG.
     MCIR->buildCFG(MFR->getMachineFunction(), MIA, MII);
-
-    // 2. Construct function prototype.
-    // Knowing the function prototypes prior to raising the instructions
-    // facilitates raising of call instructions whose targets are within
-    // the current module.
-    // TODO : Adjust this when raising multiple modules.
-    Function *RF = MFR->getRaisedFunction();
-    if (RF == nullptr) {
-      FunctionType *FT =
-          MFR->getMachineInstrRaiser()->getRaisedFunctionPrototype();
-      assert(FT != nullptr && "Failed to build function prototype");
-    }
   }
 
+  // Construct function prototypes for each of the MachineFunctions.
+  // Knowing the function prototypes prior to raising the instructions
+  // facilitates raising of call instructions whose targets are within
+  // the current module.
+  // Iterate the MachineFunctions twice to determine the prototypes of functions
+  // that might call those whose prototypes were not yet constructed.
+  bool AllPrototypesConstructed;
+  const int IterCount = 2;
+  for (int i = 0; i < IterCount; i++) {
+    AllPrototypesConstructed = true;
+    for (auto MFR : mfRaiserVector) {
+      LLVM_DEBUG(dbgs() << "Build Prototype for : "
+                        << MFR->getMachineFunction().getName().data() << "\n");
+      Function *RF = MFR->getRaisedFunction();
+      if (RF == nullptr) {
+        FunctionType *FT =
+            MFR->getMachineInstrRaiser()->getRaisedFunctionPrototype();
+        AllPrototypesConstructed |= (FT != nullptr);
+      }
+    }
+    LLVM_DEBUG(dbgs() << "Raised Function Prototypes: \n");
+    LLVM_DEBUG({
+      for (auto MFR : mfRaiserVector) {
+        MFR->getRaisedFunction()->dump();
+      }
+    });
+  }
+  assert(AllPrototypesConstructed && "Failed to construct all prototypes");
   // Run instruction raiser passes.
   for (auto MFR : mfRaiserVector)
     Success |= MFR->runRaiserPasses();

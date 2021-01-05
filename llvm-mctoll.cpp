@@ -176,14 +176,14 @@ cl::opt<unsigned long long> StopAddress("stop-address",
                                         cl::init(UINT64_MAX));
 cl::list<std::string> llvm::IncludeFileNames(
     "include-files", cl::CommaSeparated,
-    cl::desc("Header files with function prototypes using standard C syntax."),
+    cl::desc("List of comma-seperated header files with function prototypes "
+             "using standard C syntax."),
     cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
-cl::alias static IncludeFileNamesShort("I",
-                                       cl::desc("Alias for --include-files"),
-                                       cl::aliasopt(llvm::IncludeFileNames),
-                                       cl::cat(LLVMMCToLLCategory),
-                                       cl::NotHidden);
+cl::alias static IncludeFileNamesShort(
+    "I", cl::desc("Alias for --include-files=<single-header-file>"),
+    cl::aliasopt(llvm::IncludeFileNames), cl::cat(LLVMMCToLLCategory),
+    cl::NotHidden);
 
 namespace {
 static ManagedStatic<std::vector<std::string>> RunPassNames;
@@ -654,14 +654,31 @@ static std::error_code getRelocationValueString(const ELFObjectFile<ELFT> *Obj,
 
 static uint8_t getElfSymbolType(const ObjectFile *Obj, const SymbolRef &Sym) {
   assert(Obj->isELF());
-  if (auto *Elf32LEObj = dyn_cast<ELF32LEObjectFile>(Obj))
-    return Elf32LEObj->getSymbol(Sym.getRawDataRefImpl())->getType();
-  if (auto *Elf64LEObj = dyn_cast<ELF64LEObjectFile>(Obj))
-    return Elf64LEObj->getSymbol(Sym.getRawDataRefImpl())->getType();
-  if (auto *Elf32BEObj = dyn_cast<ELF32BEObjectFile>(Obj))
-    return Elf32BEObj->getSymbol(Sym.getRawDataRefImpl())->getType();
-  if (auto *Elf64BEObj = cast<ELF64BEObjectFile>(Obj))
-    return Elf64BEObj->getSymbol(Sym.getRawDataRefImpl())->getType();
+  auto SymbImpl = Sym.getRawDataRefImpl();
+  if (auto *Elf32LEObj = dyn_cast<ELF32LEObjectFile>(Obj)) {
+    auto SymbOrErr = Elf32LEObj->getSymbol(SymbImpl);
+    if (!SymbOrErr)
+      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+    return SymbOrErr.get()->getType();
+  }
+  if (auto *Elf64LEObj = dyn_cast<ELF64LEObjectFile>(Obj)) {
+    auto SymbOrErr = Elf64LEObj->getSymbol(SymbImpl);
+    if (!SymbOrErr)
+      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+    return SymbOrErr.get()->getType();
+  }
+  if (auto *Elf32BEObj = dyn_cast<ELF32BEObjectFile>(Obj)) {
+    auto SymbOrErr = Elf32BEObj->getSymbol(SymbImpl);
+    if (!SymbOrErr)
+      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+    return SymbOrErr.get()->getType();
+  }
+  if (auto *Elf64BEObj = cast<ELF64BEObjectFile>(Obj)) {
+    auto SymbOrErr = Elf64BEObj->getSymbol(SymbImpl);
+    if (!SymbOrErr)
+      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+    return SymbOrErr.get()->getType();
+  }
   llvm_unreachable("Unsupported binary format");
   // Keep the code analyzer happy
   return ELF::STT_NOTYPE;
@@ -1032,23 +1049,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     // Sort relocations by address.
     std::sort(Rels.begin(), Rels.end(), RelocAddressLess);
 
-    StringRef SegmentName = "";
-    if (const MachOObjectFile *MachO = dyn_cast<const MachOObjectFile>(Obj)) {
-      DataRefImpl DR = Section.getRawDataRefImpl();
-      SegmentName = MachO->getSectionFinalSegmentName(DR);
-    }
-
-    StringRef name;
-
-    if ((SectionAddr <= StopAddress) &&
-        (SectionAddr + SectSize) >= StartAddress) {
-      LLVM_DEBUG(dbgs() << "Disassembling section ");
-      if (!SegmentName.empty())
-        LLVM_DEBUG(dbgs() << SegmentName << ",");
-      LLVM_DEBUG(dbgs() << name << "\n");
-    }
-
     // If the section has no symbol at the start, just insert a dummy one.
+    StringRef name;
     if (Symbols.empty() || Symbols[0].Addr != 0) {
       Symbols.insert(
           Symbols.begin(),
@@ -1086,6 +1088,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     MachineFunctionRaiser *curMFRaiser = nullptr;
 
     // Disassemble symbol by symbol.
+    LLVM_DEBUG(dbgs() << "BEGIN Disassembly of Functions in Section : "
+                      << SectionName.data() << "\n");
     for (unsigned si = 0, se = Symbols.size(); si != se; ++si) {
       uint64_t Start = Symbols[si].Addr - SectionAddr;
       // The end is either the section end or the beginning of the next
@@ -1191,11 +1195,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         // Create a new MachineFunction raiser
         curMFRaiser = moduleRaiser->CreateAndAddMachineFunctionRaiser(
             Func, moduleRaiser, Start, End);
-        // Flag to indicate all instructions of the current function were
-        // successfully decoded.
-        // TODO: As of now, we will only raise functions with all instructions
-        // decoded.
-        // bool allInstructionsDecoded = true;
         LLVM_DEBUG(dbgs() << "\nFunction " << Symbols[si].Name << ":\n");
       } else {
         // Continue using to the most recent MachineFunctionRaiser
@@ -1354,7 +1353,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
           errs() << "\n";
         }
 
-        // allInstructionsDecoded &= Disassembled;
         // Add MCInst to the list if all instructions were decoded
         // successfully till now. Else, do not bother adding since no attempt
         // will be made to raise this function.
@@ -1399,6 +1397,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       FuncFilter->eraseFunctionBySymbol(Symbols[si].Name,
                                         FunctionFilter::FILTER_INCLUDE);
     }
+    LLVM_DEBUG(dbgs() << "END Disassembly of Functions in Section : "
+                      << SectionName.data() << "\n");
 
     // Record all targets of the last function parsed
     curMFRaiser = moduleRaiser->getCurrentMachineFunctionRaiser();
@@ -1527,7 +1527,7 @@ static void DumpInput(StringRef file) {
     if (o->getArch() == Triple::x86_64) {
       const ELF64LEObjectFile *Elf64LEObjFile = dyn_cast<ELF64LEObjectFile>(o);
       // Raise x86_64 relocatable binaries (.o files) is not supported.
-      auto EType = Elf64LEObjFile->getELFFile()->getHeader().e_type;
+      auto EType = Elf64LEObjFile->getELFFile().getHeader().e_type;
       if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC))
         DumpObject(o);
       else {

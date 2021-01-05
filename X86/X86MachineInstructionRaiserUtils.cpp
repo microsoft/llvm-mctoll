@@ -426,7 +426,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
   assert(Elf64LEObjFile != nullptr &&
          "Only 64-bit ELF binaries supported at present.");
 
-  auto EType = Elf64LEObjFile->getELFFile()->getHeader().e_type;
+  auto EType = Elf64LEObjFile->getELFFile().getHeader().e_type;
   if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC)) {
     uint64_t PCOffset = TextSectionAddress + MCInstOffset + MCInstSz + Disp;
     const RelocationRef *DynReloc = MR->getDynRelocAtOffset(PCOffset);
@@ -451,8 +451,10 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
           llvm::LLVMContext &Ctx(MF.getFunction().getContext());
           DataRefImpl SymbImpl = DynReloc->getSymbol()->getRawDataRefImpl();
           // get symbol
-          auto Symb = Elf64LEObjFile->getSymbol(SymbImpl);
+          auto SymbOrErr = Elf64LEObjFile->getSymbol(SymbImpl);
+          assert(SymbOrErr && "PC-relative access: Dynamic symbol not found");
           // get symbol size
+          auto Symb = SymbOrErr.get();
           uint64_t SymbSize = Symb->st_size;
           GlobalValue::LinkageTypes Lnkg;
           switch (Symb->getBinding()) {
@@ -558,8 +560,10 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
         llvm::LLVMContext &Ctx(MF.getFunction().getContext());
         DataRefImpl symbImpl = TextReloc->getSymbol()->getRawDataRefImpl();
         // get symbol
-        auto Symb = Elf64LEObjFile->getSymbol(symbImpl);
+        auto SymbOrErr = Elf64LEObjFile->getSymbol(symbImpl);
+        assert(SymbOrErr && "PC-relative access: Relocation symbol not found");
         // get symbol size
+        auto Symb = SymbOrErr.get();
         uint64_t SymSize = Symb->st_size;
         GlobalValue::LinkageTypes Lnkg;
         switch (Symb->getBinding()) {
@@ -1106,7 +1110,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
   assert(Elf64LEObjFile != nullptr &&
          "Only 64-bit ELF binaries supported at present.");
-  unsigned char ExecType = Elf64LEObjFile->getELFFile()->getHeader().e_type;
+  unsigned char ExecType = Elf64LEObjFile->getELFFile().getHeader().e_type;
   assert((ExecType == ELF::ET_DYN) || (ExecType == ELF::ET_EXEC));
   // Find the section that contains the offset. That must be the PLT section
   for (section_iterator SecIter : Elf64LEObjFile->sections()) {
@@ -1327,7 +1331,8 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
 }
 
 // Return a value corresponding to global symbol at Offset referenced in
-// MachineInst MI.
+// MachineInst MI. This function returns a data variable or a function variable
+// depending on the symbol at the Offset being STT_OBJECT or STT_FUNC.
 Value *
 X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                                                       uint64_t Offset) {
@@ -1339,9 +1344,10 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
   assert((Offset > 0) &&
          "Unhandled non-positive displacement global variable value");
   // Find symbol at Offset
-  SymbolRef GlobalDataSym;
-  bool GlobalDataSymFound = false;
-  unsigned GlobalDataOffset = 0;
+  SymbolRef GlobalSymRef;
+  bool GlobalSymFound = false;
+  unsigned GlobalSymOffset = 0;
+  uint8_t GlobalSymType = ELF::STT_NOTYPE;
   llvm::LLVMContext &Ctx(MF.getFunction().getContext());
 
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
@@ -1349,297 +1355,326 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
   for (auto Symbol : Elf64LEObjFile->symbols()) {
-    if (Symbol.getELFType() == ELF::STT_OBJECT) {
-      auto SymAddr = Symbol.getAddress();
-      auto SymSize = Symbol.getSize();
-      assert(SymAddr && "Failed to lookup symbol for global address");
-      uint64_t SymAddrVal = SymAddr.get();
-      // We have established that Offset is not negative above. So, OK to
-      // cast.
-      // Check if the memory address Offset is in the range [SymAddrVal,
-      // SymAddrVal+SymSize)
-      if ((SymAddrVal <= (unsigned)Offset) &&
-          ((SymAddrVal + SymSize) > (unsigned)Offset)) {
-        GlobalDataSym = Symbol;
-        GlobalDataOffset = Offset - SymAddrVal;
-        GlobalDataSymFound = true;
-        break;
+    auto SymNameOrErr = Symbol.getName();
+    if (!SymNameOrErr) {
+      // No need to report. Just consume it.
+      consumeError(SymNameOrErr.takeError());
+    } else {
+      GlobalSymType = Symbol.getELFType();
+
+      if ((GlobalSymType == ELF::STT_OBJECT) ||
+          (GlobalSymType == ELF::STT_FUNC)) {
+        auto SymAddr = Symbol.getAddress();
+        auto SymSize = Symbol.getSize();
+
+        if (!SymAddr)
+          report_error(SymAddr.takeError(),
+                       "Failed to lookup symbol for global address");
+        uint64_t SymAddrVal = SymAddr.get();
+        // We have established that Offset is not negative above. So, OK to
+        // cast.
+        // Check if the memory address Offset is in the range [SymAddrVal,
+        // SymAddrVal+SymSize)
+        if ((SymAddrVal <= (unsigned)Offset) &&
+            ((SymAddrVal + SymSize) > (unsigned)Offset)) {
+          GlobalSymRef = Symbol;
+          GlobalSymOffset = Offset - SymAddrVal;
+          GlobalSymFound = true;
+          break;
+        }
       }
     }
   }
 
-  // Get memory access size
-  unsigned MemAccessSizeInBytes = getInstructionMemOpSize(MI.getOpcode());
-
-  // If MI is not a memory accessing instruction, determine the access size by
-  // the size of destination register.
-  if (MemAccessSizeInBytes == 0) {
-    MachineOperand MO = MI.getOperand(0);
-    assert(MI.getNumExplicitDefs() == 1 && MO.isReg() &&
-           "Expect one explicit register def operand");
-    MemAccessSizeInBytes = getPhysRegSizeInBits(MO.getReg()) / sizeof(uint64_t);
-  }
-
-  assert((MemAccessSizeInBytes != 0) && "Unknown memory access size");
-
-  if (!GlobalDataSymFound) {
+  if (!GlobalSymFound) {
     // If Offset does not correspond to a global symbol, get the corresponding
     // rodata value.
     GlobalVariableValue =
         getOrCreateGlobalRODataValueAtOffset(Offset, RaisedBB);
   } else {
-    // If Offset corresponds to a global symbol, materialize a global
-    // variable.
-    Expected<StringRef> GlobalDataSymName = GlobalDataSym.getName();
-    assert(GlobalDataSymName && "Failed to find global symbol name.");
-    // Find if a global value associated with symbol name is already
-    // created
-    StringRef GlobalDataSymNameIndexStrRef(GlobalDataSymName.get());
-    for (GlobalVariable &GV : MR->getModule()->globals()) {
-      if (GV.getName().compare(GlobalDataSymNameIndexStrRef) == 0) {
-        GlobalVariableValue = &GV;
+    // If Offset corresponds to a function symbol, get the called function
+    // value.
+    if (GlobalSymType == ELF::STT_FUNC) {
+      GlobalVariableValue = MR->getRaisedFunctionAt(Offset);
+    } else {
+      // If Offset corresponds to a global symbol, materialize a global
+      // variable.
+      Expected<StringRef> GlobalDataSymName = GlobalSymRef.getName();
+      if (!GlobalDataSymName)
+        report_error(GlobalDataSymName.takeError(),
+                     "Failed to find global symbol name.");
+      // Find if a global value associated with symbol name is already
+      // created
+      StringRef GlobalDataSymNameIndexStrRef(GlobalDataSymName.get());
+      for (GlobalVariable &GV : MR->getModule()->globals()) {
+        if (GV.getName().compare(GlobalDataSymNameIndexStrRef) == 0) {
+          GlobalVariableValue = &GV;
+        }
       }
-    }
-    // By default, the symbol alignment is the symbol section alignment.
-    // Will be adjusted as needed based on the size of the symbol later.
-    auto GlobalDataSymSection = GlobalDataSym.getSection();
-    assert(GlobalDataSymSection && "No section for global symbol found");
-    uint64_t GlobDataSymAlignment = GlobalDataSymSection.get()->getAlignment();
-    // Make sure the alignment is a power of 2
-    assert(((GlobDataSymAlignment & (GlobDataSymAlignment - 1)) == 0) &&
-           "Section alignment not a power of 2");
+      // By default, the symbol alignment is the symbol section alignment.
+      // Will be adjusted as needed based on the size of the symbol later.
+      auto GlobalDataSymSection = GlobalSymRef.getSection();
+      assert(GlobalDataSymSection && "No section for global symbol found");
+      uint64_t GlobDataSymAlignment =
+          GlobalDataSymSection.get()->getAlignment();
+      // Make sure the alignment is a power of 2
+      assert(((GlobDataSymAlignment & (GlobDataSymAlignment - 1)) == 0) &&
+             "Section alignment not a power of 2");
 
-    if (GlobalVariableValue == nullptr) {
-      Type *GlobalValTy = nullptr;
-      // Get all necessary information about the global symbol.
-      DataRefImpl SymbImpl = GlobalDataSym.getRawDataRefImpl();
-      // get symbol
-      auto Symb = Elf64LEObjFile->getSymbol(SymbImpl);
-      // get symbol size
-      uint64_t SymbSize = Symb->st_size;
-      // If symbol size is less than symbol section size, set alignment to
-      // symbol size.
-      if (SymbSize < GlobDataSymAlignment) {
-        GlobDataSymAlignment = SymbSize;
-      }
-      GlobalValue::LinkageTypes Lnkg;
-      switch (Symb->getBinding()) {
-      case ELF::STB_GLOBAL:
-        Lnkg = GlobalValue::ExternalLinkage;
-        break;
-      case ELF::STB_LOCAL:
-        Lnkg = GlobalValue::InternalLinkage;
-        break;
-      default:
-        assert(false && "Unhandled global symbol binding type");
+      // Get memory access size
+      unsigned MemAccessSizeInBytes = getInstructionMemOpSize(MI.getOpcode());
+
+      // If MI is not a memory accessing instruction, determine the access size
+      // by the size of destination register.
+      if (MemAccessSizeInBytes == 0) {
+        MachineOperand MO = MI.getOperand(0);
+        assert(MI.getNumExplicitDefs() == 1 && MO.isReg() &&
+               "Expect one explicit register def operand");
+        MemAccessSizeInBytes =
+            getPhysRegSizeInBits(MO.getReg()) / sizeof(uint64_t);
       }
 
-      // Check that symbol type is data object, representing a variable or
-      // array etc.
-      assert((Symb->getType() == ELF::STT_OBJECT) &&
-             "Object symbol type expected. Not found");
+      assert((MemAccessSizeInBytes != 0) && "Unknown memory access size");
 
-      // Memory access is in bytes. So, need to multiply the alignment by 8
-      // for the number of bits.
-      GlobalValTy = Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8);
-
-      // get symbol value - this is the virtual address of symbol's value
-      uint64_t SymVirtualAddr = Symb->st_value;
-
-      // get the initial value of the global data symbol at SymVirtualAddr
-      // from the section that contains the virtual address SymVirtualAddr.
-      // In executable and shared object files, st_value holds a virtual
-      // address.
-      SmallVector<Constant *, 32> ConstantVec;
-      bool isBSSSymbol = false;
-      for (section_iterator SecIter : Elf64LEObjFile->sections()) {
-        uint64_t SecStart = SecIter->getAddress();
-        uint64_t SecEnd = SecStart + SecIter->getSize();
-        if ((SecStart <= SymVirtualAddr) && (SecEnd > SymVirtualAddr)) {
-          // Get the initial symbol value only if this is not a bss section.
-          // Else, symVal is already initialized to 0.
-          if (SecIter->isBSS()) {
-            Lnkg = GlobalValue::CommonLinkage;
-            isBSSSymbol = true;
-          } else {
-            StringRef SecData = unwrapOrError(
-                SecIter->getContents(), MR->getObjectFile()->getFileName());
-            unsigned Index = SymVirtualAddr - SecStart;
-            const char *beg =
-                reinterpret_cast<const char *>(SecData.bytes_begin() + Index);
-
-            // Symbol size should at least be the same as memory access size
-            // of the instruction.
-            assert(MemAccessSizeInBytes <= SymbSize &&
-                   "Inconsistent values of memory access size and symbol size");
-            // Read MemAccesssSize number of bytes and check if they represent
-            // addresses in .rodata.
-            StringRef SymbolBytes(beg, SymbSize);
-            unsigned BytesRead = 0;
-            // Symbol represents addresses into .rodata section.
-            bool SymHasRODataAddrs = false;
-            // Symbol array values greater that 8 bytes are not yet supported.
-            uint64_t SymArrayElem = 0;
-            for (unsigned char B : SymbolBytes) {
-              unsigned ByteNum = ++BytesRead % MemAccessSizeInBytes;
-              if (ByteNum == 0) {
-                // Finish reading one symbol data item of size.
-                SymArrayElem |= B << (MemAccessSizeInBytes - 1) * 8;
-                // Get the value representing .rodata content if it is .rodata
-                // section address.
-                Value *RODataValue = getOrCreateGlobalRODataValueAtOffset(
-                    SymArrayElem, RaisedBB);
-                // Note if the first unit of data read is an address of .rodata
-                // content.
-                if (BytesRead == MemAccessSizeInBytes)
-                  SymHasRODataAddrs = (RODataValue != nullptr);
-                // If the SymArrElem does not correspond to an .rodata address
-                // consider it to be data.
-                if (!SymHasRODataAddrs) {
-                  Constant *ConstVal = ConstantInt::get(
-                      Ctx, APInt(MemAccessSizeInBytes * 8, SymArrayElem));
-                  ConstantVec.push_back(ConstVal);
-                } else {
-                  // SymArrElem corresponds to an .rodata address,
-                  if (isa<ConstantExpr>(RODataValue)) {
-                    ConstantVec.push_back(dyn_cast<Constant>(RODataValue));
-                  } else {
-                    assert(false && "Unhandled global value");
-                  }
-                }
-                // Clear symbol element value
-                SymArrayElem = 0;
-              } else
-                SymArrayElem |= B << (ByteNum - 1) * 8;
-            }
-            // Ensure that all SymSize bytes were read.
-            assert(BytesRead == SymbSize &&
-                   "Incorrect number of symbol bytes read");
-          }
+      if (GlobalVariableValue == nullptr) {
+        Type *GlobalValTy = nullptr;
+        // Get all necessary information about the global symbol.
+        DataRefImpl SymbImpl = GlobalSymRef.getRawDataRefImpl();
+        // get symbol
+        auto SymbOrErr = Elf64LEObjFile->getSymbol(SymbImpl);
+        assert(SymbOrErr && "Global symbol not found");
+        auto Symb = SymbOrErr.get();
+        // get symbol size
+        uint64_t SymbSize = Symb->st_size;
+        // If symbol size is less than symbol section size, set alignment to
+        // symbol size.
+        if (SymbSize < GlobDataSymAlignment) {
+          GlobDataSymAlignment = SymbSize;
+        }
+        GlobalValue::LinkageTypes Lnkg;
+        switch (Symb->getBinding()) {
+        case ELF::STB_GLOBAL:
+          Lnkg = GlobalValue::ExternalLinkage;
           break;
+        case ELF::STB_LOCAL:
+          Lnkg = GlobalValue::InternalLinkage;
+          break;
+        default:
+          assert(false && "Unhandled global symbol binding type");
         }
-      }
 
-      // Check for consistency of the types of symbol data.
-      if (ConstantVec.size()) {
-        auto Ty = ConstantVec[0]->getType();
-        for (auto V : ConstantVec) {
-          assert((V->getType() == Ty) &&
-                 "Inconsistent types in constant array of global variable.");
+        // Check that symbol type is data object, representing a variable or
+        // array etc.
+        assert(((Symb->getType() == ELF::STT_OBJECT) ||
+                (Symb->getType() == ELF::STT_FUNC)) &&
+               "Object symbol type expected. Not found");
+
+        // Memory access is in bytes. So, need to multiply the alignment by 8
+        // for the number of bits.
+        GlobalValTy = Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8);
+
+        // get symbol value - this is the virtual address of symbol's value
+        uint64_t SymVirtualAddr = Symb->st_value;
+
+        // get the initial value of the global data symbol at SymVirtualAddr
+        // from the section that contains the virtual address SymVirtualAddr.
+        // In executable and shared object files, st_value holds a virtual
+        // address.
+        SmallVector<Constant *, 32> ConstantVec;
+        bool isBSSSymbol = false;
+        for (section_iterator SecIter : Elf64LEObjFile->sections()) {
+          uint64_t SecStart = SecIter->getAddress();
+          uint64_t SecEnd = SecStart + SecIter->getSize();
+          if ((SecStart <= SymVirtualAddr) && (SecEnd > SymVirtualAddr)) {
+            // Get the initial symbol value only if this is not a bss section.
+            // Else, symVal is already initialized to 0.
+            if (SecIter->isBSS()) {
+              Lnkg = GlobalValue::CommonLinkage;
+              isBSSSymbol = true;
+            } else {
+              StringRef SecData = unwrapOrError(
+                  SecIter->getContents(), MR->getObjectFile()->getFileName());
+              unsigned Index = SymVirtualAddr - SecStart;
+              const char *beg =
+                  reinterpret_cast<const char *>(SecData.bytes_begin() + Index);
+
+              // Symbol size should at least be the same as memory access size
+              // of the instruction.
+              assert(
+                  MemAccessSizeInBytes <= SymbSize &&
+                  "Inconsistent values of memory access size and symbol size");
+              // Read MemAccesssSize number of bytes and check if they represent
+              // addresses in .rodata.
+              StringRef SymbolBytes(beg, SymbSize);
+              unsigned BytesRead = 0;
+              // Symbol represents addresses into .rodata section.
+              bool SymHasRODataAddrs = false;
+              // Symbol array values greater that 8 bytes are not yet supported.
+              uint64_t SymArrayElem = 0;
+              for (unsigned char B : SymbolBytes) {
+                unsigned ByteNum = ++BytesRead % MemAccessSizeInBytes;
+                if (ByteNum == 0) {
+                  // Finish reading one symbol data item of size.
+                  SymArrayElem |= B << (MemAccessSizeInBytes - 1) * 8;
+                  // Get the value representing .rodata content if it is .rodata
+                  // section address.
+                  Value *RODataValue = getOrCreateGlobalRODataValueAtOffset(
+                      SymArrayElem, RaisedBB);
+                  // Note if the first unit of data read is an address of
+                  // .rodata content.
+                  if (BytesRead == MemAccessSizeInBytes)
+                    SymHasRODataAddrs = (RODataValue != nullptr);
+                  // If the SymArrElem does not correspond to an .rodata address
+                  // consider it to be data.
+                  if (!SymHasRODataAddrs) {
+                    Constant *ConstVal = ConstantInt::get(
+                        Ctx, APInt(MemAccessSizeInBytes * 8, SymArrayElem));
+                    ConstantVec.push_back(ConstVal);
+                  } else {
+                    // SymArrElem corresponds to an .rodata address,
+                    if (isa<ConstantExpr>(RODataValue)) {
+                      ConstantVec.push_back(dyn_cast<Constant>(RODataValue));
+                    } else {
+                      assert(false && "Unhandled global value");
+                    }
+                  }
+                  // Clear symbol element value
+                  SymArrayElem = 0;
+                } else
+                  SymArrayElem |= B << (ByteNum - 1) * 8;
+              }
+              // Ensure that all SymSize bytes were read.
+              assert(BytesRead == SymbSize &&
+                     "Incorrect number of symbol bytes read");
+            }
+            break;
+          }
         }
-      }
 
-      // If symbol size is greater than memory access size of the instruction,
-      // the symbol must be referencing an array whose elements were collected
-      Constant *GlobalInit = nullptr;
-      if (SymbSize > MemAccessSizeInBytes) {
+        // Check for consistency of the types of symbol data.
         if (ConstantVec.size()) {
-          Constant *ConstArray = ConstantArray::get(
-              ArrayType::get(ConstantVec[0]->getType(), ConstantVec.size()),
-              ConstantVec);
-          GlobalInit = ConstArray;
-          GlobalValTy = ConstArray->getType();
-          if (ConstantVec[0]->getType()->isIntegerTy()) {
-            GlobDataSymAlignment = 4;
+          auto Ty = ConstantVec[0]->getType();
+          for (auto V : ConstantVec) {
+            assert((V->getType() == Ty) &&
+                   "Inconsistent types in constant array of global variable.");
+          }
+        }
+
+        // If symbol size is greater than memory access size of the instruction,
+        // the symbol must be referencing an array whose elements were collected
+        Constant *GlobalInit = nullptr;
+        if (SymbSize > MemAccessSizeInBytes) {
+          if (ConstantVec.size()) {
+            Constant *ConstArray = ConstantArray::get(
+                ArrayType::get(ConstantVec[0]->getType(), ConstantVec.size()),
+                ConstantVec);
+            GlobalInit = ConstArray;
+            GlobalValTy = ConstArray->getType();
+            if (ConstantVec[0]->getType()->isIntegerTy()) {
+              GlobDataSymAlignment = 4;
+            }
+          } else {
+            // This is an aggregate array whose size is symbSize bytes,
+            // initialized by BSS.
+            assert(isBSSSymbol && "Unexpected non-BSS symbol encountered");
+            Type *ByteType = Type::getInt8Ty(Ctx);
+            Type *GlobalArrValTy = ArrayType::get(ByteType, SymbSize);
+            GlobalInit = ConstantAggregateZero::get(GlobalArrValTy);
+
+            // Change the global value type to byte type to indicate that the
+            // data is interpreted as bytes.
+            GlobalValTy = GlobalArrValTy;
           }
         } else {
-          // This is an aggregate array whose size is symbSize bytes,
-          // initialized by BSS.
-          assert(isBSSSymbol && "Unexpected non-BSS symbol encountered");
-          Type *ByteType = Type::getInt8Ty(Ctx);
-          Type *GlobalArrValTy = ArrayType::get(ByteType, SymbSize);
-          GlobalInit = ConstantAggregateZero::get(GlobalArrValTy);
+          // Default initial value of global variable
+          uint64_t SV = 0;
+          assert(SymbSize == MemAccessSizeInBytes &&
+                 "Inconsistent symbol sizes");
 
-          // Change the global value type to byte type to indicate that the
-          // data is interpreted as bytes.
-          GlobalValTy = GlobalArrValTy;
-        }
-      } else {
-        // Default initial value of global variable
-        uint64_t SV = 0;
-        assert(SymbSize == MemAccessSizeInBytes && "Inconsistent symbol sizes");
-
-        if (ConstantVec.size() > 0) {
-          // Get type of data value
-          Type *CVType = ConstantVec[0]->getType();
-          if (CVType->isIntegerTy()) {
-            assert(ConstantVec.size() == 1 &&
-                   "Inconsistent symbol values of global symbol found");
-            // Global value is an integer. So, cast the global value that was
-            // read accordingly.
-            ConstantInt *CIV = dyn_cast<ConstantInt>(ConstantVec[0]);
-            assert(CIV != nullptr && "Unexpected global value type");
-            // Set the type of global value according to the based on the type
-            // of the cast value.
-            SV = CIV->getValue().getSExtValue();
+          if (ConstantVec.size() > 0) {
+            // Get type of data value
+            Type *CVType = ConstantVec[0]->getType();
+            if (CVType->isIntegerTy()) {
+              assert(ConstantVec.size() == 1 &&
+                     "Inconsistent symbol values of global symbol found");
+              // Global value is an integer. So, cast the global value that was
+              // read accordingly.
+              ConstantInt *CIV = dyn_cast<ConstantInt>(ConstantVec[0]);
+              assert(CIV != nullptr && "Unexpected global value type");
+              // Set the type of global value according to the based on the type
+              // of the cast value.
+              SV = CIV->getValue().getSExtValue();
+              GlobalInit = ConstantInt::get(GlobalValTy, SV);
+            } else if (CVType->isPointerTy()) {
+              // ConstantVec[0] is the initial global value and global value
+              // type is its type.
+              GlobalInit = ConstantVec[0];
+              GlobalValTy = CVType;
+            } else {
+              assert(false && "Unexpected global value type");
+            }
+          } else
             GlobalInit = ConstantInt::get(GlobalValTy, SV);
-          } else if (CVType->isPointerTy()) {
-            // ConstantVec[0] is the initial global value and global value
-            // type is its type.
-            GlobalInit = ConstantVec[0];
-            GlobalValTy = CVType;
-          } else {
-            assert(false && "Unexpected global value type");
-          }
-        } else
-          GlobalInit = ConstantInt::get(GlobalValTy, SV);
+        }
+
+        // Now, create the global variable for the symbol at given Offset.
+        auto GlobalVal = new GlobalVariable(
+            *(MR->getModule()), GlobalValTy, false /* isConstant */, Lnkg,
+            GlobalInit, GlobalDataSymNameIndexStrRef);
+        GlobalVal->setAlignment(MaybeAlign(GlobDataSymAlignment));
+        GlobalVal->setDSOLocal(true);
+        GlobalVariableValue = GlobalVal;
       }
+      assert(GlobalVariableValue->getType()->isPointerTy() &&
+             "Unexpected non-pointer type value in global data offset access");
 
-      // Now, create the global variable for the symbol at given Offset.
-      auto GlobalVal = new GlobalVariable(
-          *(MR->getModule()), GlobalValTy, false /* isConstant */, Lnkg,
-          GlobalInit, GlobalDataSymNameIndexStrRef);
-      GlobalVal->setAlignment(MaybeAlign(GlobDataSymAlignment));
-      GlobalVal->setDSOLocal(true);
-      GlobalVariableValue = GlobalVal;
-    }
-    assert(GlobalVariableValue->getType()->isPointerTy() &&
-           "Unexpected non-pointer type value in global data offset access");
+      // If the global variable is of array type, ensure its type is correct.
+      if (GlobalVariableValue->getType()
+              ->getPointerElementType()
+              ->isArrayTy()) {
+        // First index - is 0
+        Value *FirstIndex =
+            ConstantInt::get(MF.getFunction().getContext(), APInt(32, 0));
+        // Find the size of array element
+        size_t ArrayElemByteSz = GlobalVariableValue->getType()
+                                     ->getPointerElementType()
+                                     ->getArrayElementType()
+                                     ->getScalarSizeInBits() /
+                                 8;
 
-    // If the global variable is of array type, ensure its type is correct.
-    if (GlobalVariableValue->getType()->getPointerElementType()->isArrayTy()) {
-      // First index - is 0
-      Value *FirstIndex =
-          ConstantInt::get(MF.getFunction().getContext(), APInt(32, 0));
-      // Find the size of array element
-      size_t ArrayElemByteSz = GlobalVariableValue->getType()
-                                   ->getPointerElementType()
-                                   ->getArrayElementType()
-                                   ->getScalarSizeInBits() /
-                               8;
+        unsigned ScaledOffset = GlobalSymOffset / MemAccessSizeInBytes;
 
-      unsigned ScaledOffset = GlobalDataOffset / MemAccessSizeInBytes;
+        // Offset index
+        Value *OffsetIndex = ConstantInt::get(MF.getFunction().getContext(),
+                                              APInt(32, ScaledOffset));
+        // If the array element size (in bytes) is not equal to that of the
+        // access size of the instructions, cast the array accordingly.
+        if (MemAccessSizeInBytes != ArrayElemByteSz) {
+          // Note the scaled offset is already calculated appropriately.
+          // Get the size of global array
+          uint64_t GlobalArraySize = GlobalVariableValue->getType()
+                                         ->getPointerElementType()
+                                         ->getArrayNumElements();
+          // Construct integer type of size memAccessSize bytes. Note that It
+          // has been asserted that array element is of integral type.
+          PointerType *CastToArrTy = PointerType::get(
+              ArrayType::get(Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8),
+                             GlobalArraySize / MemAccessSizeInBytes),
+              0);
 
-      // Offset index
-      Value *OffsetIndex = ConstantInt::get(MF.getFunction().getContext(),
-                                            APInt(32, ScaledOffset));
-      // If the array element size (in bytes) is not equal to that of the
-      // access size of the instructions, cast the array accordingly.
-      if (MemAccessSizeInBytes != ArrayElemByteSz) {
-        // Note the scaled offset is already calculated appropriately.
-        // Get the size of global array
-        uint64_t GlobalArraySize = GlobalVariableValue->getType()
-                                       ->getPointerElementType()
-                                       ->getArrayNumElements();
-        // Construct integer type of size memAccessSize bytes. Note that It
-        // has been asserted that array element is of integral type.
-        PointerType *CastToArrTy = PointerType::get(
-            ArrayType::get(Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8),
-                           GlobalArraySize / MemAccessSizeInBytes),
-            0);
-
-        CastInst *CInst =
-            CastInst::Create(CastInst::getCastOpcode(GlobalVariableValue, false,
-                                                     CastToArrTy, false),
-                             GlobalVariableValue, CastToArrTy);
-        RaisedBB->getInstList().push_back(CInst);
-        GlobalVariableValue = CInst;
+          CastInst *CInst = CastInst::Create(
+              CastInst::getCastOpcode(GlobalVariableValue, false, CastToArrTy,
+                                      false),
+              GlobalVariableValue, CastToArrTy);
+          RaisedBB->getInstList().push_back(CInst);
+          GlobalVariableValue = CInst;
+        }
+        // Get the element
+        Instruction *GetElem = GetElementPtrInst::CreateInBounds(
+            GlobalVariableValue->getType()->getPointerElementType(),
+            GlobalVariableValue, {FirstIndex, OffsetIndex}, "", RaisedBB);
+        GlobalVariableValue = GetElem;
       }
-      // Get the element
-      Instruction *GetElem = GetElementPtrInst::CreateInBounds(
-          GlobalVariableValue->getType()->getPointerElementType(),
-          GlobalVariableValue, {FirstIndex, OffsetIndex}, "", RaisedBB);
-      GlobalVariableValue = GetElem;
     }
   }
 

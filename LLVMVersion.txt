@@ -5,8 +5,10 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit e5cc7baf67dbd53d282bd9dff3f2241ca1d33f1d
-Author: Louis Dionne <ldionne.2@gmail.com>
-Date:   Wed Nov 25 16:14:28 2020 -0500
+commit 16c6e9c58e9ae50a775945e6b407f1891f353d2f
+Author: Stephen Kelly <steveire@gmail.com>
+Date:   Sat Dec 26 21:07:14 2020 +0000
 
-    [libc++] NFC: Reindent non-lockfree-atomics feature
+    [ASTMatchers] Fix child traversal over range-for loops
+
+    Differential Revision: https://reviews.llvm.org/D94031

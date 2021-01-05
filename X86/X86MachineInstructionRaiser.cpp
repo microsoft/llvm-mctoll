@@ -281,14 +281,10 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
       Value *GV = getGlobalVariableValueAt(MI, SrcImm);
       if (GV != nullptr) {
         SrcValue = GV;
-      } else {
-        // Check if the immediate value corresponds to a function.
-        Value *RaisedFunc = MR->getRaisedFunctionAt(SrcImm);
-        if (RaisedFunc != nullptr)
-          SrcValue = RaisedFunc;
       }
     }
-
+    assert(SrcValue != nullptr &&
+           "Failed to get source value in the mov immediate instruction");
     // Update the value mapping of dstReg
     raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                      SrcValue);
@@ -1791,12 +1787,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
         if (GV != nullptr)
           SrcValue = GV;
         else {
-          // Check if the immediate value corresponds to a function.
-          Value *RaisedFunc = MR->getRaisedFunctionAt(SrcImm);
-          if (RaisedFunc != nullptr)
-            SrcValue = RaisedFunc;
-          else
-            SrcValue = ConstantInt::get(SrcOpTy, SrcImm);
+          SrcValue = ConstantInt::get(SrcOpTy, SrcImm);
         }
       } else
         SrcValue = ConstantInt::get(SrcOpTy, SrcImm);
@@ -4202,6 +4193,11 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     bool BlockHasCall;
     Type *ReturnType = getReturnTypeFromMBB(*MBB, BlockHasCall /* ignored*/);
 
+    // If return type not found, consider it to be void type
+    if (ReturnType == nullptr) {
+      ReturnType = Type::getVoidTy(MF.getFunction().getContext());
+    }
+
     // Build Function type.
     auto FT = FunctionType::get(ReturnType, ArgTypeVector, false);
 
@@ -4226,7 +4222,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     RaisedBB->getInstList().push_back(CallInst);
 
     // A function call with a non-void return will modify RAX.
-    if (ReturnType)
+    if (ReturnType && !ReturnType->isVoidTy())
       raisedValues->setPhysRegSSAValue(X86::RAX, MBBNo, CallInst);
     Success = true;
   } break;

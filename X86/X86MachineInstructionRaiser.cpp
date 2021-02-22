@@ -584,6 +584,15 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         // Construct a compare instruction
         CMOVCond = new ICmpInst(Pred, OFValue, TrueValue, "Cond_CMOVO");
       } break;
+      case X86::COND_S: {
+        // Check if SF == 1
+        Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+        assert(SFValue != nullptr &&
+               "Failed to get EFLAGS value while raising CMOVS!");
+        Pred = CmpInst::Predicate::ICMP_EQ;
+        // Construct a compare instruction
+        CMOVCond = new ICmpInst(Pred, SFValue, TrueValue, "Cond_CMOVS");
+      } break;
       case X86::COND_GE: {
         // Check SF == OF
         Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);

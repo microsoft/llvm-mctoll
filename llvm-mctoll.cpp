@@ -185,6 +185,15 @@ cl::alias static IncludeFileNamesShort(
     cl::aliasopt(llvm::IncludeFileNames), cl::cat(LLVMMCToLLCategory),
     cl::NotHidden);
 
+cl::opt<std::string> llvm::CompilationDBDir(
+    "compilation-db-path",
+    cl::desc("Absolute directory path to either compile_commands.json or "
+             "compile_flags.txt with any additional details needed to parse "
+             "include files. "
+             "See https://clang.llvm.org/docs/JSONCompilationDatabase.html for "
+             "details."),
+    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+
 namespace {
 static ManagedStatic<std::vector<std::string>> RunPassNames;
 
@@ -1573,8 +1582,10 @@ int main(int argc, char **argv) {
   std::set<string> InclFNameSet(IncludeFileNames.begin(),
                                 IncludeFileNames.end());
   std::vector<string> InclFNames(InclFNameSet.begin(), InclFNameSet.end());
+
   if (!InclFNames.empty()) {
-    if (!ExternalFunctions::getUserSpecifiedFuncPrototypes(InclFNames)) {
+    if (!ExternalFunctions::getUserSpecifiedFuncPrototypes(InclFNames,
+                                                           CompilationDBDir)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }

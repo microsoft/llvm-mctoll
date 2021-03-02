@@ -39,6 +39,7 @@ extern cl::opt<bool> UnwindInfo;
 extern cl::opt<bool> PrintImmHex;
 extern cl::opt<DIDumpType> DwarfDumpType;
 extern cl::list<std::string> IncludeFileNames;
+extern cl::opt<std::string> CompilationDBDir;
 
 // Various helper functions.
 void error(std::error_code ec);

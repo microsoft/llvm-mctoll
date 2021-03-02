@@ -66,14 +66,19 @@ public:
             FuncDecl->getQualifiedNameAsString()) !=
         ExternalFunctions::UserSpecifiedFunctions.end()) {
       LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
-                        << " : Ignoring duplicate entry in "
-                        << Context.getSourceManager().getFilename(
-                               FuncDecl->getLocation())
+                        << " : Ignoring duplicate entry at "
+                        << FuncDecl->getLocation().printToString(
+                               Context.getSourceManager())
                         << "\n");
     } else {
       ExternalFunctions::UserSpecifiedFunctions.insert(
           std::pair<std::string, ExternalFunctions::RetAndArgs>(
               FuncDecl->getQualifiedNameAsString(), Entry));
+      LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
+                        << " : Entry found at "
+                        << FuncDecl->getLocation().printToString(
+                               Context.getSourceManager())
+                        << "\n");
     }
     return true;
   }
@@ -223,44 +228,47 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
 }
 
 bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
-    std::vector<std::string> &FileNames) {
-  static llvm::cl::OptionCategory InclFileParseCategory("my-tool options");
-  // 3 arguments viz., "dummy-tool IncludeFileName --", with no -debug
-  // 4 arguments viz., "dummy-tool IncludeFileName -debug --", with -debug
-  const int ToolArgc = llvm::DebugFlag ? 4 : 3;
-  const char **ToolArgv = new const char *[ToolArgc];
-  ToolArgv[0] = "dummy-tool";
-  if (llvm::DebugFlag)
-    ToolArgv[ToolArgc - 2] = "-debug";
-  ToolArgv[ToolArgc - 1] = "--";
-
-  // Add each include file as second argument to parse it for function
-  // declarations.
-  for (auto FileName : FileNames) {
-    // CommandOptionParser constructor can change the contents for its first
-    // argument. Reset it to ToolArgc in preparation for parsing the next
-    // include file.
-    int ArgSz = ToolArgc;
-    ToolArgv[1] = FileName.c_str();
-    clang::tooling::CommonOptionsParser OptParser(
-        ArgSz, const_cast<const char **>(ToolArgv), InclFileParseCategory);
-    clang::tooling::ClangTool Tool(OptParser.getCompilations(),
-                                   OptParser.getSourcePathList());
-
-    int Success = Tool.run(
-        clang::tooling::newFrontendActionFactory<FuncDeclFindingAction>()
-            .get());
-    switch (Success) {
-    case 0:
-      break;
-    default:
-      // TODO : Expand
-      dbgs() << "Error\n";
-    }
+    std::vector<std::string> &FileNames, std::string &CompDBDir) {
+  static llvm::cl::OptionCategory InclFileParseCategory(
+      "parse-header-files options");
+  std::vector<const char *> ArgPtrVec;
+  ArgPtrVec.push_back("parse-header-files");
+  if (!CompDBDir.empty()) {
+    ArgPtrVec.push_back("-p");
+    ArgPtrVec.push_back(CompDBDir.c_str());
   }
+  if (llvm::DebugFlag)
+    ArgPtrVec.push_back("-debug");
 
-  delete[] ToolArgv;
+  // A dummy positional argument to satisfy the requirement of having atleast
+  // one positional argument.
+  ArgPtrVec.push_back("dummy-positional-arg");
+
+  if (CompDBDir.empty())
+    ArgPtrVec.push_back("--");
+
+  auto ToolArgv = ArgPtrVec.data();
+  int ArgSz = ArgPtrVec.size();
+
+  // Construct a CommonOptionsParser object for the Compilations.
+  clang::tooling::CommonOptionsParser OptParser(ArgSz, ToolArgv,
+                                                InclFileParseCategory);
+
+  // Pass include FileNames vector and NOT OptParser.getSourcePathList() since
+  // only a dymmy-positional-arg was passed while constructing OptParser.
+  clang::tooling::ClangTool Tool(OptParser.getCompilations(), FileNames);
+
+  int Success = Tool.run(
+      clang::tooling::newFrontendActionFactory<FuncDeclFindingAction>().get());
+  switch (Success) {
+  case 0:
+    break;
+  default:
+    // TODO : Expand
+    dbgs() << "Error\n";
+  }
 
   return true;
 }
+
 #undef DEBUG_TYPE

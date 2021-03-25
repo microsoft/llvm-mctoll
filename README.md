@@ -50,15 +50,17 @@ cd llvm-project && git clone -b master https://github.com/microsoft/llvm-mctoll.
 git checkout <hash from LLVMVersion.txt>
 ```
 
-4. Run cmake to create a ninja project then build the `llvm-mctoll` target. See [LLVM CMake Variables](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables) for more information on LLVM's cmake options.
+4. Configure LLVM by enabling Clang and ld. See [LLVM CMake Variables](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables) for more information on LLVM's cmake options.
 
 ```sh
-mkdir build && cd build
-cmake -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=Release ../llvm
-ninja llvm-mctoll && ninja lld
+cmake -S llvm -B <build-dir> -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=<build-type> ../llvm
+```
+5. Build `llvm-mctoll`
+```sh
+cmake --build  <build-dir> -- llvm-mctoll
 ```
 
-5. Run the unit tests (Linux only)
+6. Run the unit tests (Linux only)
 ```
 ninja check-mctoll
 ```

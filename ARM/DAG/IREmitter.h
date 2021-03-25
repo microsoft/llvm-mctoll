@@ -82,6 +82,12 @@ private:
   }
   Type *getIntTypeByPtr(Type *pty);
   Value *getIRValue(SDValue val);
+  // Wrapper to call new  Create*Load APIs
+  LoadInst *CallCreateAlignedLoad(Value *ValPtr,
+                                  MaybeAlign Align = MaybeAlign()) {
+    return IRB.CreateAlignedLoad(ValPtr->getType()->getPointerElementType(),
+                                 ValPtr, Align, "");
+  }
 };
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_IREMITTER_H

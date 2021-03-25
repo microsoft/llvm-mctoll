@@ -135,86 +135,86 @@ void IREmitter::emitCondCode(unsigned CondValue, BasicBlock *BB,
   default:
     break;
   case ARMCC::EQ: { // EQ  Z set
-    Value *Z_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[1]);
+    Value *Z_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstEQ = IRB.CreateICmpEQ(Z_Flag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::NE: { // NE Z clear
-    Value *Z_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[1]);
+    Value *Z_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstEQ = IRB.CreateICmpEQ(Z_Flag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::HS: { // CS  C set
-    Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+    Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
     Value *InstEQ = IRB.CreateICmpEQ(C_Flag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::LO: { // CC  C clear
-    Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+    Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
     Value *InstEQ = IRB.CreateICmpEQ(C_Flag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::MI: { // MI  N set
-    Value *N_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[0]);
+    Value *N_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[0]);
     Value *InstEQ = IRB.CreateICmpEQ(N_Flag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::PL: { // PL  N clear
-    Value *N_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[0]);
+    Value *N_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[0]);
     Value *InstEQ = IRB.CreateICmpEQ(N_Flag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::VS: { // VS  V set
-    Value *V_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[3]);
+    Value *V_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstEQ = IRB.CreateICmpEQ(V_Flag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::VC: { // VC  V clear
-    Value *V_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[3]);
+    Value *V_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstEQ = IRB.CreateICmpEQ(V_Flag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::HI: { // HI  C set & Z clear
-    Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
-    Value *Z_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[1]);
+    Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
+    Value *Z_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstCEQ = IRB.CreateICmpEQ(C_Flag, IRB.getTrue());
     Value *InstZEQ = IRB.CreateICmpEQ(Z_Flag, IRB.getFalse());
     Value *CondPass = IRB.CreateICmpEQ(InstCEQ, InstZEQ);
     IRB.CreateCondBr(CondPass, IfBB, ElseBB);
   } break;
   case ARMCC::LS: { // LS  C clear or Z set
-    Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
-    Value *Z_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[1]);
+    Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
+    Value *Z_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstCEQ = IRB.CreateICmpEQ(C_Flag, IRB.getFalse());
     Value *InstZEQ = IRB.CreateICmpEQ(Z_Flag, IRB.getTrue());
     Value *CondPass = IRB.CreateXor(InstCEQ, InstZEQ);
     IRB.CreateCondBr(CondPass, IfBB, ElseBB);
   } break;
   case ARMCC::GE: { // GE  N = V
-    Value *N_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[0]);
-    Value *V_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[3]);
+    Value *N_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *V_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstEQ = IRB.CreateICmpEQ(N_Flag, V_Flag);
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::LT: { // LT  N != V
-    Value *N_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[0]);
-    Value *V_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[3]);
+    Value *N_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *V_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstNE = IRB.CreateICmpNE(N_Flag, V_Flag);
     IRB.CreateCondBr(InstNE, IfBB, ElseBB);
   } break;
   case ARMCC::GT: { // GT  Z clear & N = V
-    Value *N_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[0]);
-    Value *Z_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[1]);
-    Value *V_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[3]);
+    Value *N_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *Z_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[1]);
+    Value *V_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstZEQ = IRB.CreateICmpEQ(Z_Flag, IRB.getFalse());
     Value *InstNZEQ = IRB.CreateICmpEQ(N_Flag, V_Flag);
     Value *CondPass = IRB.CreateICmpEQ(InstZEQ, InstNZEQ);
     IRB.CreateCondBr(CondPass, IfBB, ElseBB);
   } break;
   case ARMCC::LE: { // LE  Z set or N != V
-    Value *N_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[0]);
-    Value *Z_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[1]);
-    Value *V_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[3]);
+    Value *N_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *Z_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[1]);
+    Value *V_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstZEQ = IRB.CreateICmpEQ(Z_Flag, IRB.getTrue());
     Value *InstNZNE = IRB.CreateICmpNE(N_Flag, V_Flag);
     Value *CondPass = IRB.CreateXor(InstZEQ, InstNZNE);
@@ -545,7 +545,7 @@ void IREmitter::emitSDNode(SDNode *Node) {
       if (GlobalVariable::classof(Ptr))
         Inst = IRB.CreatePtrToInt(Ptr, getDefaultType());
       else
-        Inst = IRB.CreateAlignedLoad(
+        Inst = CallCreateAlignedLoad(
             Ptr, MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
 
       PHINode *Phi = createAndEmitPHINode(Node, BB, IfBB, ElseBB,
@@ -560,7 +560,7 @@ void IREmitter::emitSDNode(SDNode *Node) {
         // Inst = IRB.CreatePtrToInt(Ptr, getDefaultType());
         Inst = new PtrToIntInst(Ptr, getDefaultType(), "", BB);
       } else {
-        Inst = IRB.CreateAlignedLoad(
+        Inst = CallCreateAlignedLoad(
             Ptr, MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
 
         // TODO:
@@ -734,7 +734,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         else {
           const Value *StackAlloc =
               MFI.getObjectAllocation(StackArg - i - 4 + 1);
-          ArgVal = IRB.CreateAlignedLoad(
+          ArgVal = CallCreateAlignedLoad(
               const_cast<Value *>(StackAlloc),
               MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
         }
@@ -870,7 +870,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
 
       if (DAGInfo->NPMap[Node]->UpdateCPSR) {
         Value *InstLShr = IRB.CreateLShr(S0, Val1);
-        Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+        Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         C_Flag = IRB.CreateZExt(C_Flag, Ty);
         Value *Bit31 = IRB.CreateShl(C_Flag, Val2);
         Value *Inst = IRB.CreateAdd(InstLShr, Bit31);
@@ -895,7 +895,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         Value *InstLShr = IRB.CreateLShr(S0, Val1);
         Value *C_Flag = nullptr;
 
-        C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+        C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         C_Flag = IRB.CreateZExt(C_Flag, Ty);
         Value *Bit31 = IRB.CreateShl(C_Flag, Val2);
         Value *Inst = IRB.CreateAdd(InstLShr, Bit31);
@@ -908,7 +908,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       }
     } else {
       Value *InstLShr = IRB.CreateLShr(S0, Val1);
-      Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+      Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
       C_Flag = IRB.CreateZExt(C_Flag, Ty);
       Value *Bit31 = IRB.CreateShl(C_Flag, Val2);
       Value *Inst = IRB.CreateAdd(InstLShr, Bit31);
@@ -1045,7 +1045,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       if (DAGInfo->NPMap[Node]->UpdateCPSR) {
         Value *InstSub = IRB.CreateSub(S1, S2);
         Value *C_Flag = nullptr;
-        C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+        C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         Value *CZext = IRB.CreateZExt(C_Flag, Ty);
         Value *InstSBC = IRB.CreateAdd(InstSub, CZext);
         DAGInfo->setRealValue(Node, InstSBC);
@@ -1063,7 +1063,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         IRB.SetInsertPoint(IfBB);
         Value *InstSub = IRB.CreateSub(S1, S2);
         Value *C_Flag = nullptr;
-        C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+        C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         Value *CZext = IRB.CreateZExt(C_Flag, Ty);
         Value *Inst = IRB.CreateAdd(InstSub, CZext);
         PHINode *Phi = createAndEmitPHINode(Node, BB, IfBB, ElseBB,
@@ -1077,7 +1077,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     } else {
       Value *InstSub = IRB.CreateSub(S1, S2);
       Value *C_Flag = nullptr;
-      C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+      C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
       Value *CZext = IRB.CreateZExt(C_Flag, Ty);
       Value *InstSBC = IRB.CreateAdd(InstSub, CZext);
       DAGInfo->setRealValue(Node, InstSBC);
@@ -1151,10 +1151,10 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     Value *BitCShift = IRB.getInt32(29);
     Value *BitVShift = IRB.getInt32(28);
 
-    Value *N_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[0]);
-    Value *Z_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[1]);
-    Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
-    Value *V_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[3]);
+    Value *N_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *Z_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[1]);
+    Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
+    Value *V_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[3]);
 
     N_Flag = IRB.CreateZExt(N_Flag, Ty);
     Z_Flag = IRB.CreateZExt(Z_Flag, Ty);
@@ -1169,7 +1169,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     Value *CV_Val = IRB.CreateAdd(C_Shift, V_Shift);
     Value *NZCV_Val = IRB.CreateAdd(NZ_Val, CV_Val);
     Value *Reserved =
-        IRB.CreateLoad(dyn_cast<Value>(M.getGlobalVariable("Reserved")));
+        CallCreateAlignedLoad(dyn_cast<Value>(M.getGlobalVariable("Reserved")));
 
     Value *CPSR_Val = IRB.CreateAdd(NZCV_Val, Reserved);
     Value *Rn_Ptr = IRB.CreateIntToPtr(Rn, PtrTy);
@@ -1188,7 +1188,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
 
       if (DAGInfo->NPMap[Node]->UpdateCPSR) {
         // Create add emit.
-        Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+        Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         Value *Result = IRB.CreateAdd(S0, S1);
         Value *CZext = IRB.CreateZExt(C_Flag, OperandTy);
         Value *InstADC = IRB.CreateAdd(Result, CZext);
@@ -1212,7 +1212,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         // Emit the condition code.
         emitCondCode(CondValue, BB, IfBB, ElseBB);
 
-        Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+        Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         IRB.SetInsertPoint(IfBB);
         Value *InstAdd = IRB.CreateAdd(S0, S1);
         Value *CZext = IRB.CreateZExtOrTrunc(C_Flag, OperandTy);
@@ -1226,7 +1226,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         IRB.SetInsertPoint(ElseBB);
       }
     } else {
-      Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+      Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
       Value *Inst = IRB.CreateAdd(S0, S1);
       Value *CTrunc = IRB.CreateZExtOrTrunc(C_Flag, getDefaultType());
       Value *InstADC = IRB.CreateAdd(Inst, CTrunc);
@@ -1239,7 +1239,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     Value *S0 = getIRValue(Node->getOperand(0));
     Value *S1 = getIRValue(Node->getOperand(1));
 
-    Value *C_Flag = IRB.CreateLoad(FuncInfo->AllocaMap[2]);
+    Value *C_Flag = CallCreateAlignedLoad(FuncInfo->AllocaMap[2]);
     Value *CZext = IRB.CreateZExt(C_Flag, getDefaultType());
 
     Value *Inst = IRB.CreateAdd(S0, CZext);

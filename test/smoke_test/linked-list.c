@@ -1,6 +1,6 @@
 // REQUIRES: system-linux
 // RUN: clang -g -o %t-opt %s -O2 -mno-sse
-// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t-opt
+// RUN: llvm-mctoll -d -I /usr/include/stdio.h -I /usr/include/stdlib.h %t-opt
 // RUN: clang -o %t-opt-dis %t-opt-dis.ll
 // RUN: %t-opt-dis 2>&1 | FileCheck %s
 
@@ -12,6 +12,7 @@
 // CHECK:[7fff,ffff]
 
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef struct list_data_s {
   signed short data16;
@@ -95,6 +96,9 @@ list_head *list_init(unsigned int blksize, list_head *memblock,
 
 int main() {
   results res[1];
+  res[0].memblock[0] = (list_head *) malloc(2000);
+  res[0].memblock[1] = res[0].memblock[0];
   res[0].list = list_init(666, res[0].memblock[1], 0);
+  free(res[0].memblock[0]);
   return 0;
 }

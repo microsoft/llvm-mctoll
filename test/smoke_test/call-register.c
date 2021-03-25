@@ -2,7 +2,7 @@
 // RUN: clang -o %t %s -O2
 // RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
 // RUN: clang -o %t-dis %t-dis.ll
-// RUN: %t1 2>&1 | FileCheck %s
+// RUN: %t-dis 2>&1 | FileCheck %s
 // CHECK: call_test val: 8
 // CHECK: call_test val: 9
 

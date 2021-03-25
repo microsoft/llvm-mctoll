@@ -251,9 +251,14 @@ bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
   int ArgSz = ArgPtrVec.size();
 
   // Construct a CommonOptionsParser object for the Compilations.
-  clang::tooling::CommonOptionsParser OptParser(ArgSz, ToolArgv,
-                                                InclFileParseCategory);
+  auto ExpParser = clang::tooling::CommonOptionsParser::create(
+      ArgSz, ToolArgv, InclFileParseCategory);
 
+  if (!ExpParser) {
+    llvm::errs() << ExpParser.takeError();
+    return 1;
+  }
+  clang::tooling::CommonOptionsParser &OptParser = ExpParser.get();
   // Pass include FileNames vector and NOT OptParser.getSourcePathList() since
   // only a dymmy-positional-arg was passed while constructing OptParser.
   clang::tooling::ClangTool Tool(OptParser.getCompilations(), FileNames);

@@ -1207,6 +1207,52 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
     }
   } break;
+  case X86::POPCNT16rr:
+  case X86::POPCNT32rr:
+  case X86::POPCNT64rr: {
+    const MachineOperand &DestOp = MI.getOperand(DestOpIndex);
+    assert(DestOp.isReg() && "Expecting destination of popcnt instruction to "
+                             "be a register operand");
+    assert((MCID.getNumDefs() == 1) &&
+           MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+           "Unexpected defines in a popcnt instruction");
+    dstReg = DestOp.getReg();
+    Value *SrcValue = ExplicitSrcValues.at(0);
+
+    Module *M = MR->getModule();
+    Function *IntrinsicFunc =
+        Intrinsic::getDeclaration(M, Intrinsic::ctpop, SrcValue->getType());
+    Value *IntrinsicCallArgs[] = {SrcValue};
+    Instruction *BinOpInst =
+        CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+
+    // Add the intrinsic call instruction
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(SrcValue, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
+
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+
+    // OF, SF, ZF, AF, CF, PF are all cleared. ZF is set if SRC = 0, otherwise
+    // ZF is cleared.
+    raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::SF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::AF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::PF, MBBNo, false);
+
+    // Test if SrcValue is Zero
+    Value *ZeroValue =
+        ConstantInt::get(SrcValue->getType(), 0, false /* isSigned */);
+    Instruction *ZFTest = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SrcValue,
+                                       ZeroValue, "ZeroFlag");
+    RaisedBB->getInstList().push_back(ZFTest);
+    // ZF = (SrcValue==0).
+    raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::ZF, MBBNo,
+                                     ZFTest);
+
+  } break;
   default:
     assert(false && "Unhandled binary instruction");
   }

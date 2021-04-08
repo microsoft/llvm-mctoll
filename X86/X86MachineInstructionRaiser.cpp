@@ -1207,6 +1207,34 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
     }
   } break;
+  case X86::POPCNT16rr:
+  case X86::POPCNT32rr:
+  case X86::POPCNT64rr: {
+    const MachineOperand &DestOp = MI.getOperand(DestOpIndex);
+    assert(DestOp.isReg() && "Expecting destination of popcnt instruction to "
+                             "be a register operand");
+    assert((MCID.getNumDefs() == 1) &&
+           MCID.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+           "Unexpected defines in a popcnt instruction");
+    dstReg = DestOp.getReg();
+    Value *Src1Value = ExplicitSrcValues.at(0);
+
+    Module *M = MR->getModule();
+    Function *IntrinsicFunc =
+      Intrinsic::getDeclaration(M, Intrinsic::ctpop, Src1Value->getType());
+    Value *IntrinsicCallArgs[] = {Src1Value};
+    Instruction *BinOpInst =
+      CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+
+    // No EFLAGS are effected
+    // Add the not instruction
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
+
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+  } break;
   default:
     assert(false && "Unhandled binary instruction");
   }

@@ -1246,7 +1246,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     Value *ZeroValue = ConstantInt::get(SrcValue->getType(), 0, false /* isSigned */);
     Instruction *ZFTest =
         new ICmpInst(CmpInst::Predicate::ICMP_EQ, SrcValue,
-                     ZeroValue, "Test_Zero");
+                     ZeroValue, "ZeroFlag");
     RaisedBB->getInstList().push_back(ZFTest);
     //ZF = (SrcValue==0).
     raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::ZF, MBBNo,

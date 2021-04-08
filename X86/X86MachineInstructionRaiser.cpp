@@ -1227,7 +1227,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
 
     // No EFLAGS are effected
-    // Add the not instruction
+    // Add the intrinsic call instruction
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     RaisedBB->getInstList().push_back(BinOpInst);

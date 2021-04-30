@@ -1924,6 +1924,9 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
                                   "raising binary mem op instruction");
     assert((SrcValue != nullptr) && "Source value expected to be loaded while "
                                     "raising binary mem op instruction");
+
+    Instruction *BinOpInst = nullptr;
+
     switch (MI.getOpcode()) {
     case X86::ADD8mi:
     case X86::ADD8mi8:
@@ -1942,21 +1945,33 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::INC32m:
     case X86::INC64m: {
       // Generate Add instruction
-      Instruction *BinOpInst = BinaryOperator::CreateAdd(LdInst, SrcValue);
-      RaisedBB->getInstList().push_back(BinOpInst);
-      SrcValue = BinOpInst;
+      BinOpInst = BinaryOperator::CreateAdd(LdInst, SrcValue);
     } break;
     case X86::DEC8m:
     case X86::DEC16m:
     case X86::DEC32m:
     case X86::DEC64m: {
-      Instruction *BinOpInst = BinaryOperator::CreateSub(LdInst, SrcValue);
-      RaisedBB->getInstList().push_back(BinOpInst);
-      SrcValue = BinOpInst;
+      BinOpInst = BinaryOperator::CreateSub(LdInst, SrcValue);
+    } break;
+    case X86::SAR8mi:
+    case X86::SAR16mi:
+    case X86::SAR32mi:
+    case X86::SAR64mi: {
+      BinOpInst = BinaryOperator::CreateLShr(LdInst, SrcValue);
+    } break;
+    case X86::SHL8mi:
+    case X86::SHL16mi:
+    case X86::SHL32mi:
+    case X86::SHL64mi: {
+      BinOpInst = BinaryOperator::CreateShl(LdInst, SrcValue);
     } break;
     default:
       assert(false && "Unhandled non-move mem op instruction");
     }
+
+    RaisedBB->getInstList().push_back(BinOpInst);
+
+    SrcValue = BinOpInst;
   }
 
   assert((SrcValue != nullptr) && "Unexpected null value to be stored while "

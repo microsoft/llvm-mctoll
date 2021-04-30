@@ -1951,9 +1951,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::DEC16m:
     case X86::DEC32m:
     case X86::DEC64m: {
-      Instruction *BinOpInst = BinaryOperator::CreateSub(LdInst, SrcValue);
-      RaisedBB->getInstList().push_back(BinOpInst);
-      SrcValue = BinOpInst;
+      BinOpInst = BinaryOperator::CreateSub(LdInst, SrcValue);
     } break;
     case X86::SAR8mi:
     case X86::SAR16mi:

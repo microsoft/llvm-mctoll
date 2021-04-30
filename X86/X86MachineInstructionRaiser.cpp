@@ -3303,6 +3303,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
       break;
+    case X86::SAR8r1:
+    case X86::SAR16r1:
+    case X86::SAR32r1:
+    case X86::SAR64r1:
+      // Generate shr instruction
+      BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
+      AffectedEFlags.insert(EFLAGS::SF);
+      AffectedEFlags.insert(EFLAGS::ZF);
+      break;
     case X86::SAR8ri:
     case X86::SAR16ri:
     case X86::SAR32ri:

@@ -3104,23 +3104,6 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       }
       SrcValIdx++;
     }
-    //Some instructions may have implicit immediate value operands.
-    if (OpValues[1]==nullptr) {
-      assert(OpValues[0] != nullptr &&
-             "Undefined first source value encountered in BinOp instruction "
-             "with RI/I operand format");
-      switch(MI.getOpcode()) {
-      case X86::SAR8r1:
-      case X86::SAR16r1:
-      case X86::SAR32r1:
-      case X86::SAR64r1: {
-        Type *Ty = (DstPReg == X86::NoRegister) ? OpValues[0]->getType()
-                                                : getPhysRegType(DstPReg);
-        OpValues[1] = ConstantInt::get(Ty, 1);
-      } break;
-      }
-    }
-
     assert((NumOperandsEval == NumOperands) &&
            "Failed to evaluate operands of BinOp instruction correctly");
 
@@ -3310,6 +3293,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
       break;
+    case X86::SHL8r1:
+    case X86::SHL16r1:
+    case X86::SHL32r1:
+    case X86::SHL64r1:
+      // Generate shl instruction
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      LLVM_FALLTHROUGH;
     case X86::SHL8ri:
     case X86::SHL16ri:
     case X86::SHL32ri:
@@ -3323,11 +3313,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::SAR16r1:
     case X86::SAR32r1:
     case X86::SAR64r1:
-      // Generate shr instruction
-      BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
-      AffectedEFlags.insert(EFLAGS::SF);
-      AffectedEFlags.insert(EFLAGS::ZF);
-      break;
+      // Generate shl instruction
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      LLVM_FALLTHROUGH;
     case X86::SAR8ri:
     case X86::SAR16ri:
     case X86::SAR32ri:

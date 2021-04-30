@@ -3104,6 +3104,22 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       }
       SrcValIdx++;
     }
+    //Some instructions may have implicit immediate value operands.
+    if (OpValues[1]==nullptr) {
+      assert(OpValues[0] != nullptr &&
+             "Undefined first source value encountered in BinOp instruction "
+             "with RI/I operand format");
+      switch(MI.getOpcode()) {
+      case X86::SAR8r1:
+      case X86::SAR16r1:
+      case X86::SAR32r1:
+      case X86::SAR64r1: {
+        Type *Ty = (DstPReg == X86::NoRegister) ? OpValues[0]->getType()
+                                                : getPhysRegType(DstPReg);
+        OpValues[1] = ConstantInt::get(Ty, 1);
+      } break;
+      }
+    }
 
     assert((NumOperandsEval == NumOperands) &&
            "Failed to evaluate operands of BinOp instruction correctly");

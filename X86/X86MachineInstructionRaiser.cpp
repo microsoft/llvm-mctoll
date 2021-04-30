@@ -1965,6 +1965,17 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
       //AffectedEFlags.insert(EFLAGS::SF);
       //AffectedEFlags.insert(EFLAGS::ZF);
     } break;
+    case X86::SHL8mi:
+    case X86::SHL16mi:
+    case X86::SHL32mi:
+    case X86::SHL64mi: {
+      // Generate Add instruction
+      Instruction *BinOpInst = BinaryOperator::CreateShl(LdInst, SrcValue);
+      RaisedBB->getInstList().push_back(BinOpInst);
+      SrcValue = BinOpInst;
+      //AffectedEFlags.insert(EFLAGS::SF);
+      //AffectedEFlags.insert(EFLAGS::ZF);
+    } break;
     default:
       assert(false && "Unhandled non-move mem op instruction");
     }

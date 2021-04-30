@@ -1954,13 +1954,9 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
       RaisedBB->getInstList().push_back(BinOpInst);
       SrcValue = BinOpInst;
     } break;
-    case X86::SAR8m1:
     case X86::SAR8mi:
-    case X86::SAR16m1:
     case X86::SAR16mi:
-    case X86::SAR32m1:
     case X86::SAR32mi:
-    case X86::SAR64m1:
     case X86::SAR64mi: {
       // Generate Add instruction
       Instruction *BinOpInst = BinaryOperator::CreateLShr(LdInst, SrcValue);

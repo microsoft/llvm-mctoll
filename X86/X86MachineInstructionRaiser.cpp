@@ -3309,6 +3309,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
       break;
+    case X86::SHL8r1:
+    case X86::SHL16r1:
+    case X86::SHL32r1:
+    case X86::SHL64r1:
+      // Create SrcOp2 value of constant int value of 1
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      LLVM_FALLTHROUGH;
     case X86::SHL8ri:
     case X86::SHL16ri:
     case X86::SHL32ri:
@@ -3318,11 +3325,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
       break;
+    case X86::SAR8r1:
+    case X86::SAR16r1:
+    case X86::SAR32r1:
+    case X86::SAR64r1:
+      // Create SrcOp2 value of constant int value of 1
+      SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
+      LLVM_FALLTHROUGH;
     case X86::SAR8ri:
     case X86::SAR16ri:
     case X86::SAR32ri:
     case X86::SAR64ri:
-      // Generate shr instruction
+      // Generate sar instruction
       BinOpInstr = BinaryOperator::CreateLShr(SrcOp1Value, SrcOp2Value);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);

@@ -1947,6 +1947,48 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
       // Generate Add instruction
       BinOpInst = BinaryOperator::CreateAdd(LdInst, SrcValue);
     } break;
+    case X86::AND8mi:
+    case X86::AND8mi8:
+    case X86::AND8mr:
+    case X86::AND16mi:
+    case X86::AND16mi8:
+    case X86::AND16mr:
+    case X86::AND32mi: 
+    case X86::AND32mi8: 
+    case X86::AND32mr: 
+    case X86::AND64mi8: 
+    case X86::AND64mi32: 
+    case X86::AND64mr: {
+      BinOpInst = BinaryOperator::CreateAnd(LdInst, SrcValue);
+    } break;
+    case X86::OR8mi:
+    case X86::OR8mi8:
+    case X86::OR8mr:
+    case X86::OR16mi:
+    case X86::OR16mi8:
+    case X86::OR16mr:
+    case X86::OR32mi: 
+    case X86::OR32mi8: 
+    case X86::OR32mr: 
+    case X86::OR64mi8: 
+    case X86::OR64mi32: 
+    case X86::OR64mr: {
+      BinOpInst = BinaryOperator::CreateOr(LdInst, SrcValue);
+    } break;
+    case X86::XOR8mi:
+    case X86::XOR8mi8:
+    case X86::XOR8mr:
+    case X86::XOR16mi:
+    case X86::XOR16mi8:
+    case X86::XOR16mr:
+    case X86::XOR32mi: 
+    case X86::XOR32mi8: 
+    case X86::XOR32mr: 
+    case X86::XOR64mi8: 
+    case X86::XOR64mi32: 
+    case X86::XOR64mr: {
+      BinOpInst = BinaryOperator::CreateXor(LdInst, SrcValue);
+    } break;
     case X86::DEC8m:
     case X86::DEC16m:
     case X86::DEC32m:
@@ -1964,6 +2006,12 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::SHL32mi:
     case X86::SHL64mi: {
       BinOpInst = BinaryOperator::CreateShl(LdInst, SrcValue);
+    } break;
+    case X86::SHR8mi:
+    case X86::SHR16mi:
+    case X86::SHR32mi:
+    case X86::SHR64mi: {
+      BinOpInst = BinaryOperator::CreateLShr(LdInst, SrcValue);
     } break;
     default:
       assert(false && "Unhandled non-move mem op instruction");

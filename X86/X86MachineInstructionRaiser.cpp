@@ -1965,6 +1965,12 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::SHL64mi: {
       BinOpInst = BinaryOperator::CreateShl(LdInst, SrcValue);
     } break;
+    case X86::SHR8mi:
+    case X86::SHR16mi:
+    case X86::SHR32mi:
+    case X86::SHR64mi: {
+      BinOpInst = BinaryOperator::CreateLShr(LdInst, SrcValue);
+    } break;
     default:
       assert(false && "Unhandled non-move mem op instruction");
     }

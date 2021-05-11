@@ -1975,6 +1975,20 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::OR64mr: {
       BinOpInst = BinaryOperator::CreateOr(LdInst, SrcValue);
     } break;
+    case X86::XOR8mi:
+    case X86::XOR8mi8:
+    case X86::XOR8mr:
+    case X86::XOR16mi:
+    case X86::XOR16mi8:
+    case X86::XOR16mr:
+    case X86::XOR32mi: 
+    case X86::XOR32mi8: 
+    case X86::XOR32mr: 
+    case X86::XOR64mi8: 
+    case X86::XOR64mi32: 
+    case X86::XOR64mr: {
+      BinOpInst = BinaryOperator::CreateXor(LdInst, SrcValue);
+    } break;
     case X86::DEC8m:
     case X86::DEC16m:
     case X86::DEC32m:

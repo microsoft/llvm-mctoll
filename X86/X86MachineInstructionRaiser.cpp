@@ -1928,6 +1928,20 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     Instruction *BinOpInst = nullptr;
 
     switch (MI.getOpcode()) {
+    case X86::AND8mi:
+    case X86::AND8mi8:
+    case X86::AND8mr:
+    case X86::AND16mi:
+    case X86::AND16mi8:
+    case X86::AND16mr:
+    case X86::AND32mi: 
+    case X86::AND32mi8: 
+    case X86::AND32mr: 
+    case X86::AND64mi8: 
+    case X86::AND64mi32: 
+    case X86::AND64mr: {
+      BinOpInst = BinaryOperator::CreateAnd(LdInst, SrcValue);
+    } break;
     case X86::ADD8mi:
     case X86::ADD8mi8:
     case X86::ADD8mr:

@@ -1,7 +1,7 @@
 	
 // REQUIRES: system-linux
-// RUN: clang -o %t %s -O2
-// RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
+// RUN: clang -o %t %s
+// RUN: llvm-mctoll -d --include-files="/usr/include/stdio.h,/usr/include/stdlib.h" %t
 // RUN: clang -o %t1 %t-dis.ll
 // RUN: %t1 0 2>&1 | FileCheck %s
 // CHECK: End of function: 2

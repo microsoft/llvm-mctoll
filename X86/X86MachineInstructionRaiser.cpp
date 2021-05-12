@@ -2458,137 +2458,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     return raisePopInstruction(MI);
   }
 
-  const MCInstrDesc &MIDesc = MI.getDesc();
-  unsigned int Opcode = MI.getOpcode();
-
-  int LoadOrStoreOpIndex = -1;
-
-  // Get index of memory reference in the instruction.
-  int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
-  // Should have found the index of the memory reference operand
-  assert(MemoryRefOpIndex != -1 && "Unable to find memory reference "
-                                   "operand of a load/store instruction");
-  X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
-
-  // Get the operand whose value is stored to memory or that is loaded from
-  // memory.
-
-  if (MIDesc.mayStore()) {
-    // If the instruction stores to stack, find the register whose value is
-    // being stored. It would be the operand at offset
-    // memRefOperandStartIndex + X86::AddrNumOperands
-    LoadOrStoreOpIndex = MemoryRefOpIndex + X86::AddrNumOperands;
-  } else if (MIDesc.mayLoad()) {
-    // If the instruction loads to memory to a register, it has 1 def.
-    // Operand 0 is the loadOrStoreOp.
-    assert(((MIDesc.getNumDefs() == 0) || (MIDesc.getNumDefs() == 1)) &&
-           "Instruction that loads from memory expected to have only "
-           "one target");
-    if (MIDesc.getNumDefs() == 1) {
-      LoadOrStoreOpIndex = 0;
-      assert(MI.getOperand(LoadOrStoreOpIndex).isReg() &&
-             "Target of instruction that loads from "
-             "memory expected to be a register");
-    } else if (!MIDesc.isCompare()) {
-      switch (getInstructionKind(Opcode)) {
-      case InstructionKind::DIVIDE_MEM_OP:
-      case InstructionKind::LOAD_FPU_REG:
-        break;
-      default:
-        MI.print(errs());
-        assert(false && "Encountered unhandled memory load instruction");
-      }
-    }
-  } else {
-    MI.print(errs());
-    assert(false && "Encountered unhandled instruction that is not load/store");
-  }
-
-  Value *MemoryRefValue = nullptr;
-
-  if (MemRef.BaseType == X86AddressMode::RegBase) {
-    // If it is a stack reference, allocate a stack slot in case the current
-    // memory reference is new. Else get the stack reference using the
-    // stackslot index of the previously known stack ref.
-
-    uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
-    if (BaseSupReg == x86RegisterInfo->getStackRegister() ||
-        BaseSupReg == x86RegisterInfo->getFramePtr()) {
-      MemoryRefValue = getStackAllocatedValue(MI, MemRef, false);
-
-      // If memory operand has an index register with possibly a non-zero scale
-      // value, add the value represented by IndexReg*Scale to MemoryRefValue.
-      if (MemRef.IndexReg != X86::NoRegister) {
-        assert((MemoryRefValue != nullptr) &&
-               "Unexpected null value of stack or base pointer register");
-        Type *MemRefValTy = MemoryRefValue->getType();
-        assert((MemRefValTy->isPointerTy()) &&
-               "Unexpected non-pointer type of a stack allocated value");
-        // Convert MemRefValue to integer
-        LLVMContext &Ctx(MF.getFunction().getContext());
-        Type *CastTy = Type::getInt64Ty(Ctx);
-        BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-        PtrToIntInst *MemRefValAddr =
-            new PtrToIntInst(MemoryRefValue, CastTy, "", RaisedBB);
-
-        unsigned ScaleAmt = MemRef.Scale;
-        // IndexReg * Scale
-        Value *IndexVal = getPhysRegValue(MI, MemRef.IndexReg);
-        // Cast IndexRegVal as 64-bit integer, if needed.
-        IndexVal = getRaisedValues()->castValue(IndexVal, CastTy, RaisedBB);
-
-        // Generate mul instruction based on Scale value
-        switch (ScaleAmt) {
-        case 0:
-          assert(false && "Unexpected zero-value of scale in memory operand");
-          break;
-        case 1:
-          break;
-        default: {
-          Value *ScaleAmtValue = ConstantInt::get(CastTy, ScaleAmt);
-          Instruction *MulInst = BinaryOperator::CreateMul(
-              ScaleAmtValue, IndexVal, "sc-m", RaisedBB);
-          IndexVal = MulInst;
-        } break;
-        }
-
-        // MemoryRefValue + IndexReg*Scale
-        Instruction *AddInst = BinaryOperator::CreateAdd(
-            MemRefValAddr, IndexVal, "idx-a", RaisedBB);
-        // Propagate any rodata related metadata
-        getRaisedValues()->setInstMetadataRODataIndex(MemoryRefValue, AddInst);
-        // Cast the computed address back to MemRefValTy
-        MemoryRefValue =
-            getRaisedValues()->castValue(AddInst, MemRefValTy, RaisedBB);
-      }
-    }
-    // Handle PC-relative addressing.
-
-    // NOTE: This tool now raises only shared libraries and executables -
-    // NOT object files. So, instructions with 0 register (which typically
-    // are seen in a relocatable object file for the linker to patch) are
-    // not expected to be encountered.
-    else if (BaseSupReg == X86::RIP) {
-      MemoryRefValue = createPCRelativeAccesssValue(MI);
-    }
-
-    // If this is neither a stack reference nor a pc-relative access, get the
-    // associated memory address expression value.
-    if (MemoryRefValue == nullptr) {
-      Value *memrefValue = getMemoryAddressExprValue(MI);
-      MemoryRefValue = memrefValue;
-    }
-  } else {
-    // TODO : Memory references with BaseType FrameIndexBase
-    // (i.e., not RegBase type)
-    outs() << "****** Unhandled memory reference in instruction\n\t";
-    LLVM_DEBUG(MI.dump());
-    outs() << "****** reference of type FrameIndexBase";
-    return false;
-  }
-
-  assert(MemoryRefValue != nullptr &&
-         "Unable to construct memory referencing value");
+  Value *MemoryRefValue = getMemoryRefValue(MI);
 
   // Raise a memory compare instruction
   if (MI.isCompare())
@@ -2598,7 +2468,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   // the load/store operand, we can raise the memory referencing instruction
   // according to the opcode.
 
-  switch (getInstructionKind(Opcode)) {
+  switch (getInstructionKind(MI.getOpcode())) {
     // Move register or immediate to memory
   case InstructionKind::MOV_TO_MEM:
   case InstructionKind::SSE_MOV_TO_MEM:
@@ -4251,6 +4121,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     }
     Success = true;
   } break;
+  case X86::CALL64m:
   case X86::CALL64r: {
     const MachineBasicBlock *MBB = MI.getParent();
     int MBBNo = MBB->getNumber();
@@ -4285,9 +4156,56 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     // Build Function type.
     auto FT = FunctionType::get(ReturnType, ArgTypeVector, false);
 
+    Value *Func;
     // Get function pointer address.
-    unsigned int CallReg = MI.getOperand(0).getReg();
-    Value *Func = getRegOrArgValue(CallReg, MBBNo);
+    if (Opcode == X86::CALL64r) {
+      unsigned int CallReg = MI.getOperand(0).getReg();
+      Func = getRegOrArgValue(CallReg, MBBNo);
+    } else {
+      Value *MemRefValue = getMemoryRefValue(MI);
+
+      unsigned LoadOpIndex = 0;
+      // Get index of memory reference in the instruction.
+
+      // Get the BasicBlock corresponding to MachineBasicBlock of MI.
+      // Raised instruction is added to this BasicBlock.
+      BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+
+      // Load the value from memory location of memRefValue.
+      // memRefVal is either an AllocaInst (stack access), GlobalValue (global
+      // data access), an effective address value, element pointer or select
+      // instruction.
+      assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
+              isa<GlobalValue>(MemRefValue) || isa<SelectInst>(MemRefValue) ||
+              isa<GetElementPtrInst>(MemRefValue) ||
+              MemRefValue->getType()->isPointerTy()) &&
+             "Unexpected type of memory reference in CALL64m instruction");
+
+      PointerType *PtrTy =
+          PointerType::get(getPhysRegOperandType(MI, LoadOpIndex), 0);
+      if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
+        IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
+        // Set or copy rodata metadata, if any
+        getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
+        RaisedBB->getInstList().push_back(ConvIntToPtr);
+        MemRefValue = ConvIntToPtr;
+      }
+      assert(MemRefValue->getType()->isPointerTy() &&
+             "Pointer type expected in load instruction");
+      // Cast the pointer to match the size of memory being accessed by the
+      // instruction, as needed.
+      MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
+
+      // Load the value from memory location
+      Type *LdTy = MemRefValue->getType()->getPointerElementType();
+      LoadInst *LdInst =
+          new LoadInst(LdTy, MemRefValue, "memload", false, Align());
+      LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
+      RaisedBB->getInstList().push_back(LdInst);
+      MemRefValue = LdInst;
+
+      Func = MemRefValue;
+    }
 
     // Cast the function pointer address to function type pointer.
     Type *FuncTy = FT->getPointerTo();

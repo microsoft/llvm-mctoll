@@ -388,7 +388,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::CALL32m_NT, {0, Unknown}},
     {X86::CALL32r, {0, Unknown}},
     {X86::CALL32r_NT, {0, Unknown}},
-    {X86::CALL64m, {0, Unknown}},
+    {X86::CALL64m, {8, Unknown}},
     {X86::CALL64m_NT, {0, Unknown}},
     {X86::CALL64pcrel32, {0, Unknown}},
     {X86::CALL64r, {0, Unknown}},

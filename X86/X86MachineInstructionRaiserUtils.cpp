@@ -24,9 +24,146 @@
 #include <X86Subtarget.h>
 #include <iterator>
 
+#define DEBUG_TYPE "mctoll"
+
 using namespace llvm;
 using namespace mctoll;
 using namespace X86RegisterUtils;
+
+Value *X86MachineInstructionRaiser::getMemoryRefValue(const MachineInstr &MI) {
+  const MCInstrDesc &MIDesc = MI.getDesc();
+  unsigned int Opcode = MI.getOpcode();
+
+  int LoadOrStoreOpIndex = -1;
+
+  // Get index of memory reference in the instruction.
+  int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+  // Should have found the index of the memory reference operand
+  assert(MemoryRefOpIndex != -1 && "Unable to find memory reference "
+                                   "operand of a load/store instruction");
+  X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+
+  // Get the operand whose value is stored to memory or that is loaded from
+  // memory.
+
+  if (MIDesc.mayStore()) {
+    // If the instruction stores to stack, find the register whose value is
+    // being stored. It would be the operand at offset
+    // memRefOperandStartIndex + X86::AddrNumOperands
+    LoadOrStoreOpIndex = MemoryRefOpIndex + X86::AddrNumOperands;
+  } else if (MIDesc.mayLoad()) {
+    // If the instruction loads to memory to a register, it has 1 def.
+    // Operand 0 is the loadOrStoreOp.
+    assert(((MIDesc.getNumDefs() == 0) || (MIDesc.getNumDefs() == 1)) &&
+           "Instruction that loads from memory expected to have only "
+           "one target");
+    if (MIDesc.getNumDefs() == 1) {
+      LoadOrStoreOpIndex = 0;
+      assert(MI.getOperand(LoadOrStoreOpIndex).isReg() &&
+             "Target of instruction that loads from "
+             "memory expected to be a register");
+    } else if (!MIDesc.isCompare() && !MIDesc.isCall()) {
+      switch (getInstructionKind(Opcode)) {
+      case InstructionKind::DIVIDE_MEM_OP:
+      case InstructionKind::LOAD_FPU_REG:
+        break;
+      default:
+        MI.print(errs());
+        assert(false && "Encountered unhandled memory load instruction");
+      }
+    }
+  } else {
+    MI.print(errs());
+    assert(false && "Encountered unhandled instruction that is not load/store");
+  }
+
+  Value *MemoryRefValue = nullptr;
+
+  if (MemRef.BaseType == X86AddressMode::RegBase) {
+    // If it is a stack reference, allocate a stack slot in case the current
+    // memory reference is new. Else get the stack reference using the
+    // stackslot index of the previously known stack ref.
+
+    uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
+    if (BaseSupReg == x86RegisterInfo->getStackRegister() ||
+        BaseSupReg == x86RegisterInfo->getFramePtr()) {
+      MemoryRefValue = getStackAllocatedValue(MI, MemRef, false);
+
+      // If memory operand has an index register with possibly a non-zero scale
+      // value, add the value represented by IndexReg*Scale to MemoryRefValue.
+      if (MemRef.IndexReg != X86::NoRegister) {
+        assert((MemoryRefValue != nullptr) &&
+               "Unexpected null value of stack or base pointer register");
+        Type *MemRefValTy = MemoryRefValue->getType();
+        assert((MemRefValTy->isPointerTy()) &&
+               "Unexpected non-pointer type of a stack allocated value");
+        // Convert MemRefValue to integer
+        LLVMContext &Ctx(MF.getFunction().getContext());
+        Type *CastTy = Type::getInt64Ty(Ctx);
+        BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+        PtrToIntInst *MemRefValAddr =
+            new PtrToIntInst(MemoryRefValue, CastTy, "", RaisedBB);
+
+        unsigned ScaleAmt = MemRef.Scale;
+        // IndexReg * Scale
+        Value *IndexVal = getPhysRegValue(MI, MemRef.IndexReg);
+        // Cast IndexRegVal as 64-bit integer, if needed.
+        IndexVal = getRaisedValues()->castValue(IndexVal, CastTy, RaisedBB);
+
+        // Generate mul instruction based on Scale value
+        switch (ScaleAmt) {
+        case 0:
+          assert(false && "Unexpected zero-value of scale in memory operand");
+          break;
+        case 1:
+          break;
+        default: {
+          Value *ScaleAmtValue = ConstantInt::get(CastTy, ScaleAmt);
+          Instruction *MulInst = BinaryOperator::CreateMul(
+              ScaleAmtValue, IndexVal, "sc-m", RaisedBB);
+          IndexVal = MulInst;
+        } break;
+        }
+
+        // MemoryRefValue + IndexReg*Scale
+        Instruction *AddInst = BinaryOperator::CreateAdd(
+            MemRefValAddr, IndexVal, "idx-a", RaisedBB);
+        // Propagate any rodata related metadata
+        getRaisedValues()->setInstMetadataRODataIndex(MemoryRefValue, AddInst);
+        // Cast the computed address back to MemRefValTy
+        MemoryRefValue =
+            getRaisedValues()->castValue(AddInst, MemRefValTy, RaisedBB);
+      }
+    }
+    // Handle PC-relative addressing.
+
+    // NOTE: This tool now raises only shared libraries and executables -
+    // NOT object files. So, instructions with 0 register (which typically
+    // are seen in a relocatable object file for the linker to patch) are
+    // not expected to be encountered.
+    else if (BaseSupReg == X86::RIP) {
+      MemoryRefValue = createPCRelativeAccesssValue(MI);
+    }
+
+    // If this is neither a stack reference nor a pc-relative access, get the
+    // associated memory address expression value.
+    if (MemoryRefValue == nullptr) {
+      Value *memrefValue = getMemoryAddressExprValue(MI);
+      MemoryRefValue = memrefValue;
+    }
+  } else {
+    // TODO : Memory references with BaseType FrameIndexBase
+    // (i.e., not RegBase type)
+    outs() << "****** Unhandled memory reference in instruction\n\t";
+    LLVM_DEBUG(MI.dump());
+    outs() << "****** reference of type FrameIndexBase";
+  }
+
+  assert(MemoryRefValue != nullptr &&
+         "Unable to construct memory referencing value");
+
+  return MemoryRefValue;
+}
 
 // Delete noop instructions
 bool X86MachineInstructionRaiser::deleteNOOPInstrMI(
@@ -2150,3 +2287,5 @@ bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
                                                       StringRef name) const {
   return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
+
+#undef DEBUG_TYPE

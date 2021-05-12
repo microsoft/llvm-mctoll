@@ -401,7 +401,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
                 MBBDefRegs[find64BitSuperReg(RetReg)] = RetRegSizeInBits / 8;
               }
             }
-          } else if (Opcode != X86::CALL64r) {
+          } else if (Opcode != X86::CALL64r && Opcode != X86::CALL64m) {
             // Not possible to statically determine the target of register-based
             // indirect call. Need to handle differently.
             assert(false && "Unhandled call or branch found");

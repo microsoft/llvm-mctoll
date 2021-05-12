@@ -144,6 +144,8 @@ private:
   bool raiseDirectBranchMachineInstr(ControlTransferInfo *);
   bool raiseIndirectBranchMachineInstr(ControlTransferInfo *);
 
+  Value *getMemoryRefValue(const MachineInstr &);
+
   // Helper functions
   // Cleanup MachineBasicBlocks
   static bool deleteNOOPInstrMI(MachineBasicBlock &,

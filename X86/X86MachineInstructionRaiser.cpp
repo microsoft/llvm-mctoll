@@ -3936,6 +3936,11 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
         assert(iter != mbbToBBMap.end() &&
                "Unable to find BasicBlock to insert unconditional branch");
         BasicBlock *BB = iter->second;
+        //skip basic blocks that already contain an 'unreachable' terminator
+        if (BB->getTerminator()!=nullptr) {
+          assert(isa<UnreachableInst>(BB->getTerminator()) && "Expecting unreachable instruction");
+          continue;
+        }
 
         // Find the BasicBlock corresponding to the successor of MBB
         MachineBasicBlock *SuccMBB = *(MBB.succ_begin());

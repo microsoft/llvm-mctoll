@@ -90,8 +90,27 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
   memRef.Scale = 1;
   Value *StackRef = getStackAllocatedValue(MI, memRef, false);
   assert(StackRef != nullptr && "Failed to allocate stack slot for push");
+  assert(StackRef->getType()->isPointerTy() &&
+         "Unexpected non-pointer stack slot type while raising push");
   raisedValues->setPhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
                                    StackRef);
+  // Get operand value
+  Value *RegValue = getRegOperandValue(MI, 0);
+  // If the value of push operand register is known, then it does not
+  // have a manifestation in the function code. So, a known garbage value is
+  // used to affect the push operation.
+  Type *StackRefElemTy = StackRef->getType()->getPointerElementType();
+  if (RegValue == nullptr) {
+    RegValue =
+        ConstantInt::get(StackRefElemTy, 0xdeadbeef, false /* isSigned */);
+  }
+  // Ensure types of RegValue matches that of StackRef
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+  RegValue = getRaisedValues()->castValue(RegValue, StackRefElemTy, RaisedBB);
+
+  // Store operand at stack top (StackRef)
+  new StoreInst(RegValue, StackRef, RaisedBB);
+
   return true;
 }
 

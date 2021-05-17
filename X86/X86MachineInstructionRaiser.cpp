@@ -1319,38 +1319,21 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
           isa<GlobalValue>(MemRefValue) ||
           MemRefValue->getType()->isPointerTy()) &&
          "Unexpected type of memory reference in binary mem op instruction");
-  bool IsMemRefGlobalVal = false;
   // If it is an effective address
   if (isEffectiveAddrValue(MemRefValue)) {
-    // Check if this is a load if a global value
-    if (isa<LoadInst>(MemRefValue)) {
-      LoadInst *LdInst = dyn_cast<LoadInst>(MemRefValue);
-      if (isa<GlobalValue>(LdInst->getPointerOperand())) {
-        IsMemRefGlobalVal = true;
-      }
-    } else {
-      // This is an effective address computation
-      // Cast it to a pointer of type of destination operand.
-      PointerType *PtrTy = PointerType::get(DestopTy, 0);
-      IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
-      getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
-      RaisedBB->getInstList().push_back(ConvIntToPtr);
-      MemRefValue = ConvIntToPtr;
-    }
+    // This is an effective address computation
+    // Cast it to a pointer of type of destination operand.
+    PointerType *PtrTy = PointerType::get(DestopTy, 0);
+    IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
+    getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
+    RaisedBB->getInstList().push_back(ConvIntToPtr);
+    MemRefValue = ConvIntToPtr;
   }
   Value *LoadValue = nullptr;
-  if (IsMemRefGlobalVal) {
-    // Load the global value.
-    auto Op = dyn_cast<LoadInst>(MemRefValue)->getPointerOperand();
-    LoadInst *LdInst = new LoadInst(Op->getType()->getPointerElementType(), Op,
-                                    "globalload", false, Align(MemAlignment));
-    LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-  } else {
-    LoadInst *LdInst =
-        new LoadInst(MemRefValue->getType()->getPointerElementType(),
-                     MemRefValue, "memload", false, Align(MemAlignment));
-    LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-  }
+  LoadInst *LdInst =
+      new LoadInst(MemRefValue->getType()->getPointerElementType(),
+                   MemRefValue, "memload", false, Align(MemAlignment));
+  LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
 
   // Insert the instruction that loads memory reference
   RaisedBB->getInstList().push_back(dyn_cast<Instruction>(LoadValue));

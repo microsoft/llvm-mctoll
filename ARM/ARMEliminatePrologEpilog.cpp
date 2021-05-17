@@ -175,7 +175,7 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
       unsigned Size = RegInfo->getSpillSize(*RC);
       if (FixedSlot == FixedSpillSlots + NumFixedSpillSlots) {
         // Nope, just spill it anywhere convenient.
-        Align Alignment(RegInfo->getSpillAlignment(*RC));
+        Align Alignment(RegInfo->getSpillAlign(*RC));
 
         // The alignment is the minimum of the desired alignment of the
         // TargetRegisterClass and the stack alignment, whichever is smaller.

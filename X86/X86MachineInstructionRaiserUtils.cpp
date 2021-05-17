@@ -1869,6 +1869,13 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   // Generate mul scaleAmt, IndexRegVal, if IndexReg is not 0.
   if (IndexReg != X86::NoRegister) {
     Value *IndexRegVal = getPhysRegValue(MI, IndexReg);
+    if (IndexRegVal->getType()->isPointerTy()) {
+      Type *LdTy = IndexRegVal->getType()->getPointerElementType();
+      LoadInst *LdInst =
+        new LoadInst(LdTy, IndexRegVal, "memload", false, Align());
+      RaisedBB->getInstList().push_back(LdInst);
+      IndexRegVal = LdInst;
+    }
     switch (ScaleAmt) {
     case 0:
       assert(false && "Unexpected zero-value of scale in memory operand");

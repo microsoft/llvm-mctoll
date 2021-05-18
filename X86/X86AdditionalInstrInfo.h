@@ -14,6 +14,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H
 #define LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H
 
+#include "MCTargetDesc/X86BaseInfo.h"
 #include <cassert>
 #include <cstdint>
 #include <llvm/ADT/DenseMap.h>
@@ -48,8 +49,10 @@ enum InstructionKind : uint8_t {
   SSE_KIND_BEGIN,
   SSE_MOV_TO_MEM,
   SSE_MOV_FROM_MEM,
+  SSE_MOV_RR,
   SSE_COMPARE,
   SSE_CONVERT_SS2SD,
+  SSE_CONVERT_SD2SS,
   SSE_KIND_END,
   INSTR_KIND_END
 };
@@ -82,14 +85,41 @@ static inline unsigned short getInstructionMemOpSize(unsigned int Opcode) {
   return Iter->second.MemOpSize;
 }
 
+static inline uint8_t getInstructionBitPrecision(uint64_t TSFlags) {
+  // Instructions using prefix to indicate precision
+  if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XS) {
+    return 32;
+  } else if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XD) {
+    return 64;
+  } else {
+    // Instructions operating on packed values
+    auto Domain = (TSFlags >> llvm::X86II::SSEDomainShift) & 3;
+    // X64BaseInfo.h does not define enums. X86InstrFormats.td specified
+    // GenericDomain = 0 (non-SSE instruction)
+    // SSEPackedSingle = 1
+    // SSEPackedSouble = 2
+    // SSEPackedInt = 3
+    switch (Domain) {
+    case 1:
+    case 3:
+      return 32;
+    case 2:
+      return 64;
+    default:
+      break;
+    }
+  }
+  llvm_unreachable("Unknown precision in instruction encoding");
+}
+
 static inline bool isNoop(unsigned int Opcode) {
   return (getInstructionKind(Opcode) == mctoll::InstructionKind::NOOP);
 }
 
 static inline bool isSSE2Instruction(unsigned int Opcode) {
-	auto Kind = getInstructionKind(Opcode);
-	return ((Kind > InstructionKind::SSE_KIND_BEGIN) &&
-			(Kind < InstructionKind::SSE_KIND_END));
+  auto Kind = getInstructionKind(Opcode);
+  return ((Kind > InstructionKind::SSE_KIND_BEGIN) &&
+          (Kind < InstructionKind::SSE_KIND_END));
 }
 } // namespace mctoll
 

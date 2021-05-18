@@ -427,6 +427,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, CInst);
     Success = true;
   } break;
+  case X86::MOVAPSrr:
   case X86::MOV64rr:
   case X86::MOV32rr:
   case X86::MOV16rr:
@@ -1923,11 +1924,11 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   Type *StoreTy = SrcValue->getType();
   if (SrcValue->getType()->isIntegerTy())
     StoreTy = Type::getIntNTy(Ctx, memSzInBits);
-  else if (SrcValue->getType()->isFloatTy()) {
+  else if (SrcValue->getType()->isFloatingPointTy()) {
     if (memSzInBits == 32)
       StoreTy = Type::getFloatTy(Ctx);
     else if (memSzInBits == 64)
-      StoreTy = Type::getDoublePtrTy(Ctx);
+      StoreTy = Type::getDoubleTy(Ctx);
   }
 
   // Cast SrcValue and MemRefVal as needed.
@@ -3717,6 +3718,7 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
     success = raiseLEAMachineInstr(MI);
     break;
   case InstructionKind::MOV_RR:
+  case InstructionKind::SSE_MOV_RR:
     success = raiseMoveRegToRegMachineInstr(MI);
     break;
   case InstructionKind::MOV_RI:
@@ -3745,7 +3747,8 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
   case InstructionKind::SSE_COMPARE:
     success = raiseSSECompareMachineInstr(MI);
     break;
-  case SSE_CONVERT_SS2SD:
+  case InstructionKind::SSE_CONVERT_SD2SS:
+  case InstructionKind::SSE_CONVERT_SS2SD:
     success = raiseSSEConvertPrecisionMachineInstr(MI);
     break;
   default: {
@@ -3772,7 +3775,7 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   if (!RetType->isVoidTy()) {
     if (RetType->isPointerTy())
       retReg = X86::RAX;
-    else {
+    else if (RetType->isIntegerTy()) {
       switch (RetType->getPrimitiveSizeInBits()) {
       case 64:
         retReg = X86::RAX;
@@ -3789,6 +3792,17 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
       default:
         llvm_unreachable("Unhandled return type");
       }
+    } else if (RetType->isFloatingPointTy()) {
+      switch (RetType->getPrimitiveSizeInBits()) {
+      case 64:
+      case 32:
+        retReg = X86::XMM0;
+        break;
+      default:
+        llvm_unreachable("Unhandled return type");
+      }
+    } else {
+      llvm_unreachable("Unhandled return type");
     }
     RetValue =
         raisedValues->getReachingDef(retReg, MI.getParent()->getNumber(), true);
@@ -3980,8 +3994,18 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
 
     assert(CalledFunc != nullptr && "Failed to detect call target");
     std::vector<Value *> CallInstFuncArgs;
-    unsigned NumArgs = CalledFunc->arg_size();
+    unsigned NumGPArgs = CalledFunc->arg_size();
     Argument *CalledFuncArgs = CalledFunc->arg_begin();
+
+    // check number of floating point args
+    unsigned NumSSEArgs = 0;
+    for (unsigned i = 0; i < NumGPArgs; ++i) {
+      if (CalledFunc->getArg(i)->getType()->isFloatingPointTy()) {
+        ++NumSSEArgs;
+      }
+    }
+    // NumGPArgs refers to just general purpose registers
+    NumGPArgs -= NumSSEArgs;
 
     if (CalledFunc->isVarArg()) {
       // Discover argument registers that are live just before the CallMI.
@@ -4013,7 +4037,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       // Find if CurMBB has call between block entry and MI
 
       for (auto ArgReg : GPR64ArgRegs64Bit) {
-        if (hasPhysRegDefInBlock(ArgReg, &MI, CurMBB, MCID::Call, HasCallInst))
+        if (getPhysRegDefiningInstInBlock(ArgReg, &MI, CurMBB, MCID::Call,
+                                          HasCallInst) != nullptr)
           PositionMask |= (1 << ArgNo);
         else if (!HasCallInst) {
           // Look to see if the argument register has a reaching definition in
@@ -4038,8 +4063,9 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
                 // getReachingDefs() which does not consider the position
                 // where the register is defined.
                 bool Ignored;
-                if (hasPhysRegDefInBlock(ArgReg, nullptr, PredMBB, MCID::Call,
-                                         Ignored))
+                if (getPhysRegDefiningInstInBlock(ArgReg, nullptr, PredMBB,
+                                                  MCID::Call,
+                                                  Ignored) != nullptr)
                   ReachDefPredEdgeCount++;
                 else {
                   // Reach info not found, continue walking the predecessors
@@ -4071,28 +4097,55 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       assert(!(PositionMask & 1) && !(PositionMask & (1 << 7)) &&
              "Invalid number of arguments discovered");
       uint8_t ShftPositionMask = PositionMask >> 1;
-      uint8_t NumArgsDiscovered = 0;
+      uint8_t NumGPArgsDiscovered = 0;
       // Consider only consecutive argument registers.
       while (ShftPositionMask & 1) {
         ShftPositionMask = ShftPositionMask >> 1;
-        NumArgsDiscovered++;
+        NumGPArgsDiscovered++;
       }
       // If number of arguments discovered is greater than CalledFunc
       // arguments use that as the number of arguments of the called
       // function.
-      if (NumArgsDiscovered > NumArgs) {
-        NumArgs = NumArgsDiscovered;
+      if (NumGPArgsDiscovered > NumGPArgs) {
+        NumGPArgs = NumGPArgsDiscovered;
+      }
+
+      uint8_t NumSSEArgsDiscovered = 0;
+      // Get the number of vector registers used
+      // When using the x86_64 System V ABI, RAX holds the number of vector
+      // registers used
+      bool Ignored;
+      auto Instr = getPhysRegDefiningInstInBlock(X86::AL, &MI, CurMBB,
+                                                 MCID::Call, Ignored);
+      if (Instr != nullptr && Instr->getNumOperands() > 0) {
+        // With the System V X86_64 ABI the compiler generates a instruction
+        // like mov al, 1 with the number of vector arguments for the varargs
+        // call
+        const MachineOperand &SrcOp = Instr->getOperand(1);
+        if (SrcOp.isImm()) {
+          NumSSEArgsDiscovered = (uint8_t)SrcOp.getImm();
+        }
+      }
+      // If number of vector args discovered is greater than CalledFunc
+      // arguments, but still in the range of allowed number of vector
+      // argument registers, use that as the number of vector args
+      if (NumSSEArgsDiscovered > NumSSEArgs &&
+          NumGPArgsDiscovered <= SSEArgRegs64Bit.size()) {
+        NumSSEArgs = NumSSEArgsDiscovered;
       }
     }
     // Construct the argument list with values to be used to construct a new
     // CallInst. These values are those of the physical registers as defined
     // in C calling convention (the calling convention currently supported).
-    for (unsigned i = 0; i < NumArgs; i++) {
+    for (unsigned i = 0; i < NumGPArgs + NumSSEArgs; i++) {
+      // First check all GP registers, then FP registers
+      MCPhysReg ArgReg = i < NumGPArgs
+                             ? GPR64ArgRegs64Bit[i]
+                             : SSEArgRegs64Bit[i - NumGPArgs];
       // Get the values of argument registers
       // Do not match types since we are explicitly using 64-bit GPR array.
       // Any necessary casting will be done later in this function.
-      Value *ArgVal =
-          getRegOrArgValue(GPR64ArgRegs64Bit[i], MI.getParent()->getNumber());
+      Value *ArgVal = getRegOrArgValue(ArgReg, MI.getParent()->getNumber());
       // This condition will not be true for varargs of a variadic function.
       // In that case just add the value.
       if (i < CalledFunc->arg_size()) {
@@ -4103,7 +4156,15 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         if (ArgVal == nullptr) {
           // Most likely the argument register corresponds to an argument value
           // that is not used in the function body. Just initialize it to 0.
-          ArgVal = ConstantInt::get(FuncArg.getType(), 0, false /* isSigned */);
+          if (FuncArg.getType()->isIntOrPtrTy()) {
+            ArgVal =
+                ConstantInt::get(FuncArg.getType(), 0, false /* isSigned */);
+          } else if (FuncArg.getType()->isFloatingPointTy()) {
+            ArgVal = ConstantFP::get(FuncArg.getType(), 0.0);
+          } else {
+            FuncArg.getType()->dump();
+            llvm_unreachable("Unsupported argument type");
+          }
         } else if (isa<ConstantInt>(ArgVal)) {
           ConstantInt *Address = dyn_cast<ConstantInt>(ArgVal);
           if (!Address->isNegative()) {
@@ -4147,7 +4208,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
             CastTy, "", RaisedBB);
         callInst = castInst;
         RetReg = X86::RAX;
-      } else {
+      } else if (RetType->isIntegerTy()) {
         switch (RetType->getScalarSizeInBits()) {
         case 64:
           RetReg = X86::RAX;
@@ -4164,6 +4225,10 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         default:
           assert(false && "Unhandled return value size");
         }
+      } else if (RetType->isFloatingPointTy()) {
+        RetReg = X86::XMM0;
+      } else {
+        llvm_unreachable_internal("Unhandled return type");
       }
       raisedValues->setPhysRegSSAValue(RetReg, MI.getParent()->getNumber(),
                                        callInst);
@@ -4210,6 +4275,15 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       if (RD == nullptr)
         break;
       else {
+        ArgTypeVector.push_back(RD->getType());
+        ArgValueVector.push_back(RD);
+      }
+    }
+    for (auto Reg : SSEArgRegs64Bit) {
+      Value *RD = raisedValues->getReachingDef(Reg, MBBNo, true, true);
+      if (RD == nullptr) {
+        break;
+      } else {
         ArgTypeVector.push_back(RD->getType());
         ArgValueVector.push_back(RD);
       }

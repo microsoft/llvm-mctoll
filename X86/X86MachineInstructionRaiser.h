@@ -57,6 +57,8 @@ public:
   unsigned int find64BitSuperReg(unsigned int PhysReg);
   // Return the Type of the physical register.
   Type *getPhysRegType(unsigned int PhysReg);
+  // Return type of the floating point physical register
+  Type *getPhysSSERegType(unsigned int PhysReg, uint8_t BitPrecision);
 
   bool insertAllocaInEntryBlock(Instruction *alloca, int StackOffset,
                                 int MFIndex);
@@ -191,9 +193,10 @@ private:
 
   bool handleUnpromotedReachingDefs();
 
-  bool hasPhysRegDefInBlock(int PhysReg, const MachineInstr *StartMI,
-                            const MachineBasicBlock *MBB,
-                            unsigned StopAtInstProp, bool &HasStopInst);
+  const MachineInstr *
+  getPhysRegDefiningInstInBlock(int PhysReg, const MachineInstr *StartMI,
+                                const MachineBasicBlock *MBB,
+                                unsigned StopAtInstProp, bool &HasStopInst);
 
   void addRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
   int64_t getBranchTargetMBBNumber(const MachineInstr &MI);

@@ -87,6 +87,13 @@ int X86MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
     if ((diff >= 0) && (diff < (int)GPR64ArgRegs64Bit.size())) {
       pos = diff + 1;
     }
+  } else if (isSSE2Reg(PReg)) {
+    int diff = std::distance(
+        SSEArgRegs64Bit.begin(),
+        std::find(SSEArgRegs64Bit.begin(), SSEArgRegs64Bit.end(), PReg));
+    if ((diff >= 0) && (diff < (int)SSEArgRegs64Bit.size())) {
+      pos = diff + 1;
+    }
   }
   return pos;
 }
@@ -370,12 +377,12 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
               if (!RetTy->isVoidTy()) {
                 unsigned RetReg = X86::NoRegister;
                 unsigned RetRegSizeInBits = 0;
-                assert(RetTy->isIntOrPtrTy() &&
+                assert((RetTy->isIntOrPtrTy() || RetTy->isFloatingPointTy()) &&
                        "Unhandled called function return type");
                 if (RetTy->isPointerTy()) {
                   RetReg = X86::RAX;
                   RetRegSizeInBits = 64;
-                } else {
+                } else if (RetTy->isIntegerTy()) {
                   RetRegSizeInBits = RetTy->getPrimitiveSizeInBits();
                   switch (RetRegSizeInBits) {
                   case 64:
@@ -393,6 +400,17 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
                   default:
                     assert(false &&
                            "Unexpected size for called function return type");
+                  }
+                } else if (RetTy->isFloatingPointTy()) {
+                  RetRegSizeInBits = RetTy->getPrimitiveSizeInBits();
+                  switch (RetRegSizeInBits) {
+                  case 64:
+                  case 32:
+                    RetReg = X86::XMM0;
+                    break;
+                  default:
+                    llvm_unreachable("Unexpected size for called function "
+                                     "return type");
                   }
                 }
                 assert(RetReg != X86::NoRegister &&
@@ -414,10 +432,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
             continue;
 
           unsigned Reg = MO.getReg();
-          if (!(llvm::X86::GR8RegClass.contains(Reg) ||
-                llvm::X86::GR16RegClass.contains(Reg) ||
-                llvm::X86::GR32RegClass.contains(Reg) ||
-                llvm::X86::GR64RegClass.contains(Reg)))
+          if (!(isGPReg(Reg) || isSSE2Reg(Reg)))
             continue;
 
           if (MO.isUse()) {
@@ -433,10 +448,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
             continue;
 
           unsigned Reg = MO.getReg();
-          if (!(llvm::X86::GR8RegClass.contains(Reg) ||
-                llvm::X86::GR16RegClass.contains(Reg) ||
-                llvm::X86::GR32RegClass.contains(Reg) ||
-                llvm::X86::GR64RegClass.contains(Reg)))
+          if (!(isGPReg(Reg) || isSSE2Reg(Reg)))
             continue;
 
           if (MO.isDef())
@@ -592,6 +604,7 @@ Type *
 X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
                                                   bool &HasCall) {
   Type *ReturnType = nullptr;
+  uint8_t BitPrecision = 0;
   HasCall = false;
 
   // Walk the block backwards
@@ -640,6 +653,11 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
             break;
           }
         }
+        if (DefReg == X86::NoRegister && PReg == X86::XMM0) {
+          DefReg = X86::XMM0;
+          BitPrecision =
+              getInstructionBitPrecision(I->getDesc().TSFlags);
+        }
       }
     }
 
@@ -654,13 +672,24 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
       }
     }
 
+    if (DefReg == X86::NoRegister &&
+        hasExactImplicitDefOfPhysReg(*I, X86::XMM0, TRI)) {
+      DefReg = X86::XMM0;
+      BitPrecision =
+          getInstructionBitPrecision(I->getDesc().TSFlags);
+    }
+
     // If the defined register is a return register
     if (DefReg != X86::NoRegister) {
       if (!Register::isPhysicalRegister(DefReg))
         continue;
 
       if (ReturnType == nullptr) {
-        ReturnType = getPhysRegType(DefReg);
+        if (isSSE2Reg(DefReg)) {
+          ReturnType = getPhysSSERegType(DefReg, BitPrecision);
+        } else {
+          ReturnType = getPhysRegType(DefReg);
+        }
         // Stop processing any further instructions as the return type is found.
         break;
       }
@@ -677,31 +706,44 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
     const std::set<MCPhysReg> &PhysRegs, std::vector<Type *> &ArgTyVec) {
   // A map of argument number and type as discovered
   std::map<unsigned int, Type *> argNumTypeMap;
+  std::map<unsigned int, Type *> sseArgNumTypeMap;
   llvm::LLVMContext &funcLLVMContext = MF.getFunction().getContext();
-  int MaxArgNum = 0;
+  int MaxGPArgNum = 0;
+  int MaxSSEArgNum = 0;
 
   for (MCPhysReg PReg : PhysRegs) {
     // If Reg is an argument register per C standard calling convention
     // construct function argument.
     int argNum = getArgumentNumber(PReg);
     if (argNum > 0) {
-      if (argNum > MaxArgNum)
-        MaxArgNum = argNum;
 
-      // Make sure each argument position is discovered only once
-      assert(argNumTypeMap.find(argNum) == argNumTypeMap.end());
-      if (is8BitPhysReg(PReg)) {
-        argNumTypeMap.insert(
-            std::make_pair(argNum, Type::getInt8Ty(funcLLVMContext)));
-      } else if (is16BitPhysReg(PReg)) {
-        argNumTypeMap.insert(
-            std::make_pair(argNum, Type::getInt16Ty(funcLLVMContext)));
-      } else if (is32BitPhysReg(PReg)) {
-        argNumTypeMap.insert(
-            std::make_pair(argNum, Type::getInt32Ty(funcLLVMContext)));
-      } else if (is64BitPhysReg(PReg)) {
-        argNumTypeMap.insert(
-            std::make_pair(argNum, Type::getInt64Ty(funcLLVMContext)));
+      if (isGPReg(PReg)) {
+        if (argNum > MaxGPArgNum)
+          MaxGPArgNum = argNum;
+
+        // Make sure each argument position is discovered only once
+        assert(argNumTypeMap.find(argNum) == argNumTypeMap.end());
+        if (is8BitPhysReg(PReg)) {
+          argNumTypeMap.insert(
+              std::make_pair(argNum, Type::getInt8Ty(funcLLVMContext)));
+        } else if (is16BitPhysReg(PReg)) {
+          argNumTypeMap.insert(
+              std::make_pair(argNum, Type::getInt16Ty(funcLLVMContext)));
+        } else if (is32BitPhysReg(PReg)) {
+          argNumTypeMap.insert(
+              std::make_pair(argNum, Type::getInt32Ty(funcLLVMContext)));
+        } else if (is64BitPhysReg(PReg)) {
+          argNumTypeMap.insert(
+              std::make_pair(argNum, Type::getInt64Ty(funcLLVMContext)));
+        }
+      } else if (isSSE2Reg(PReg)) {
+        if (argNum > MaxSSEArgNum)
+          MaxSSEArgNum = argNum;
+
+        // Make sure each argument position is discovered only once
+        assert(sseArgNumTypeMap.find(argNum) == sseArgNumTypeMap.end());
+        sseArgNumTypeMap.insert(
+            std::make_pair(argNum, Type::getDoubleTy(funcLLVMContext)));
       } else {
         outs() << x86RegisterInfo->getRegAsmName(PReg) << "\n";
         llvm_unreachable("Unhandled register type encountered in binary");
@@ -711,7 +753,7 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
 
   // Build argument type vector that will be used to build FunctionType
   // while sanity checking arguments discovered
-  for (int i = 1; i <= MaxArgNum; i++) {
+  for (int i = 1; i <= MaxGPArgNum; i++) {
     auto argIter = argNumTypeMap.find(i);
     if (argIter == argNumTypeMap.end()) {
       // Argument register not used. It is most likely optimized.
@@ -720,6 +762,17 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
       ArgTyVec.push_back(Type::getInt64Ty(funcLLVMContext));
     } else
       ArgTyVec.push_back(argNumTypeMap.find(i)->second);
+  }
+  // TODO: for now we just assume that SSE registers are always the last
+  // arguments This may work when compiling to X86 using the System V ABI, not
+  // necessarily for other ABIs.
+  for (int i = 1; i <= MaxSSEArgNum; i++) {
+    auto argIter = sseArgNumTypeMap.find(i);
+    if (argIter == sseArgNumTypeMap.end()) {
+      ArgTyVec.push_back(Type::getDoubleTy(funcLLVMContext));
+    } else {
+      ArgTyVec.push_back(argIter->second);
+    }
   }
   return true;
 }

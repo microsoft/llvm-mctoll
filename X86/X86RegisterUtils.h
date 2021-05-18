@@ -48,6 +48,8 @@ extern const vector<MCPhysReg> GPR64ArgRegs16Bit;
 
 extern const vector<MCPhysReg> GPR64ArgRegs8Bit;
 
+extern const vector<MCPhysReg> SSEArgRegs64Bit;
+
 // static const ArrayRef<MCPhysReg> GPR64ArgRegsWin64({X86::RCX, X86::RDX,
 // X86::R8,
 //                                                    X86::R9});

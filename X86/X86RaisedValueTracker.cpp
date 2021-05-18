@@ -30,21 +30,33 @@ X86RaisedValueTracker::X86RaisedValueTracker(
 
   // Initialize entries for function register arguments in physToValueMap
   // Only first 6 arguments are passed as registers
-  unsigned RegArgCount = X86RegisterUtils::GPR64ArgRegs64Bit.size();
+  unsigned GPRegArgCount = X86RegisterUtils::GPR64ArgRegs64Bit.size();
+  unsigned SSERegArgCount = X86RegisterUtils::SSEArgRegs64Bit.size();
   MachineFunction &MF = x86MIRaiser->getMF();
   Function *CurFunction = x86MIRaiser->getRaisedFunction();
 
+  unsigned GPArgNum = 0;
+  unsigned SSEArgNum = 0;
   for (auto &Arg : CurFunction->args()) {
-    unsigned ArgNum = Arg.getArgNo();
-    if (ArgNum > RegArgCount)
-      break;
     Type *ArgTy = Arg.getType();
-    // TODO : Handle non-integer argument types
-    assert(ArgTy->isIntegerTy() &&
-           "Unhandled argument type in raised function type");
+
+    MCPhysReg ArgReg;
+    if (ArgTy->isIntOrPtrTy()) {
+      if (GPArgNum > GPRegArgCount)
+        continue;
+      ArgReg = X86RegisterUtils::GPR64ArgRegs64Bit[GPArgNum];
+      GPArgNum++;
+    } else if (ArgTy->isFloatingPointTy()) {
+      if (SSEArgNum > SSERegArgCount)
+        continue;
+      ArgReg = X86RegisterUtils::SSEArgRegs64Bit[SSEArgNum];
+      SSEArgNum++;
+    } else {
+      llvm_unreachable("Unhandled argument type in raised function type");
+    }
+
     unsigned ArgTySzInBits = ArgTy->getPrimitiveSizeInBits();
-    physRegDefsInMBB[X86RegisterUtils::GPR64ArgRegs64Bit[ArgNum]][0] =
-        std::make_pair(ArgTySzInBits, nullptr);
+    physRegDefsInMBB[ArgReg][0] = std::make_pair(ArgTySzInBits, nullptr);
   }
   // Walk all blocks to initialize physRegDefsInMBB based on register defs.
   for (MachineBasicBlock &MBB : MF) {
@@ -72,9 +84,16 @@ X86RaisedValueTracker::X86RaisedValueTracker(
         unsigned int SuperReg = x86MIRaiser->find64BitSuperReg(PhysReg);
         // No value assigned yet for the definition of SuperReg in CurMBBNo.
         // The value will be updated as the block is raised.
-        uint8_t PhysRegSzInBits = getPhysRegSizeInBits(PhysReg);
-        physRegDefsInMBB[SuperReg][MBBNo] =
-            std::make_pair(PhysRegSzInBits, nullptr);
+        if (isSSE2Instruction(MI.getOpcode())) {
+          uint8_t InstrBitPrecision =
+              getInstructionBitPrecision(MI.getDesc().TSFlags);
+          physRegDefsInMBB[SuperReg][MBBNo] =
+              std::make_pair(InstrBitPrecision, nullptr);
+        } else {
+          uint8_t PhysRegSzInBits = getPhysRegSizeInBits(PhysReg);
+          physRegDefsInMBB[SuperReg][MBBNo] =
+              std::make_pair(PhysRegSzInBits, nullptr);
+        }
       }
     }
   }
@@ -94,8 +113,13 @@ bool X86RaisedValueTracker::setPhysRegSSAValue(unsigned int PhysReg, int MBBNo,
   if (!Val->hasName() && PhysReg < X86::NUM_TARGET_REGS)
     Val->setName(x86MIRaiser->getRegisterInfo()->getName(PhysReg));
   physRegDefsInMBB[SuperReg][MBBNo].second = Val;
-  physRegDefsInMBB[SuperReg][MBBNo].first =
-      X86RegisterUtils::getPhysRegSizeInBits(PhysReg);
+  if (Val->getType()->isFloatingPointTy()) {
+    auto BitPrecision = Val->getType()->getPrimitiveSizeInBits();
+    physRegDefsInMBB[SuperReg][MBBNo].first = BitPrecision;
+  } else {
+    physRegDefsInMBB[SuperReg][MBBNo].first =
+        X86RegisterUtils::getPhysRegSizeInBits(PhysReg);
+  }
 
   assert((physRegDefsInMBB[SuperReg][MBBNo].first != 0) &&
          "Found incorrect size of physical register");
@@ -223,11 +247,25 @@ X86RaisedValueTracker::getInBlockRegOrArgDefVal(unsigned int PhysReg,
     // If PReg is an argument register, get its value from function
     // argument list.
     if (pos > 0) {
+      Function *RaisedFunction = x86MIRaiser->getRaisedFunction();
+
+      int actualPos = pos;
+      if (isSSE2Reg(PhysReg)) {
+        // sse2 args are always after general purpose args
+        // increment actualpos for every general purpose register encountered
+        for (auto iter = RaisedFunction->arg_begin();
+             iter != RaisedFunction->arg_end(); iter++) {
+          if (!iter->getType()->isFloatingPointTy()) {
+            actualPos++;
+          }
+        }
+      }
+
       // Get the value only if the function has an argument at
       // pos.
-      Function *RaisedFunction = x86MIRaiser->getRaisedFunction();
-      if (pos <= (int)(RaisedFunction->arg_size())) {
-        Function::arg_iterator argIter = RaisedFunction->arg_begin() + pos - 1;
+      if (actualPos <= (int)(RaisedFunction->arg_size())) {
+        Function::arg_iterator argIter =
+            RaisedFunction->arg_begin() + actualPos - 1;
         DefMBBNo = 0;
         DefValue = argIter;
       }

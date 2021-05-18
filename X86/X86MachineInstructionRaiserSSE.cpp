@@ -114,28 +114,38 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   MachineOperand SrcOp2 = MI.getOperand(SrcOp2Idx);
   assert(DstOp.isTied() && (MI.findTiedOperandIdx(DstOpIdx) == SrcOp1Idx) &&
          "Expect destination operand to be tied");
-  if (SrcOp1.isReg() && SrcOp2.isReg()) {
-    Register SrcOpReg1 = SrcOp1.getReg();
-    Register SrcOpReg2 = SrcOp2.getReg();
-    assert(
-        isSSE2Reg(SrcOpReg1) && isSSE2Reg(SrcOpReg2) &&
-        "Expected SSE2 register operands not found in SSE compare instruction");
-    Value *SrcVal = getRegOrArgValue(SrcOpReg2, MBBNo);
+  assert(SrcOp1.isReg() && SrcOp2.isReg() &&
+         "NYI - SSE precision conversion instructions with memory operands");
 
-    assert(SrcVal->getType()->isFloatTy() &&
-           "Unexpected non-float typed value while raising SSE precision "
-           "conversion instruction");
-    LLVMContext &Ctx(MF.getFunction().getContext());
+  Register SrcOpReg1 = SrcOp1.getReg();
+  Register SrcOpReg2 = SrcOp2.getReg();
+  assert(
+      isSSE2Reg(SrcOpReg1) && isSSE2Reg(SrcOpReg2) &&
+      "Expected SSE2 register operands not found in SSE compare instruction");
+  Value *SrcVal = getRegOrArgValue(SrcOpReg2, MBBNo);
+
+  LLVMContext &Ctx(MF.getFunction().getContext());
+  CastInst *CastToInst;
+
+  if (SrcVal->getType()->isFloatTy()) {
     // Cast float type to double.
     Type *CastTy = Type::getDoubleTy(Ctx);
-    auto CastToDouble =
+    CastToInst =
         CastInst::Create(CastInst::getCastOpcode(SrcVal, false, CastTy, false),
                          SrcVal, CastTy, "ss2sd", RaisedBB);
-    raisedValues->setPhysRegSSAValue(DstOp.getReg(),
-                                     MI.getParent()->getNumber(), CastToDouble);
+  } else if (SrcVal->getType()->isDoubleTy()) {
+    // Cast double type to float.
+    Type *CastTy = Type::getFloatTy(Ctx);
+    CastToInst =
+        CastInst::Create(CastInst::getCastOpcode(SrcVal, false, CastTy, false),
+                         SrcVal, CastTy, "sd2ss", RaisedBB);
   } else {
-    llvm_unreachable(
-        "NYI - SSE precision conversion instructions with memory operands");
+    llvm_unreachable("Unexpected non-float typed value while raising SSE "
+                     "precision conversion instruction");
   }
+
+  raisedValues->setPhysRegSSAValue(DstOp.getReg(),
+                                   MI.getParent()->getNumber(), CastToInst);
+
   return true;
 }

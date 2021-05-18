@@ -30,6 +30,11 @@ const vector<MCPhysReg> GPR64ArgRegs16Bit({X86::DI, X86::SI, X86::DX, X86::CX,
 const vector<MCPhysReg> GPR64ArgRegs8Bit({X86::DIL, X86::SIL, X86::DL, X86::CL,
                                           X86::R8B, X86::R9B});
 
+const vector<MCPhysReg> SSEArgRegs64Bit({X86::XMM0, X86::XMM1,
+                                          X86::XMM2, X86::XMM3,
+                                          X86::XMM4, X86::XMM5,
+                                          X86::XMM6, X86::XMM7});
+
 // static const ArrayRef<MCPhysReg> GPR64ArgRegsWin64({X86::RCX, X86::RDX,
 // X86::R8,
 //                                                    X86::R9});

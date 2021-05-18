@@ -235,9 +235,32 @@ Type *X86MachineInstructionRaiser::getPhysRegType(unsigned int PReg) {
     return Type::getInt16Ty(Ctx);
   if (is8BitPhysReg(PReg))
     return Type::getInt8Ty(Ctx);
+  if (isSSE2Reg(PReg)) {
+    // Since float- and double types both use the same width SSE registers, we
+    // can't check which one is correct. Use getPhysSSERegType with a
+    // BitPrecision argument
+    return Type::getDoubleTy(Ctx);
+  }
 
   assert(false && "Immediate operand of unknown size");
   return nullptr;
+}
+
+Type *X86MachineInstructionRaiser::getPhysSSERegType(unsigned int PhysReg,
+                                                     uint8_t BitPrecision) {
+  LLVMContext &Ctx(MF.getFunction().getContext());
+
+  assert(isSSE2Reg(PhysReg) && "Expected SSE2 register");
+
+  switch (BitPrecision) {
+  case 64:
+    return Type::getDoubleTy(Ctx);
+  case 32:
+    return Type::getFloatTy(Ctx);
+  default:
+    llvm_unreachable("Unhandled bit precision");
+    return nullptr;
+  }
 }
 
 Type *X86MachineInstructionRaiser::getImmOperandType(const MachineInstr &MI,
@@ -279,10 +302,10 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
   if (isGPReg(PReg))
     return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
   else if (isSSE2Reg(PReg)) {
-    auto Sz = getInstructionMemOpSize(MI.getOpcode());
-    if (Sz == 4)
+    auto Precision = getInstructionBitPrecision(MI.getDesc().TSFlags);
+    if (Precision == 32)
       return Type::getFloatTy(Ctx);
-    else if (Sz == 8)
+    else if (Precision == 64)
       return Type::getDoubleTy(Ctx);
     llvm_unreachable("Unexpected memory operation size of instruction that "
                      "uses SSE register");
@@ -335,14 +358,14 @@ bool X86MachineInstructionRaiser::recordDefsToPromote(unsigned PhysReg,
   return true;
 }
 
-// Return true if MBB has a definition of PhysReg in the instruction range
-// [StopInst, StartMI) where StopInst is the last instance of instruction with
-// the opcode property StopAtInstProp. For example, if StopAtInstProp is
-// MCID::Call, this function returns true if PhysReg is defined in the range
-// [LCI, StartInst) where LCI is the last call instruction in MBB.
+// Return the MachineInstr if MBB has a definition of PhysReg in the instruction
+// range [StopInst, StartMI) where StopInst is the last instance of instruction
+// with the opcode property StopAtInstProp. For example, if StopAtInstProp is
+// MCID::Call, this function returns the instruction that defined PhysReg in the
+// range [LCI, StartInst) where LCI is the last call instruction in MBB.
 //
 // If StartMI is nullptr, the range searched in [StopInst, BlockEndInst].
-bool X86MachineInstructionRaiser::hasPhysRegDefInBlock(
+const MachineInstr *X86MachineInstructionRaiser::getPhysRegDefiningInstInBlock(
     int PhysReg, const MachineInstr *StartMI, const MachineBasicBlock *MBB,
     unsigned StopAtInstProp, bool &HasStopInst) {
   // Walk backwards starting from the instruction before StartMI
@@ -365,14 +388,14 @@ bool X86MachineInstructionRaiser::hasPhysRegDefInBlock(
           unsigned MOReg = MO.getReg();
           if (Register::isPhysicalRegister(MOReg)) {
             if (SuperReg == find64BitSuperReg(MOReg))
-              return true;
+              return &MI;
           }
         }
       }
     }
   }
 
-  return false;
+  return nullptr;
 }
 
 // FPU Access functions
@@ -2081,7 +2104,22 @@ Value *X86MachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
       // Get the value only if the function has an argument at
       // pos.
       if (pos <= (int)raisedFunction->arg_size()) {
-        Function::arg_iterator argIter = raisedFunction->arg_begin() + pos - 1;
+        bool isRegFloatingPointType = isSSE2Reg(PReg);
+        int actualPos = 0; // SSE regs and int regs are scrambled
+        int i = 0;
+
+        while (actualPos < (int)raisedFunction->arg_size() && i < pos) {
+          bool isArgFloatingPointType =
+              raisedFunction->getArg(i)->getType()->isFloatingPointTy();
+
+          if (isArgFloatingPointType == isRegFloatingPointType) {
+            i++;
+          }
+          actualPos++;
+        }
+
+        Function::arg_iterator argIter =
+            raisedFunction->arg_begin() + actualPos - 1;
         PRegValue = argIter;
       }
     }

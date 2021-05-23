@@ -104,48 +104,245 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  // Ensure this is an SSE2 compare instruction
-  assert((MCIDesc.getNumDefs() == 1) && (MCIDesc.getNumOperands() == 3) &&
-         MCIDesc.hasImplicitUseOfPhysReg(X86::MXCSR) &&
-         "Unexpected operands found in SSE precision conversion instruction");
-  unsigned int DstOpIdx = 0, SrcOp1Idx = 1, SrcOp2Idx = 2;
+  assert((MCIDesc.getNumDefs() == 1) &&
+         "Expected one definition in SSE conversion instruction");
+  unsigned int DstOpIdx = 0;
   MachineOperand DstOp = MI.getOperand(DstOpIdx);
-  MachineOperand SrcOp1 = MI.getOperand(SrcOp1Idx);
-  MachineOperand SrcOp2 = MI.getOperand(SrcOp2Idx);
-  assert(DstOp.isTied() && (MI.findTiedOperandIdx(DstOpIdx) == SrcOp1Idx) &&
-         "Expect destination operand to be tied");
-  assert(SrcOp1.isReg() && SrcOp2.isReg() &&
-         "NYI - SSE precision conversion instructions with memory operands");
 
-  Register SrcOpReg1 = SrcOp1.getReg();
-  Register SrcOpReg2 = SrcOp2.getReg();
-  assert(
-      isSSE2Reg(SrcOpReg1) && isSSE2Reg(SrcOpReg2) &&
-      "Expected SSE2 register operands not found in SSE compare instruction");
-  Value *SrcVal = getRegOrArgValue(SrcOpReg2, MBBNo);
-
-  LLVMContext &Ctx(MF.getFunction().getContext());
-  CastInst *CastToInst;
-
-  if (SrcVal->getType()->isFloatTy()) {
-    // Cast float type to double.
-    Type *CastTy = Type::getDoubleTy(Ctx);
-    CastToInst =
-        CastInst::Create(CastInst::getCastOpcode(SrcVal, false, CastTy, false),
-                         SrcVal, CastTy, "ss2sd", RaisedBB);
-  } else if (SrcVal->getType()->isDoubleTy()) {
-    // Cast double type to float.
-    Type *CastTy = Type::getFloatTy(Ctx);
-    CastToInst =
-        CastInst::Create(CastInst::getCastOpcode(SrcVal, false, CastTy, false),
-                         SrcVal, CastTy, "sd2ss", RaisedBB);
+  // Find the correct SrcOpIndex for the given instruction
+  unsigned SrcOpIdx;
+  if (MI.getNumExplicitOperands() == 3) {
+    SrcOpIdx = 2;
+  } else if (MI.getNumExplicitOperands() == 2) {
+    SrcOpIdx = 1;
   } else {
-    llvm_unreachable("Unexpected non-float typed value while raising SSE "
-                     "precision conversion instruction");
+    llvm_unreachable("Unexpected number of explicit operands for SSE convert "
+                     "instruction");
   }
 
-  raisedValues->setPhysRegSSAValue(DstOp.getReg(),
-                                   MI.getParent()->getNumber(), CastToInst);
+  MachineOperand SrcOp = MI.getOperand(SrcOpIdx);
+  assert(SrcOp.isReg() && "Expected register operand");
+
+  Value *SrcVal = getRegOrArgValue(SrcOp.getReg(), MBBNo);
+
+  LLVMContext &Ctx(MF.getFunction().getContext());
+
+  Type *CastTy;
+  switch (MI.getOpcode()) {
+  case X86::CVTSD2SIrr_Int:
+  case X86::CVTSS2SIrr_Int:
+  case X86::CVTTSD2SIrr:
+  case X86::CVTTSD2SIrr_Int:
+  case X86::CVTTSS2SIrr:
+  case X86::CVTTSS2SIrr_Int:
+    CastTy = Type::getInt32Ty(Ctx);
+    break;
+  case X86::CVTSD2SI64rr_Int:
+  case X86::CVTSS2SI64rr_Int:
+  case X86::CVTTSD2SI64rr:
+  case X86::CVTTSD2SI64rr_Int:
+  case X86::CVTTSS2SI64rr:
+  case X86::CVTTSS2SI64rr_Int:
+    CastTy = Type::getInt64Ty(Ctx);
+    break;
+  case X86::CVTSD2SSrr:
+  case X86::CVTSD2SSrr_Int:
+  case X86::CVTSI2SSrr:
+  case X86::CVTSI2SSrr_Int:
+  case X86::CVTSI642SSrr:
+  case X86::CVTSI642SSrr_Int:
+    CastTy = Type::getFloatTy(Ctx);
+    break;
+  case X86::CVTSI2SDrr:
+  case X86::CVTSI2SDrr_Int:
+  case X86::CVTSI642SDrr:
+  case X86::CVTSI642SDrr_Int:
+  case X86::CVTSS2SDrr:
+  case X86::CVTSS2SDrr_Int:
+    CastTy = Type::getDoubleTy(Ctx);
+    break;
+  default:
+    MI.dump();
+    llvm_unreachable("Unhandled sse convert instruction");
+  }
+
+  auto CastToInst =
+      CastInst::Create(CastInst::getCastOpcode(SrcVal, true, CastTy, true),
+                       SrcVal, CastTy, "cvt", RaisedBB);
+
+  raisedValues->setPhysRegSSAValue(DstOp.getReg(), MI.getParent()->getNumber(),
+                                   CastToInst);
+
+  return true;
+}
+
+bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionFromMemMachineInstr(
+    const MachineInstr &MI, Value *MemRefValue) {
+  LLVMContext &Ctx(MF.getFunction().getContext());
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+
+  Type *CastTy;
+  Type *SrcTy;
+  switch (MI.getOpcode()) {
+  case X86::CVTSD2SIrm_Int:
+  case X86::CVTSS2SIrm_Int:
+  case X86::CVTTSD2SIrm:
+  case X86::CVTTSD2SIrm_Int:
+  case X86::CVTTSS2SIrm:
+  case X86::CVTTSS2SIrm_Int:
+    CastTy = Type::getInt32Ty(Ctx);
+    break;
+  case X86::CVTSD2SI64rm_Int:
+  case X86::CVTSS2SI64rm_Int:
+  case X86::CVTTSD2SI64rm:
+  case X86::CVTTSD2SI64rm_Int:
+  case X86::CVTTSS2SI64rm:
+  case X86::CVTTSS2SI64rm_Int:
+    CastTy = Type::getInt64Ty(Ctx);
+    break;
+  case X86::CVTSD2SSrm:
+  case X86::CVTSD2SSrm_Int:
+  case X86::CVTSI2SSrm:
+  case X86::CVTSI2SSrm_Int:
+  case X86::CVTSI642SSrm:
+  case X86::CVTSI642SSrm_Int:
+    CastTy = Type::getFloatTy(Ctx);
+    break;
+  case X86::CVTSI2SDrm:
+  case X86::CVTSI2SDrm_Int:
+  case X86::CVTSI642SDrm:
+  case X86::CVTSI642SDrm_Int:
+  case X86::CVTSS2SDrm:
+  case X86::CVTSS2SDrm_Int:
+    CastTy = Type::getDoubleTy(Ctx);
+    break;
+  }
+  // Need to figure out the source type, since we don't know that
+  // just from the MemoryRefValue
+  switch (MI.getOpcode()) {
+  case X86::CVTSD2SIrm_Int:
+  case X86::CVTSD2SI64rm_Int:
+  case X86::CVTSD2SSrm:
+  case X86::CVTSD2SSrm_Int:
+  case X86::CVTTSD2SIrm:
+  case X86::CVTTSD2SIrm_Int:
+  case X86::CVTTSD2SI64rm:
+  case X86::CVTTSD2SI64rm_Int:
+    SrcTy = Type::getDoubleTy(Ctx);
+    break;
+  case X86::CVTSS2SIrm_Int:
+  case X86::CVTTSS2SIrm:
+  case X86::CVTTSS2SIrm_Int:
+  case X86::CVTSS2SI64rm_Int:
+  case X86::CVTTSS2SI64rm:
+  case X86::CVTTSS2SI64rm_Int:
+  case X86::CVTSS2SDrm:
+  case X86::CVTSS2SDrm_Int:
+    SrcTy = Type::getFloatTy(Ctx);
+    break;
+  case X86::CVTSI642SSrm:
+  case X86::CVTSI642SSrm_Int:
+  case X86::CVTSI642SDrm:
+  case X86::CVTSI642SDrm_Int:
+    SrcTy = Type::getInt64Ty(Ctx);
+    break;
+  case X86::CVTSI2SSrm:
+  case X86::CVTSI2SSrm_Int:
+  case X86::CVTSI2SDrm:
+  case X86::CVTSI2SDrm_Int:
+    SrcTy = Type::getInt32Ty(Ctx);
+    break;
+  }
+  assert(SrcTy != nullptr && CastTy != nullptr &&
+         "Unhandled sse conversion instruction");
+
+  MCInstrDesc MCIDesc = MI.getDesc();
+
+  unsigned int DstOpIdx = 0, MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+
+  assert(MCIDesc.getNumDefs() == 1 &&
+         "Unexpected defs found in SSE conversion instruction");
+
+  MachineOperand DstOp = MI.getOperand(DstOpIdx);
+  assert(DstOp.isReg() && "Expected destination to be a register");
+
+  X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+  uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
+  bool IsPCRelMemRef = (BaseSupReg == X86::RIP);
+  const MachineOperand &LoadOp = MI.getOperand(MemoryRefOpIndex);
+  unsigned int LoadPReg = LoadOp.getReg();
+  assert(Register::isPhysicalRegister(LoadPReg) &&
+         "Expect destination to be a physical register in SSE conversion "
+         "instruction.");
+
+  // Load the value from memory location of memRefValue.
+  // memRefVal is either an AllocaInst (stack access), GlobalValue (global
+  // data access), an effective address value, element pointer or select
+  // instruction.
+  assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
+          isa<GlobalValue>(MemRefValue) || isa<SelectInst>(MemRefValue) ||
+          isa<GetElementPtrInst>(MemRefValue) ||
+          MemRefValue->getType()->isPointerTy()) &&
+         "Unexpected type of memory reference in SSE conversion instruction");
+
+  // Assume that MemRefValue represents a memory reference location and hence
+  // needs to be loaded from.
+  bool LoadFromMemrefValue = true;
+  // Following are the exceptions when MemRefValue needs to be considered as
+  // memory content and not as memory reference.
+  if (IsPCRelMemRef) {
+    // If it is a PC-relative global variable with an initializer, it is memory
+    // content and should not be loaded from.
+    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
+      LoadFromMemrefValue = !(GV->hasInitializer());
+    // If it is not a PC-relative constant expression accessed using
+    // GetElementPtrInst, it is memory content and should not be loaded from.
+    else {
+      const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(MemRefValue);
+      if (CExpr != nullptr) {
+        LoadFromMemrefValue =
+            (CExpr->getOpcode() == Instruction::GetElementPtr);
+      }
+    }
+  }
+
+  Value *SrcVal;
+  if (LoadFromMemrefValue) {
+    // If it is an effective address value or a select instruction, convert it
+    // to a pointer to load register type.
+    PointerType *PtrTy = PointerType::get(SrcTy, 0);
+    if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
+      IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
+      // Set or copy rodata metadata, if any
+      getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
+      RaisedBB->getInstList().push_back(ConvIntToPtr);
+      MemRefValue = ConvIntToPtr;
+    }
+    assert(MemRefValue->getType()->isPointerTy() &&
+           "Pointer type expected in SSE conversion instruction");
+    // Cast the pointer to match the size of memory being accessed by the
+    // instruction, as needed.
+    MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
+    // Load the value from memory location
+    Type *LdTy = MemRefValue->getType()->getPointerElementType();
+    LoadInst *LdInst =
+        new LoadInst(LdTy, MemRefValue, "memload", false, Align());
+    LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
+    RaisedBB->getInstList().push_back(LdInst);
+
+    SrcVal = LdInst;
+  } else {
+    // memRefValue already represents the global value loaded from
+    // PC-relative memory location. It is incorrect to generate an
+    // additional load of this value. It should be directly used.
+    SrcVal = MemRefValue;
+  }
+
+  auto CastInst =
+      CastInst::Create(CastInst::getCastOpcode(SrcVal, true, CastTy, true),
+                       SrcVal, CastTy, "cvt", RaisedBB);
+  raisedValues->setPhysRegSSAValue(DstOp.getReg(), MI.getParent()->getNumber(),
+                                   CastInst);
 
   return true;
 }

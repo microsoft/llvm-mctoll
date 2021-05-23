@@ -428,6 +428,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     Success = true;
   } break;
   case X86::MOVAPSrr:
+  case X86::MOVAPDrr:
   case X86::MOV64rr:
   case X86::MOV32rr:
   case X86::MOV16rr:
@@ -2555,6 +2556,8 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     return raiseLoadIntToFloatRegInstr(MI, MemoryRefValue);
   case InstructionKind::STORE_FPU_REG:
     return raiseStoreIntToFloatRegInstr(MI, MemoryRefValue);
+  case InstructionKind::SSE_CONVERT_RM:
+    return raiseSSEConvertPrecisionFromMemMachineInstr(MI, MemoryRefValue);
   default:
     LLVM_DEBUG(MI.dump());
     assert(false && "Unhandled memory referencing instruction");
@@ -3747,8 +3750,7 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
   case InstructionKind::SSE_COMPARE:
     success = raiseSSECompareMachineInstr(MI);
     break;
-  case InstructionKind::SSE_CONVERT_SD2SS:
-  case InstructionKind::SSE_CONVERT_SS2SD:
+  case InstructionKind::SSE_CONVERT_RR:
     success = raiseSSEConvertPrecisionMachineInstr(MI);
     break;
   default: {

@@ -141,6 +141,7 @@ private:
   bool raiseFPURegisterOpInstr(const MachineInstr &);
   bool raiseSSECompareMachineInstr(const MachineInstr &);
   bool raiseSSEConvertPrecisionMachineInstr(const MachineInstr &);
+  bool raiseSSEConvertPrecisionFromMemMachineInstr(const MachineInstr &, Value *);
 
   bool raiseBranchMachineInstrs();
   bool raiseDirectBranchMachineInstr(ControlTransferInfo *);

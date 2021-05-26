@@ -342,7 +342,9 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     // Get the super-type of all reaching definition values
     Type *AllocTy = nullptr;
     for (auto RD : ReachingDefs) {
-      if ((RD.second != nullptr) && RD.second->getType()->isIntegerTy()) {
+      if ((RD.second != nullptr) &&
+          (RD.second->getType()->isIntegerTy() ||
+           RD.second->getType()->isFloatingPointTy())) {
         Type *Ty = RD.second->getType();
         if ((AllocTy == nullptr) ||
             (Ty->getPrimitiveSizeInBits() > AllocTy->getPrimitiveSizeInBits()))
@@ -353,7 +355,13 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
         // block that is not yet raised. This will be recorded and handled
         // later. So, assume the type to be the most generic, i.e., 64-bit and
         // no further processing of the reaching value list is needed.
-        AllocTy = Type::getInt64Ty(Ctxt);
+        if (AllocTy != nullptr && AllocTy->isFloatingPointTy()) {
+          // If we know that AllocTy is a floating point type, use the most generic
+          // floating point type: double
+          AllocTy = Type::getDoubleTy(Ctxt);
+        } else {
+          AllocTy = Type::getInt64Ty(Ctxt);
+        }
         break;
       }
     }
@@ -450,7 +458,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
                           ? Type::getInt1Ty(Ctxt)
                           : x86MIRaiser->getPhysRegType(PhysReg);
       Type *LdReachingValType = LdReachingVal->getType();
-      assert(LdReachingValType->isIntegerTy() &&
+      assert(LdReachingValType->isIntegerTy() ||
+             LdReachingValType->isFloatingPointTy() &&
              "Unhandled type mismatch of reaching register definition");
       if (RegType != LdReachingValType) {
         // Create cast instruction

@@ -823,7 +823,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   assert(raisedValues->getInBlockRegOrArgDefVal(PhysReg, DefiningMBB).second ==
              ReachingValue &&
          "Inconsistent reaching defined value found");
-  assert(ReachingValue->getType()->isIntOrPtrTy() &&
+  assert((ReachingValue->getType()->isIntOrPtrTy() ||
+          ReachingValue->getType()->isFloatingPointTy()) &&
          "Unsupported: Stack promotion of non-integer / non-pointer value");
   // Prepare to store this value in stack location.
   // Get the size of defined physical register
@@ -837,8 +838,24 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   // a 64-bit value.
   int StackLocSzInBits =
       Alloca->getType()->getPointerElementType()->getPrimitiveSizeInBits();
-  // Cast the current value to int64 if needed
-  Type *StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
+  Type *StackLocTy;
+  if (ReachingValue->getType()->isIntOrPtrTy()) {
+    // Cast the current value to int64 if needed
+    StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
+  } else if (ReachingValue->getType()->isFloatingPointTy()) {
+    switch (StackLocSzInBits) {
+    case 64:
+      StackLocTy = Type::getDoubleTy(Ctxt);
+      break;
+    case 32:
+      StackLocTy = Type::getFloatTy(Ctxt);
+      break;
+    default:
+      llvm_unreachable("Unhandled floating point type with unknown size");
+    }
+  } else {
+    llvm_unreachable("Unhandled type");
+  }
   BasicBlock *ReachingBB =
       getRaisedBasicBlock(MF.getBlockNumbered(DefiningMBB));
   // get terminating instruction. Add new instructions before

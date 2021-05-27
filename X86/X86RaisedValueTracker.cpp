@@ -359,10 +359,17 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     }
 
     Align typeAlign(DL.getPrefTypeAlignment(AllocTy));
-    auto typeSize = AllocTy->getPrimitiveSizeInBits() / 8;
+    auto typeSize =
+        isEflagBit(PhysReg) ? 1 : AllocTy->getPrimitiveSizeInBits() / 8;
 
     const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
-    StringRef PhysRegName = TRI->getRegAsmName(PhysReg);
+    StringRef PhysRegName;
+    if (isEflagBit(PhysReg)) {
+      PhysRegName = StringRef(getEflagName(PhysReg));
+    } else {
+      PhysRegName = TRI->getRegAsmName(PhysReg);
+    }
+
     // Create alloca instruction to allocate stack slot
     AllocaInst *Alloca = new AllocaInst(AllocTy, allocaAddrSpace, 0, typeAlign,
                                         PhysRegName + "-SKT-LOC");

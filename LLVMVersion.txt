@@ -5,17 +5,20 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 698568b74c93ab6d9374adc8bdc6e60fbcf41ff1
-Author: Eli Friedman <efriedma@quicinc.com>
-Date:   Thu May 6 12:27:01 2021 -0700
+commit ffb48d48e45c72ed81dda4983ccb06e800cdbbd0
+Author: mydeveloperday <mydeveloperday@gmail.com>
+Date:   Sat May 29 16:43:55 2021 +0100
 
-    [clang CodeGen] Don't crash on large atomic function parameter.
-    
-    I wouldn't recommend writing code like the testcase; a function
-    parameter isn't atomic, so using an atomic type doesn't really make
-    sense.  But it's valid, so clang shouldn't crash on it.
-    
-    The code was assuming hasAggregateEvaluationKind(Ty) implies Ty is a
-    RecordType, which isn't true.  Just use isRecordType() instead.
-    
-    Differential Revision: https://reviews.llvm.org/D102015
+    [clang-format] successive C# attributes cause line breaking issues
+
+    {D74265} reduced the aggressiveness of line breaking following C# attributes, however this change removed any support for attributes on properties, causing significant ugliness to be introduced.
+
+    This revision goes some way to addressing that by re-introducing the more aggressive check to `mustBreakBefore()`, but constraining it to the most common cases where we use properties which should not impact the "caller info attributes"  or the "[In , Out]" decorations that are normally put on pinvoke
+
+    It does not address my additional concerns of the original change regarding multiple C# attributes, as these are somewhat incorrectly handled by virtue of the fact its not recognising the second attribute as an attribute at all. But instead thinking its an array.
+
+    The purpose of this revision is to get back to where we were for the most common of cases as a stepping stone to resolving this. However {D74265} has broken a lot of C# code and this revision will go someway alone to addressing the majority.
+
+    Reviewed By: jbcoe, HazardyKnusperkeks, curdeius
+
+    Differential Revision: https://reviews.llvm.org/D103307

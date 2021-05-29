@@ -53,7 +53,7 @@ git checkout <hash from LLVMVersion.txt>
 4. Configure LLVM by enabling Clang and ld. See [LLVM CMake Variables](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables) for more information on LLVM's cmake options.
 
 ```sh
-cmake -S llvm -B <build-dir> -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=<build-type> ../llvm
+cmake -S llvm -B <build-dir> -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=<build-type>
 ```
 5. Build `llvm-mctoll`
 ```sh

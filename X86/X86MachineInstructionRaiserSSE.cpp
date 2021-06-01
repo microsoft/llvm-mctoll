@@ -346,3 +346,59 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionFromMemMachineInstr(
 
   return true;
 }
+
+bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
+    const MachineInstr &MI) {
+  int MBBNo = MI.getParent()->getNumber();
+
+  bool Success = true;
+  unsigned DstIndex = 0, Src1Index = 1, Src2Index = 2;
+  assert(
+      (MI.getNumExplicitOperands() == 2 || MI.getNumExplicitOperands() == 4) &&
+      MI.getOperand(DstIndex).isReg() &&
+      (MI.getOperand(Src1Index).isReg() || MI.getOperand(Src2Index).isReg()) &&
+      "Expecting exactly two operands for sse move reg-to-reg "
+      "instructions");
+
+  unsigned int DstPReg = MI.getOperand(DstIndex).getReg();
+
+  // Get source operand value
+  Value *SrcValue;
+  if (MI.getNumExplicitOperands() == 2) {
+    // don't use getRegOperandValue, as we don't want to cast the value
+    const MachineOperand &MO = MI.getOperand(Src1Index);
+    assert(MO.isReg() && "Register operand expected");
+    SrcValue = getRegOrArgValue(MO.getReg(), MI.getParent()->getNumber());
+  } else {
+    llvm_unreachable(
+        "Unexpected operand numbers for sse move reg-to-reg instruction");
+  }
+
+  switch (MI.getOpcode()) {
+  case X86::MOVAPSrr:
+  case X86::MOVAPDrr: {
+    unsigned int DstPRegSize = getPhysRegOperandSize(MI, DstIndex);
+    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, Src1Index);
+
+    // Verify sanity of the instruction.
+    assert(DstPRegSize != 0 && DstPRegSize == SrcPRegSize &&
+           "Unexpected sizes of source and destination registers size differ "
+           "in sse mov instruction");
+    assert(SrcValue &&
+           "Encountered sse mov instruction with undefined source register");
+    assert(SrcValue->getType()->isSized() &&
+           "Unsized source value in sse mov instruction");
+    MachineOperand MO = MI.getOperand(Src1Index);
+    assert(MO.isReg() && "Unexpected non-register operand");
+    // Check for undefined use
+    Success = (SrcValue != nullptr);
+    if (Success)
+      // Update the value mapping of DstPReg
+      raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
+  } break;
+  default:
+    llvm_unreachable("Unhandled sse mov instruction");
+  }
+
+  return Success;
+}

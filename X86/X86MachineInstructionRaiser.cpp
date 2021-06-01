@@ -427,8 +427,6 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, CInst);
     Success = true;
   } break;
-  case X86::MOVAPSrr:
-  case X86::MOVAPDrr:
   case X86::MOV64rr:
   case X86::MOV32rr:
   case X86::MOV16rr:
@@ -3728,7 +3726,6 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
     success = raiseLEAMachineInstr(MI);
     break;
   case InstructionKind::MOV_RR:
-  case InstructionKind::SSE_MOV_RR:
     success = raiseMoveRegToRegMachineInstr(MI);
     break;
   case InstructionKind::MOV_RI:
@@ -3754,6 +3751,9 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
         getRegOrArgValue(SrcOp.getReg(), MI.getParent()->getNumber());
     success = raiseDivideInstr(MI, SrcVal);
   } break;
+  case InstructionKind::SSE_MOV_RR:
+    success = raiseSSEMoveRegToRegMachineInstr(MI);
+    break;
   case InstructionKind::SSE_COMPARE:
     success = raiseSSECompareMachineInstr(MI);
     break;

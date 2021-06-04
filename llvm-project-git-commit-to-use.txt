@@ -1,0 +1,15 @@
+NOTE: This information is expected to be updated each time an updated
+      llvm-project (Monorepo) tree is used to build llvm-mctoll.
+
+Following is the tip of the git tree used for successful build of llvm-mctoll.
+
+llvm-project:
+
+commit 8a4d05ddb3ff25c53299ff440032547d68b36397
+Author: Sanjay Patel <spatel@rotateright.com>
+Date:   Fri Jun 4 11:40:39 2021 -0400
+
+    [ConstantFolding] add copysign tests for more FP types; NFC
+
+    D102673 proposes to ease the current type check, but
+    there doesn't appear to be any test coverage for that.

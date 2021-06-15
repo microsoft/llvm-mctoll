@@ -62,6 +62,7 @@ add_llvm_tool(llvm-mctoll
   MCInstOrData.cpp
   MCInstRaiser.cpp
   EmitRaisedOutputPass.cpp
+  PeepholeOptimizationPass.cpp
   RuntimeFunction.cpp
 )
 

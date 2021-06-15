@@ -16,6 +16,7 @@
 #include "MCInstOrData.h"
 #include "MachineFunctionRaiser.h"
 #include "ModuleRaiser.h"
+#include "PeepholeOptimizationPass.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -1454,6 +1455,9 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     PM.add(&TPC);
     PM.add(machineModuleInfo);
 
+    // Add optimizations prior to emitting the output file.
+    PM.add(new PeepholeOptimizationPass());
+    
     // Add print pass to emit ouptut file.
     PM.add(new EmitRaisedOutputPass(*OS, OutputFormat));
 

@@ -57,9 +57,9 @@ bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
           auto *FinalPtr = Builder.CreatePointerCast(P2I->getOperand(0), I2P->getType());
           I2P->replaceAllUsesWith(FinalPtr);
 
-	  FinalPtr->takeName(I2P);
-	  I2P->eraseFromParent();
-	  if (P2I->getNumUses()==0) P2I->eraseFromParent();
+          FinalPtr->takeName(I2P);
+          I2P->eraseFromParent();
+          if (P2I->getNumUses()==0) P2I->eraseFromParent();
         }
       }
     }

@@ -22,32 +22,27 @@ bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
           auto *P2I = dyn_cast<PtrToIntInst>(BinOp->getOperand(0));
   
           if (P2I && (BinOp->getOpcode()==Instruction::Add || BinOp->getOpcode()==Instruction::Or)) {
-             errs() << "GEP:\n";
              auto *Ptr = P2I->getOperand(0);
-             Ptr->dump();
-             BinOp->getOperand(1)->dump();
   
              auto *PtrElemTy = dyn_cast<PointerType>(Ptr->getType())->getElementType();
              if (isa<IntegerType>(PtrElemTy)) {
-               unsigned BitWidth = PtrElemTy->getIntegerBitWidth();
-               IRBuilder<> Builder(&I);
-               std::vector<Value*> GEPIdx;
-  
                Value *Idx = BinOp->getOperand(1);
-               if (BitWidth) {
-                 Idx = Builder.CreateUDiv(Idx, ConstantInt::get(Idx->getType(), BitWidth/8));
-                 Idx->dump();
-               }
+               std::vector<Value*> GEPIdx;
                GEPIdx.push_back(Idx);
-               auto *GEP = Builder.CreateGEP(Ptr, GEPIdx);
-               GEP->dump();
+
+               IRBuilder<> Builder(&I);
+	       auto *BytePtr = Builder.CreatePointerCast(Ptr, PointerType::getUnqual(IntegerType::get(F.getContext(),8)));
+
+               auto *GEP = Builder.CreateGEP(BytePtr, GEPIdx);
   
                auto *FinalPtr = Builder.CreatePointerCast(GEP, I2P->getType());
                I2P->replaceAllUsesWith(FinalPtr);
              }
           }
         } else if (auto *P2I = dyn_cast<PtrToIntInst>(V)) {
-          I2P->replaceAllUsesWith(P2I->getOperand(0));
+          IRBuilder<> Builder(&I);
+          auto *FinalPtr = Builder.CreatePointerCast(P2I->getOperand(0), I2P->getType());
+          I2P->replaceAllUsesWith(FinalPtr);
         }
       }
     }

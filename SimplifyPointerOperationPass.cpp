@@ -37,8 +37,8 @@ bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
 
                IRBuilder<> Builder(&I);
 
-	       auto *BytePtrTy = PointerType::getUnqual(IntegerType::get(F.getContext(),8));
-	       auto *BytePtr = Builder.CreatePointerCast(Ptr, BytePtrTy);
+               auto *BytePtrTy = PointerType::getUnqual(IntegerType::get(F.getContext(),8));
+               auto *BytePtr = Builder.CreatePointerCast(Ptr, BytePtrTy);
 
                auto *GEP = Builder.CreateGEP(BytePtr, GEPIdx);
   
@@ -46,10 +46,10 @@ bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
                I2P->replaceAllUsesWith(FinalPtr);
 
                FinalPtr->takeName(I2P);
-	       I2P->eraseFromParent();
+               I2P->eraseFromParent();
 
-	       if (BinOp->getNumUses()==0) BinOp->eraseFromParent();
-	       if (P2I->getNumUses()==0) P2I->eraseFromParent();
+               if (BinOp->getNumUses()==0) BinOp->eraseFromParent();
+               if (P2I->getNumUses()==0) P2I->eraseFromParent();
              }
           }
         } else if (auto *P2I = dyn_cast<PtrToIntInst>(V)) {

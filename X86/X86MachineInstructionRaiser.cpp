@@ -1364,7 +1364,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
   } break;
   case X86::IMUL16rm:
-  case X86::IMUL32rm: {
+  case X86::IMUL32rm:
+  case X86::IMUL64rm: {
     // One-operand form of IMUL
     // Create mul instruction
     BinOpInst = BinaryOperator::CreateMul(DestValue, LoadValue);

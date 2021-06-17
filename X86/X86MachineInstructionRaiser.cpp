@@ -3662,6 +3662,17 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
                                 "CmpPF_JP");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
+    case X86::COND_NP: {
+      // Test PF == 0
+      int PFIndex = getEflagBitIndex(EFLAGS::PF);
+      Value *PFValue = CTRec->RegValues[PFIndex];
+      assert(PFValue != nullptr &&
+             "Failed to get EFLAGS value while raising JNP");
+      // Construct a compare instruction
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, PFValue, FalseValue,
+                                "CmpPF_JNP");
+      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+    } break;
     case X86::COND_INVALID:
       assert(false && "Invalid condition on branch");
       break;

@@ -1,4 +1,4 @@
-//===-- SimplifyPointerOperationPass.h --------------------------*- C++ -*-===//
+//===-- PeepholeOptimizationPass.h ------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declaration of SimplifyPointerOperationPass for use by
+// This file contains the declaration of PeepholeOptimizationPass for use by
 // llvm-mctoll. This class raises the abstraction of memory address computations
 // raised from binary. These operations are often raised as a series of integer
 // operations alongside ptrtoint/intoptr instructions, which we replace by
@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_MCTOLL_SIMPLIFYPOINTEROPERATIONPASS_H
-#define LLVM_TOOLS_LLVM_MCTOLL_SIMPLIFYPOINTEROPERATIONPASS_H
+#ifndef LLVM_TOOLS_LLVM_MCTOLL_PEEPHOLEOPTIMIZATIONPASS_H
+#define LLVM_TOOLS_LLVM_MCTOLL_PEEPHOLEOPTIMIZATIONPASS_H
 
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/IRPrintingPasses.h"
@@ -26,14 +26,14 @@
 
 using namespace llvm;
 
-class SimplifyPointerOperationPass : public FunctionPass {
+class PeepholeOptimizationPass : public FunctionPass {
 public:
   static char ID;
-  SimplifyPointerOperationPass()
+  PeepholeOptimizationPass()
       : FunctionPass(ID) {}
 
   bool runOnFunction(Function &F) override;
 
   void getAnalysisUsage(AnalysisUsage &AU) const override;
 };
-#endif // LLVM_TOOLS_LLVM_MCTOLL_SIMPLIFYPOINTEROPERATIONPASS_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_PEEPHOLEOPTIMIZATIONPASS_H

@@ -62,8 +62,8 @@ add_llvm_tool(llvm-mctoll
   MCInstOrData.cpp
   MCInstRaiser.cpp
   EmitRaisedOutputPass.cpp
+  PeepholeOptimizationPass.cpp
   RuntimeFunction.cpp
-  SimplifyPointerOperationPass.cpp
 )
 
 include_directories(${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/include ${LLVM_BINARY_DIR}/tools/clang/include)

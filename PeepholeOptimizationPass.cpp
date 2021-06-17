@@ -1,4 +1,4 @@
-//===-- SimplifyPointerOperationPass.cpp ------------------------*- C++ -*-===//
+//===-- PeepholeOptimizationPass.cpp ----------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,14 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "SimplifyPointerOperationPass.h"
+#include "PeepholeOptimizationPass.h"
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 
-char SimplifyPointerOperationPass::ID = 0;
+char PeepholeOptimizationPass::ID = 0;
 
-bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
+bool PeepholeOptimizationPass::runOnFunction(Function &F) {
   for (BasicBlock &BB : F) {
     
     auto It = BB.begin();
@@ -24,8 +24,18 @@ bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
       if (auto *I2P = dyn_cast<IntToPtrInst>(&I)) {
         Value *V = I2P->getOperand(0);
         if (auto *BinOp = dyn_cast<BinaryOperator>(V)) {
+          /*
+            Simplifies the following pattern:
+              %tos = ptrtoint i8* %stktop_8 to i64
+              %0 = add i64 %tos, 16
+              %RBP_N.8 = inttoptr i64 %0 to i32*
+            replacing them with:
+              %0 = getelementptr i8, i8* %stktop_8, i64 16
+              %RBP_N.8 = bitcast i8* %0 to i32*
+            This has a significant impact when recompiling the raised program with other
+            optimizations, such as -O2.
+          */
           auto *P2I = dyn_cast<PtrToIntInst>(BinOp->getOperand(0));
-  
           if (P2I && (BinOp->getOpcode()==Instruction::Add || BinOp->getOpcode()==Instruction::Or)) {
              auto *Ptr = P2I->getOperand(0);
   
@@ -53,6 +63,11 @@ bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
              }
           }
         } else if (auto *P2I = dyn_cast<PtrToIntInst>(V)) {
+	  /*
+	    Simplifies the following pattern into a simple pointer casting.
+              %0 = ptrtoint i8* %stktop_8 to i64
+              %1 = inttoptr i64 %0 to i32*
+	  */
           IRBuilder<> Builder(&I);
           auto *FinalPtr = Builder.CreatePointerCast(P2I->getOperand(0), I2P->getType());
           I2P->replaceAllUsesWith(FinalPtr);
@@ -67,4 +82,4 @@ bool SimplifyPointerOperationPass::runOnFunction(Function &F) {
   return true;
 }
 
-void SimplifyPointerOperationPass::getAnalysisUsage(AnalysisUsage &AU) const {}
+void PeepholeOptimizationPass::getAnalysisUsage(AnalysisUsage &AU) const {}

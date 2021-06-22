@@ -458,8 +458,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
                           ? Type::getInt1Ty(Ctxt)
                           : x86MIRaiser->getPhysRegType(PhysReg);
       Type *LdReachingValType = LdReachingVal->getType();
-      assert(LdReachingValType->isIntegerTy() ||
-             LdReachingValType->isFloatingPointTy() &&
+      assert((LdReachingValType->isIntegerTy() ||
+	      LdReachingValType->isFloatingPointTy()) &&
              "Unhandled type mismatch of reaching register definition");
       if (RegType != LdReachingValType) {
         // Create cast instruction

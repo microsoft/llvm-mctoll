@@ -2464,9 +2464,12 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
       // instruction. Do not update if this is a cmp instruction.
       new StoreInst(CmpInst, MemRefValue, RaisedBB);
     } break;
+    case X86::SUB8rr:
+    case X86::SUB16rr:
     case X86::SUB32rr:
     case X86::SUB64rr:
     case X86::SUB8rm:
+    case X86::SUB16rm:
     case X86::SUB32rm:
     case X86::SUB64rm: {
       assert(MCIDesc.getNumDefs() == 1 &&

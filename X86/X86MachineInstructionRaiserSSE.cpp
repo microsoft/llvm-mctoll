@@ -439,8 +439,9 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionFromMemMachineInstr(
 bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
     const MachineInstr &MI) {
   int MBBNo = MI.getParent()->getNumber();
+  LLVMContext &Ctx(MF.getFunction().getContext());
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  bool Success = true;
   unsigned DstIndex = 0, Src1Index = 1, Src2Index = 2;
   assert(
       (MI.getNumExplicitOperands() == 2 || MI.getNumExplicitOperands() == 4) &&
@@ -463,31 +464,62 @@ bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
         "Unexpected operand numbers for sse move reg-to-reg instruction");
   }
 
+  unsigned int DstPRegSize = getPhysRegOperandSize(MI, DstIndex);
+  unsigned int SrcPRegSize = getPhysRegOperandSize(MI, Src1Index);
+
+  // Verify sanity of the instruction.
+  assert(SrcValue &&
+         "Encountered sse mov instruction with undefined source register");
+  assert(SrcValue->getType()->isSized() &&
+         "Unsized source value in sse mov instruction");
+  MachineOperand MO = MI.getOperand(Src1Index);
+  assert(MO.isReg() && "Unexpected non-register operand");
+
   switch (MI.getOpcode()) {
   case X86::MOVAPSrr:
   case X86::MOVAPDrr: {
-    unsigned int DstPRegSize = getPhysRegOperandSize(MI, DstIndex);
-    unsigned int SrcPRegSize = getPhysRegOperandSize(MI, Src1Index);
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
+  } break;
+  case X86::MOV64toPQIrr:
+  case X86::MOVDI2PDIrr:
+  case X86::MOVPDI2DIrr:
+  case X86::MOVPQIto64rr: {
+    Type *DstType;
+    if (isSSE2Reg(DstPReg)) {
+      // Since for SSE2 registers, DstPRegSize will always be 128, look at
+      // SrcPRegSize to get type
+      switch (SrcPRegSize * 8) {
+      case 32:
+        DstType = Type::getFloatTy(Ctx);
+        break;
+      case 64:
+        DstType = Type::getDoubleTy(Ctx);
+        break;
+      default:
+        llvm_unreachable("Unhandled fp size");
+      }
+    } else {
+      DstType = Type::getIntNTy(Ctx, DstPRegSize * 8);
 
-    // Verify sanity of the instruction.
-    assert(DstPRegSize != 0 && DstPRegSize == SrcPRegSize &&
-           "Unexpected sizes of source and destination registers size differ "
-           "in sse mov instruction");
-    assert(SrcValue &&
-           "Encountered sse mov instruction with undefined source register");
-    assert(SrcValue->getType()->isSized() &&
-           "Unsized source value in sse mov instruction");
-    MachineOperand MO = MI.getOperand(Src1Index);
-    assert(MO.isReg() && "Unexpected non-register operand");
-    // Check for undefined use
-    Success = (SrcValue != nullptr);
-    if (Success)
-      // Update the value mapping of DstPReg
-      raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
+      if (SrcValue->getType()->isFloatingPointTy() &&
+          SrcValue->getType()->getPrimitiveSizeInBits() !=
+              DstType->getPrimitiveSizeInBits()) {
+        SrcValue = resizeFPValue(MI, SrcValue, DstPRegSize * 8);
+      }
+    }
+
+    assert(DstType->getPrimitiveSizeInBits() ==
+               SrcValue->getType()->getPrimitiveSizeInBits() &&
+           "Expected operand size to match for movd/movq instruction");
+
+    Instruction *BitCast =
+        new BitCastInst(SrcValue, DstType, "bitcast", RaisedBB);
+
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, BitCast);
   } break;
   default:
     llvm_unreachable("Unhandled sse mov instruction");
   }
 
-  return Success;
+  return true;
 }

@@ -821,10 +821,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         RaisedBB->getInstList().push_back(ConvPtrToInst);
         Src2Value = ConvPtrToInst;
       }
-      assert((Src1Value->getType()->isIntegerTy() &&
-                  Src2Value->getType()->isIntegerTy() ||
-              Src1Value->getType()->isFloatingPointTy() &&
-                  Src2Value->getType()->isFloatingPointTy()) &&
+      assert(((Src1Value->getType()->isIntegerTy() &&
+                  Src2Value->getType()->isIntegerTy() )||
+              (Src1Value->getType()->isFloatingPointTy() &&
+                  Src2Value->getType()->isFloatingPointTy())) &&
              "Unhandled operand value types in reg-to-reg binary op "
              "instruction");
       if (Src1Value->getType() != Src2Value->getType()) {

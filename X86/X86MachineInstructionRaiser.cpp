@@ -2696,6 +2696,8 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     return raiseLoadIntToFloatRegInstr(MI, MemoryRefValue);
   case InstructionKind::STORE_FPU_REG:
     return raiseStoreIntToFloatRegInstr(MI, MemoryRefValue);
+  case InstructionKind::SSE_COMPARE_RM:
+    return raiseSSECompareFromMemMachineInstr(MI, MemoryRefValue);
   case InstructionKind::SSE_CONVERT_RM:
     return raiseSSEConvertPrecisionFromMemMachineInstr(MI, MemoryRefValue);
   default:
@@ -3900,7 +3902,7 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
   case InstructionKind::SSE_MOV_RR:
     success = raiseSSEMoveRegToRegMachineInstr(MI);
     break;
-  case InstructionKind::SSE_COMPARE:
+  case InstructionKind::SSE_COMPARE_RR:
     success = raiseSSECompareMachineInstr(MI);
     break;
   case InstructionKind::SSE_CONVERT_RR:

@@ -33,14 +33,25 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
   // Ensure this is an SSE2 compare instruction
   int MBBNo = MI.getParent()->getNumber();
   MCInstrDesc MCIDesc = MI.getDesc();
-  // Get the BasicBlock corresponding to MachineBasicBlock of MI.
-  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  assert((MCIDesc.getNumDefs() == 0) && (MCIDesc.getNumOperands() == 2) &&
-         (MCIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS)) &&
-         MCIDesc.hasImplicitUseOfPhysReg(X86::MXCSR) &&
+  assert((MCIDesc.getNumDefs() == 0 || MCIDesc.getNumDefs() == 1) &&
+         (MCIDesc.getNumOperands() == 2 || MCIDesc.getNumOperands() == 4) &&
          "Unexpected operands found in SSE compare instruction");
-  MachineOperand CmpOp1 = MI.getOperand(0);
-  MachineOperand CmpOp2 = MI.getOperand(1);
+
+  unsigned int Src1Idx, Src2Idx;
+
+  if (MCIDesc.getNumOperands() == 2) {
+    Src1Idx = 0;
+    Src2Idx = 1;
+  } else if (MCIDesc.getNumOperands() == 4) {
+    Src1Idx = 1;
+    Src2Idx = 2;
+  } else {
+    llvm_unreachable("Unexpected operands found in SSE compare instruction");
+  }
+
+  MachineOperand CmpOp1 = MI.getOperand(Src1Idx);
+  MachineOperand CmpOp2 = MI.getOperand(Src2Idx);
+
   assert(CmpOp1.isReg() && CmpOp2.isReg() &&
          "Expected register operands not found in SSE compare instruction");
   Register CmpOpReg1 = CmpOp1.getReg();
@@ -50,9 +61,6 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
       "Expected SSE2 register operands not found in SSE compare instruction");
   Value *CmpOpVal1 = getRegOrArgValue(CmpOpReg1, MBBNo);
   Value *CmpOpVal2 = getRegOrArgValue(CmpOpReg2, MBBNo);
-  // Initialize EFLAGS; AF and PF are not yet modeled
-  raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
-  raisedValues->setEflagBoolean(EFLAGS::SF, MBBNo, false);
 
   auto CmpOp1SzInBits =
       TRI->getRegSizeInBits(*(TRI->getRegClass(MCIDesc.OpInfo[0].RegClass)));
@@ -60,21 +68,97 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
       TRI->getRegSizeInBits(*(TRI->getRegClass(MCIDesc.OpInfo[1].RegClass)));
   assert(CmpOp1SzInBits == CmpOp2SzInBits &&
          "Different sizes of SSE compare instruction not expected");
-  bool IsUnorderedCompare = false;
-  switch (MI.getOpcode()) {
-  default:
+
+  uint8_t BitPrecision = getInstructionBitPrecision(MCIDesc.TSFlags);
+
+  if (CmpOpVal1->getType()->getPrimitiveSizeInBits() != BitPrecision) {
+    CmpOpVal1 = resizeFPValue(MI, CmpOpVal1, BitPrecision);
+  }
+  if (CmpOpVal2->getType()->getPrimitiveSizeInBits() != BitPrecision) {
+    CmpOpVal2 = resizeFPValue(MI, CmpOpVal2, BitPrecision);
+  }
+
+  return raiseSSECompareMachineInstr(MI, CmpOpVal1, CmpOpVal2, false);
+}
+
+bool X86MachineInstructionRaiser::raiseSSECompareFromMemMachineInstr(
+    const MachineInstr &MI, Value *MemRefValue) {
+  LLVMContext &Ctx(MF.getFunction().getContext());
+  // Ensure this is an SSE2 compare instruction
+  int MBBNo = MI.getParent()->getNumber();
+  MCInstrDesc MCIDesc = MI.getDesc();
+
+  assert((MCIDesc.getNumDefs() == 0 || MCIDesc.getNumDefs() == 1) &&
+         "Unexpected operands found in SSE compare instruction");
+
+  unsigned int Src1Idx;
+
+  if (MCIDesc.getNumDefs() == 0) {
+    Src1Idx = 0;
+  } else if (MCIDesc.getNumDefs() == 1) {
+    Src1Idx = 1;
+  } else {
+    llvm_unreachable("Unexpected operands found in SSE compare instruction");
+  }
+
+  MachineOperand CmpOp1 = MI.getOperand(Src1Idx);
+  assert(CmpOp1.isReg() &&
+         "Expected register operand not found in SSE compare instruction");
+  Register CmpOpReg1 = CmpOp1.getReg();
+  assert(isSSE2Reg(CmpOpReg1) &&
+         "Expected SSE2 register operand not found in SSE compare instruction");
+
+  unsigned int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+
+  Type *SrcTy;
+  switch (getInstructionMemOpSize(MI.getOpcode()) * 8) {
+  case 32:
+    SrcTy = Type::getFloatTy(Ctx);
     break;
+  case 64:
+    SrcTy = Type::getDoubleTy(Ctx);
+    break;
+  default:
+    llvm_unreachable("Unhandled floating point type with unknown mem op size");
+  }
+
+  Value *CmpOpVal1 = getRegOrArgValue(CmpOpReg1, MBBNo);
+  Value *CmpOpVal2 =
+      loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, SrcTy);
+
+  if (CmpOpVal1->getType() != SrcTy) {
+    CmpOpVal1 = resizeFPValue(MI, CmpOpVal1, SrcTy->getPrimitiveSizeInBits());
+  }
+
+  return raiseSSECompareMachineInstr(MI, CmpOpVal1, CmpOpVal2, true);
+}
+
+bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
+    const MachineInstr &MI, Value *CmpOpVal1, Value *CmpOpVal2,
+    bool IsFromMem) {
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+  int MBBNo = MI.getParent()->getNumber();
+  MCInstrDesc MCIDesc = MI.getDesc();
+
+  switch (MI.getOpcode()) {
   case X86::UCOMISDrr:
   case X86::UCOMISSrr:
-    IsUnorderedCompare = true;
-    break;
-  }
-  if (IsUnorderedCompare) {
-    // Testing for unordered less-than and unordered equal will set CF and ZF
-    // appropriately viz.,
-    //     Unordered   :  ZF,CF <- 11
-    //     Greater-than:  ZF,CF <= 00
-    //     Less-than   :  ZF,CF <= 10
+  case X86::UCOMISDrm:
+  case X86::UCOMISSrm: {
+    // Testing for unordered less-than and unordered equal will set ZF, PF and
+    // CF appropriately viz.,
+    //    Unordered:    ZF,PF,CF <- 111
+    //    Greater-than: ZF,PF,CF <- 000
+    //    Less-than:    ZF,PF,CF <- 001
+    //    equal:        ZF,PF,CF <- 100
+    assert(MCIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+           MCIDesc.hasImplicitUseOfPhysReg(X86::MXCSR) &&
+           "Unexpected operands found in SSE compare instruction");
+
+    // Initialize EFLAGS; AF and PF are not yet modeled
+    raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
+    raisedValues->setEflagBoolean(EFLAGS::SF, MBBNo, false);
+
     // Unordered or Less-than
     auto ULTCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_ULT,
                                CmpOpVal1, CmpOpVal2);
@@ -89,8 +173,83 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
     auto UNOCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_UNO,
                                CmpOpVal1, CmpOpVal2);
     raisedValues->setEflagValue(EFLAGS::PF, MBBNo, UNOCmp);
+  } break;
+  case X86::CMPSDrr_Int:
+  case X86::CMPSSrr_Int:
+  case X86::CMPSDrm_Int:
+  case X86::CMPSSrm_Int: {
+    // Testing if two values are equal will set destination register to
+    // all-1 or all-0 depending on if they are equal
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    MachineOperand DstOp = MI.getOperand(0);
+    assert(DstOp.isReg() && "Expected destination operand to be a register");
+    Register DstReg = DstOp.getReg();
 
-  } else {
+    unsigned int CmpOpTypeIdx = IsFromMem ? 7 : 3;
+    MachineOperand CmpTypeOperand = MI.getOperand(CmpOpTypeIdx);
+    assert(CmpTypeOperand.isImm() &&
+           "Expected comparison type to be immediate");
+
+    Instruction *CmpInst;
+    // Different types of compare instruction:
+    // https://www.felixcloutier.com/x86/cmpsd
+    switch (CmpTypeOperand.getImm()) {
+    case 0: // CMPEQSD
+      CmpInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OEQ, CmpOpVal1, CmpOpVal2,
+                             "CMPEQ");
+      break;
+    case 1: // CMPLTSD
+      CmpInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLT, CmpOpVal1, CmpOpVal2,
+                             "CMPLT");
+      break;
+    case 2: // CMPLESD
+      CmpInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLE, CmpOpVal1, CmpOpVal2,
+                             "CMPLE");
+      break;
+    case 3: // CMPUNORDSD
+      CmpInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_UNO, CmpOpVal1, CmpOpVal2,
+                             "CMPUNORD");
+      break;
+    case 4: // CMPNEQSD
+      CmpInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_ONE, CmpOpVal1, CmpOpVal2,
+                             "CMPNEQ");
+      break;
+    case 5: { // CMPNLTSD
+      auto LTInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLT, CmpOpVal1,
+                                 CmpOpVal2, "CMPLT");
+      CmpInst = BinaryOperator::CreateNot(LTInst, "CMPNLT", RaisedBB);
+    } break;
+    case 6: { // CMPNLESD
+      auto LEInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLE, CmpOpVal1,
+                                 CmpOpVal2, "CMPLE");
+      CmpInst = BinaryOperator::CreateNot(LEInst, "CMPNLE", RaisedBB);
+    } break;
+    case 7: // CMPORDSD
+      CmpInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_ORD, CmpOpVal1, CmpOpVal2,
+                             "CMPORD");
+      break;
+    default:
+      llvm_unreachable(
+          "Encountered illegal comparison type in comparison instruction");
+    }
+
+    unsigned int BitSize = CmpOpVal1->getType()->getPrimitiveSizeInBits();
+    IntegerType *IntNTy = Type::getIntNTy(Ctx, BitSize);
+
+    Value *BitmaskInt = ConstantInt::get(IntNTy, IntNTy->getBitMask());
+    Value *ZeroValInt = ConstantInt::get(IntNTy, 0);
+
+    Value *BitmaskVal =
+        new BitCastInst(BitmaskInt, CmpOpVal1->getType(), "bitmask", RaisedBB);
+    Value *ZeroVal =
+        new BitCastInst(ZeroValInt, CmpOpVal1->getType(), "zero", RaisedBB);
+
+    Instruction *SelectInstr = SelectInst::Create(CmpInst, BitmaskVal, ZeroVal,
+                                                  "cmp_bitmask", RaisedBB);
+    raisedValues->setPhysRegSSAValue(DstReg, MI.getParent()->getNumber(),
+                                     SelectInstr);
+  } break;
+  default:
     llvm_unreachable("Unhandled SSE compare instruction");
   }
 
@@ -266,77 +425,7 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionFromMemMachineInstr(
   MachineOperand DstOp = MI.getOperand(DstOpIdx);
   assert(DstOp.isReg() && "Expected destination to be a register");
 
-  X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
-  uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
-  bool IsPCRelMemRef = (BaseSupReg == X86::RIP);
-  const MachineOperand &LoadOp = MI.getOperand(MemoryRefOpIndex);
-  unsigned int LoadPReg = LoadOp.getReg();
-  assert(Register::isPhysicalRegister(LoadPReg) &&
-         "Expect destination to be a physical register in SSE conversion "
-         "instruction.");
-
-  // Load the value from memory location of memRefValue.
-  // memRefVal is either an AllocaInst (stack access), GlobalValue (global
-  // data access), an effective address value, element pointer or select
-  // instruction.
-  assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue) || isa<SelectInst>(MemRefValue) ||
-          isa<GetElementPtrInst>(MemRefValue) ||
-          MemRefValue->getType()->isPointerTy()) &&
-         "Unexpected type of memory reference in SSE conversion instruction");
-
-  // Assume that MemRefValue represents a memory reference location and hence
-  // needs to be loaded from.
-  bool LoadFromMemrefValue = true;
-  // Following are the exceptions when MemRefValue needs to be considered as
-  // memory content and not as memory reference.
-  if (IsPCRelMemRef) {
-    // If it is a PC-relative global variable with an initializer, it is memory
-    // content and should not be loaded from.
-    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
-      LoadFromMemrefValue = !(GV->hasInitializer());
-    // If it is not a PC-relative constant expression accessed using
-    // GetElementPtrInst, it is memory content and should not be loaded from.
-    else {
-      const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(MemRefValue);
-      if (CExpr != nullptr) {
-        LoadFromMemrefValue =
-            (CExpr->getOpcode() == Instruction::GetElementPtr);
-      }
-    }
-  }
-
-  Value *SrcVal;
-  if (LoadFromMemrefValue) {
-    // If it is an effective address value or a select instruction, convert it
-    // to a pointer to load register type.
-    PointerType *PtrTy = PointerType::get(SrcTy, 0);
-    if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
-      IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
-      // Set or copy rodata metadata, if any
-      getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
-      RaisedBB->getInstList().push_back(ConvIntToPtr);
-      MemRefValue = ConvIntToPtr;
-    }
-    assert(MemRefValue->getType()->isPointerTy() &&
-           "Pointer type expected in SSE conversion instruction");
-    // Cast the pointer to match the size of memory being accessed by the
-    // instruction, as needed.
-    MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
-    // Load the value from memory location
-    Type *LdTy = MemRefValue->getType()->getPointerElementType();
-    LoadInst *LdInst =
-        new LoadInst(LdTy, MemRefValue, "memload", false, Align());
-    LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-    RaisedBB->getInstList().push_back(LdInst);
-
-    SrcVal = LdInst;
-  } else {
-    // memRefValue already represents the global value loaded from
-    // PC-relative memory location. It is incorrect to generate an
-    // additional load of this value. It should be directly used.
-    SrcVal = MemRefValue;
-  }
+  Value *SrcVal = loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, SrcTy);
 
   auto CastInst =
       CastInst::Create(CastInst::getCastOpcode(SrcVal, true, CastTy, true),

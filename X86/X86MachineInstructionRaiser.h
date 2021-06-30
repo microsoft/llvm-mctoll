@@ -140,6 +140,9 @@ private:
   bool raiseStoreIntToFloatRegInstr(const MachineInstr &, Value *);
   bool raiseFPURegisterOpInstr(const MachineInstr &);
   bool raiseSSECompareMachineInstr(const MachineInstr &);
+  bool raiseSSECompareFromMemMachineInstr(const MachineInstr &, Value *);
+  bool raiseSSECompareMachineInstr(const MachineInstr &, Value *CmpOpVal1,
+                                   Value *CmpOpVal2, bool IsFromMem);
   bool raiseSSEConvertPrecisionMachineInstr(const MachineInstr &);
   bool raiseSSEConvertPrecisionFromMemMachineInstr(const MachineInstr &, Value *);
   bool raiseSSEMoveRegToRegMachineInstr(const MachineInstr &);
@@ -212,6 +215,9 @@ private:
   bool isPushToStack(const MachineInstr &MI) const;
   bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
+
+  /// Cast a FP value to another size
+  Value *resizeFPValue(const MachineInstr &, Value *, uint8_t);
 
   std::vector<JumpTableInfo> jtList;
 };

@@ -149,6 +149,8 @@ private:
   bool raiseIndirectBranchMachineInstr(ControlTransferInfo *);
 
   Value *getMemoryRefValue(const MachineInstr &);
+  Value *loadMemoryRefValue(const MachineInstr &, Value *, unsigned int,
+                            Type *);
 
   // Helper functions
   // Cleanup MachineBasicBlocks

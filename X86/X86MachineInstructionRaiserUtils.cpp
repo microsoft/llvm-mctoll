@@ -165,6 +165,78 @@ Value *X86MachineInstructionRaiser::getMemoryRefValue(const MachineInstr &MI) {
   return MemoryRefValue;
 }
 
+Value *X86MachineInstructionRaiser::loadMemoryRefValue(
+    const MachineInstr &MI, Value *MemRefValue, unsigned int MemoryRefOpIndex,
+    Type *SrcTy) {
+  X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+  uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
+  bool IsPCRelMemRef = (BaseSupReg == X86::RIP);
+
+  // Load the value from memory location of memRefValue.
+  // memRefVal is either an AllocaInst (stack access), GlobalValue (global
+  // data access), an effective address value, element pointer or select
+  // instruction.
+  assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
+          isa<GlobalValue>(MemRefValue) || isa<SelectInst>(MemRefValue) ||
+          isa<GetElementPtrInst>(MemRefValue) ||
+          MemRefValue->getType()->isPointerTy()) &&
+         "Unexpected type of memory reference in SSE conversion instruction");
+
+  // Assume that MemRefValue represents a memory reference location and hence
+  // needs to be loaded from.
+  bool LoadFromMemrefValue = true;
+  // Following are the exceptions when MemRefValue needs to be considered as
+  // memory content and not as memory reference.
+  if (IsPCRelMemRef) {
+    // If it is a PC-relative global variable with an initializer, it is memory
+    // content and should not be loaded from.
+    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
+      LoadFromMemrefValue = !(GV->hasInitializer());
+      // If it is not a PC-relative constant expression accessed using
+      // GetElementPtrInst, it is memory content and should not be loaded from.
+    else {
+      const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(MemRefValue);
+      if (CExpr != nullptr) {
+        LoadFromMemrefValue =
+            (CExpr->getOpcode() == Instruction::GetElementPtr);
+      }
+    }
+  }
+
+  if (LoadFromMemrefValue) {
+    BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+
+    // If it is an effective address value or a select instruction, convert it
+    // to a pointer to load register type.
+    PointerType *PtrTy = PointerType::get(SrcTy, 0);
+    if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
+      IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
+      // Set or copy rodata metadata, if any
+      getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
+      RaisedBB->getInstList().push_back(ConvIntToPtr);
+      MemRefValue = ConvIntToPtr;
+    }
+    assert(MemRefValue->getType()->isPointerTy() &&
+           "Pointer type expected in SSE conversion instruction");
+    // Cast the pointer to match the size of memory being accessed by the
+    // instruction, as needed.
+    MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
+    // Load the value from memory location
+    Type *LdTy = MemRefValue->getType()->getPointerElementType();
+    LoadInst *LdInst =
+        new LoadInst(LdTy, MemRefValue, "memload", false, Align());
+    LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
+    RaisedBB->getInstList().push_back(LdInst);
+
+    return LdInst;
+  } else {
+    // memRefValue already represents the global value loaded from
+    // PC-relative memory location. It is incorrect to generate an
+    // additional load of this value. It should be directly used.
+    return MemRefValue;
+  }
+}
+
 // Delete noop instructions
 bool X86MachineInstructionRaiser::deleteNOOPInstrMI(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) {

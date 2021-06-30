@@ -1286,6 +1286,58 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
                                      ZFTest);
 
   } break;
+  case X86::SUBSSrr_Int:
+  case X86::SUBSDrr_Int:
+  case X86::ADDSSrr_Int:
+  case X86::ADDSDrr_Int:
+  case X86::MULSDrr_Int:
+  case X86::MULSSrr_Int:
+  case X86::DIVSDrr_Int:
+  case X86::DIVSSrr_Int: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+    // Verify the def operand is a register.
+    assert(MI.getOperand(DestOpIndex).isReg() &&
+           "Expecting destination of fp op instruction to be a register "
+           "operand");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected number of defines in fp op instruction");
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+           "Unhandled situation: register is used before initialization in "
+           "fp op");
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+
+    Instruction *BinOpInst = nullptr;
+    switch (opc) {
+    case X86::ADDSSrr_Int:
+    case X86::ADDSDrr_Int:
+      BinOpInst = BinaryOperator::CreateFAdd(Src1Value, Src2Value);
+      break;
+    case X86::SUBSSrr_Int:
+    case X86::SUBSDrr_Int:
+      BinOpInst = BinaryOperator::CreateFSub(Src1Value, Src2Value);
+      break;
+    case X86::MULSDrr_Int:
+    case X86::MULSSrr_Int:
+      BinOpInst = BinaryOperator::CreateFMul(Src1Value, Src2Value);
+      break;
+    case X86::DIVSDrr_Int:
+    case X86::DIVSSrr_Int:
+      BinOpInst = BinaryOperator::CreateFDiv(Src1Value, Src2Value);
+      break;
+    default:
+      llvm_unreachable("Unhandled fp instruction");
+    }
+
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    // raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
+
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+  } break;
   case X86::XORPDrr:
   case X86::XORPSrr: {
     // bitwise operations on fp values do not exist in LLVM.
@@ -1383,42 +1435,20 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
          "Encountered instruction with undefined register");
 
   // Verify sanity of the instruction.
-  assert((getPhysRegOperandSize(MI, DestIndex) == MemAlignment) &&
+  // SSE2 registers are always of a fixed size and might not be equal to
+  // MemAlignment
+  assert((isSSE2Reg(DestOp.getReg()) ||
+          getPhysRegOperandSize(MI, DestIndex) == MemAlignment) &&
          "Mismatched destination register size and instruction size of binary "
          "op instruction");
 
-  // Load the value from memory location of memRefValue.
-  // memRefVal is either an AllocaInst (stack access) or GlobalValue (global
-  // data access) or an LoadInst that loads an address in memory.
-  assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
-          isa<GetElementPtrInst>(MemRefValue) ||
-          isa<GlobalValue>(MemRefValue) ||
-          MemRefValue->getType()->isPointerTy()) &&
-         "Unexpected type of memory reference in binary mem op instruction");
-  // If it is an effective address
-  if (isEffectiveAddrValue(MemRefValue)) {
-    // This is an effective address computation
-    // Cast it to a pointer of type of destination operand.
-    PointerType *PtrTy = PointerType::get(DestopTy, 0);
-    IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
-    getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
-    RaisedBB->getInstList().push_back(ConvIntToPtr);
-    MemRefValue = ConvIntToPtr;
-  }
-  Value *LoadValue = nullptr;
-  LoadInst *LdInst =
-      new LoadInst(MemRefValue->getType()->getPointerElementType(),
-                   MemRefValue, "memload", false, Align(MemAlignment));
-  LoadValue = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-
-  // Insert the instruction that loads memory reference
-  RaisedBB->getInstList().push_back(dyn_cast<Instruction>(LoadValue));
+  unsigned int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+  Value *LoadValue =
+      loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, DestopTy);
+  // Cast DestValue to the DestopTy, as for single-precision FP ops
+  // DestValue type and DestopTy might be different.
+  DestValue = getRaisedValues()->castValue(DestValue, DestopTy, RaisedBB);
   Instruction *BinOpInst = nullptr;
-
-  // Generate cast instruction to ensure source and destination types are
-  // consistent, as needed.
-  LoadValue =
-      getRaisedValues()->castValue(LoadValue, DestValue->getType(), RaisedBB);
 
   switch (Opcode) {
   case X86::ADD64rm:
@@ -1481,6 +1511,22 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     AffectedEFlags.insert(EFLAGS::ZF);
     // PF not yet supported
     // AffectedEFlags.insert(EFLAGS::PF);
+  } break;
+  case X86::ADDSSrm_Int:
+  case X86::ADDSDrm_Int: {
+    BinOpInst = BinaryOperator::CreateFAdd(DestValue, LoadValue);
+  } break;
+  case X86::SUBSSrm_Int:
+  case X86::SUBSDrm_Int: {
+    BinOpInst = BinaryOperator::CreateFSub(DestValue, LoadValue);
+  } break;
+  case X86::MULSDrm_Int:
+  case X86::MULSSrm_Int: {
+    BinOpInst = BinaryOperator::CreateFMul(DestValue, LoadValue);
+  } break;
+  case X86::DIVSDrm_Int:
+  case X86::DIVSSrm_Int: {
+    BinOpInst = BinaryOperator::CreateFDiv(DestValue, LoadValue);
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");

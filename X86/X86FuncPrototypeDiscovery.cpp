@@ -290,7 +290,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
       // happens to be an argument register, it should not be considered
       // as such. Record it as such.
       if (Opc == X86::XOR64rr || Opc == X86::XOR32rr || Opc == X86::XOR16rr ||
-          Opc == X86::XOR8rr) {
+          Opc == X86::XOR8rr || Opc == X86::XORPDrr || Opc == X86::XORPSrr) {
         unsigned DestOpIndx = 0, SrcOp1Indx = 1, SrcOp2Indx = 2;
         const MachineOperand &DestOp = MI.getOperand(DestOpIndx);
         const MachineOperand &Use1Op = MI.getOperand(SrcOp1Indx);

@@ -821,8 +821,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         RaisedBB->getInstList().push_back(ConvPtrToInst);
         Src2Value = ConvPtrToInst;
       }
-      assert(Src1Value->getType()->isIntegerTy() &&
-             Src2Value->getType()->isIntegerTy() &&
+      assert((Src1Value->getType()->isIntegerTy() &&
+                  Src2Value->getType()->isIntegerTy() ||
+              Src1Value->getType()->isFloatingPointTy() &&
+                  Src2Value->getType()->isFloatingPointTy()) &&
              "Unhandled operand value types in reg-to-reg binary op "
              "instruction");
       if (Src1Value->getType() != Src2Value->getType()) {
@@ -1284,7 +1286,71 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
                                      ZFTest);
 
   } break;
+  case X86::XORPDrr:
+  case X86::XORPSrr: {
+    // bitwise operations on fp values do not exist in LLVM.
+    // To emulate the behavior, we
+    // - bitcast values to int
+    // - perform the operation
+    // - bitcast back to original type
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+    bool isXorOperation = opc == X86::XORPDrr || opc == X86::XORPSrr;
+
+    if (isXorOperation && (MI.findTiedOperandIdx(1) == 0) &&
+        (dstReg == MI.getOperand(UseOp2Index).getReg())) {
+      // No instruction to generate. Just set destReg value to 0.
+      Type *DestTy = getPhysRegOperandType(MI, 0);
+      dstValue = ConstantFP::get(DestTy, 0);
+    } else {
+      LLVMContext &Ctx(MF.getFunction().getContext());
+
+      Value *Src1Value = ExplicitSrcValues.at(0);
+      Value *Src2Value = ExplicitSrcValues.at(1);
+      // Verify the def operand is a register.
+      assert(MI.getOperand(DestOpIndex).isReg() &&
+             "Expecting destination of fp op instruction to be a register "
+             "operand");
+      assert((MCID.getNumDefs() == 1) &&
+             "Unexpected number of defines in fp op instruction");
+      assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+             "Unhandled situation: register is used before initialization in "
+             "fp op");
+
+      assert(Src1Value->getType()->getPrimitiveSizeInBits() ==
+                 Src2Value->getType()->getPrimitiveSizeInBits() &&
+             "Expected operand types to have same size");
+
+      auto BitSize = Src1Value->getType()->getPrimitiveSizeInBits();
+
+      Instruction *BitCastToInt1 =
+          new BitCastInst(Src1Value, Type::getIntNTy(Ctx, BitSize),
+                          "bitwise_operand", RaisedBB);
+      Instruction *BitCastToInt2 =
+          new BitCastInst(Src2Value, Type::getIntNTy(Ctx, BitSize),
+                          "bitwise_operand", RaisedBB);
+
+      Instruction *Result;
+
+      switch (opc) {
+      case X86::XORPDrr:
+      case X86::XORPSrr:
+        Result = BinaryOperator::CreateXor(BitCastToInt1, BitCastToInt2,
+                                           "xor_result", RaisedBB);
+        break;
+      default:
+        llvm_unreachable("unhandled bitwise instruction");
+      }
+
+      Instruction *CastBackResult = new BitCastInst(
+          Result, Src1Value->getType(), "bitcast_result", RaisedBB);
+
+      dstValue = CastBackResult;
+    }
+
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+  } break;
   default:
+    MI.dump();
     assert(false && "Unhandled binary instruction");
   }
 

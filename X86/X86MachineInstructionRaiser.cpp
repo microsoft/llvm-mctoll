@@ -1401,6 +1401,26 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
+  case X86::MAXSDrr_Int:
+  case X86::MAXSSrr_Int:
+  case X86::MINSDrr_Int:
+  case X86::MINSSrr_Int: {
+    bool isMax = instrNameStartsWith(MI, "MAX");
+    std::string nameString = isMax ? "max" : "min";
+
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+
+    auto CmpType = isMax ? CmpInst::FCMP_OGT : CmpInst::FCMP_OLT;
+    Instruction *CmpInst =
+        new FCmpInst(*RaisedBB, CmpType, Src1Value, Src2Value, "cmp");
+
+    Instruction *SelectInst =
+        SelectInst::Create(CmpInst, Src1Value, Src2Value, nameString, RaisedBB);
+
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, SelectInst);
+  } break;
   default:
     MI.dump();
     assert(false && "Unhandled binary instruction");
@@ -1527,6 +1547,20 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::DIVSDrm_Int:
   case X86::DIVSSrm_Int: {
     BinOpInst = BinaryOperator::CreateFDiv(DestValue, LoadValue);
+  } break;
+  case X86::MAXSDrm_Int:
+  case X86::MAXSSrm_Int:
+  case X86::MINSDrm_Int:
+  case X86::MINSSrm_Int: {
+    bool isMax = instrNameStartsWith(MI, "MAX");
+    std::string nameString = isMax ? "max" : "min";
+
+    auto CmpType = isMax ? CmpInst::FCMP_OGT : CmpInst::FCMP_OLT;
+    Instruction *CmpInst =
+        new FCmpInst(*RaisedBB, CmpType, DestValue, LoadValue, "cmp");
+
+    BinOpInst =
+        SelectInst::Create(CmpInst, DestValue, LoadValue, nameString);
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");

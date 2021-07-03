@@ -771,7 +771,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::FSINCOS, {0, Unknown}},
     {X86::FSTENVm, {0, Unknown}},
     {X86::FS_PREFIX, {0, Unknown}},
-    {X86::FXAM, {0, Unknown}},
+    {X86::XAM_F, {0, Unknown}},
     {X86::FXRSTOR, {0, Unknown}},
     {X86::FXRSTOR64, {0, Unknown}},
     {X86::FXSAVE, {0, Unknown}},

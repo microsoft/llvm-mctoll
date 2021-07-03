@@ -464,9 +464,9 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
 
   // Open the file.
   std::error_code EC;
-  sys::fs::OpenFlags OpenFlags = sys::fs::F_None;
+  sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
   if (!Binary)
-    OpenFlags |= sys::fs::F_Text;
+    OpenFlags |= sys::fs::OF_Text;
   auto FDOut = std::make_unique<ToolOutputFile>(OutputFilename, EC, OpenFlags);
   if (EC) {
     errs() << EC.message() << '\n';

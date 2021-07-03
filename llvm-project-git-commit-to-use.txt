@@ -5,11 +5,10 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 8a4d05ddb3ff25c53299ff440032547d68b36397
-Author: Sanjay Patel <spatel@rotateright.com>
-Date:   Fri Jun 4 11:40:39 2021 -0400
+commit 89c1c64cc3170a05a881bb9954feafc3edca6704
+Author: Simon Pilgrim <llvm-dev@redking.me.uk>
+Date:   Sat Jul 3 19:00:25 2021 +0100
 
-    [ConstantFolding] add copysign tests for more FP types; NFC
+    [KnownBits] Merge const/non-const KnownBits::extractBits implementations. NFC.
 
-    D102673 proposes to ease the current type check, but
-    there doesn't appear to be any test coverage for that.
+    These are identical and can be just const.

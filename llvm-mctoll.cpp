@@ -1457,7 +1457,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     // Add optimizations prior to emitting the output file.
     PM.add(new PeepholeOptimizationPass());
-    
+
     // Add print pass to emit ouptut file.
     PM.add(new EmitRaisedOutputPass(*OS, OutputFormat));
 
@@ -1539,6 +1539,13 @@ static void DumpInput(StringRef file) {
   else if (ObjectFile *o = dyn_cast<ObjectFile>(&Binary)) {
     if (o->getArch() == Triple::x86_64) {
       const ELF64LEObjectFile *Elf64LEObjFile = dyn_cast<ELF64LEObjectFile>(o);
+      if (Elf64LEObjFile == nullptr) {
+        errs() << "\n\n*** " << file << " : Not 64-bit ELF binary\n"
+               << "*** Currently only 64-bit ELF binary raising supported.\n"
+               << "*** Please consider contributing support to raise other "
+                  "binary formats. Thanks!\n";
+        exit(1);
+      }
       // Raise x86_64 relocatable binaries (.o files) is not supported.
       auto EType = Elf64LEObjFile->getELFFile().getHeader().e_type;
       if ((EType == ELF::ET_DYN) || (EType == ELF::ET_EXEC))
@@ -1550,7 +1557,9 @@ static void DumpInput(StringRef file) {
     } else if (o->getArch() == Triple::arm)
       DumpObject(o);
     else {
-      errs() << "No support to raise Binaries other than x64 and ARM\n";
+      errs() << "\n\n*** No support to raise Binaries other than x64 and ARM\n"
+             << "*** Please consider contributing support to raise other "
+                "ISAs. Thanks!\n";
       exit(1);
     }
   } else
@@ -1574,9 +1583,15 @@ int main(int argc, char **argv) {
 
   cl::HideUnrelatedOptions(LLVMMCToLLCategory);
 
-  cl::ParseCommandLineOptions(argc, argv, "MC to LLVM IR dumper\n");
+  cl::ParseCommandLineOptions(argc, argv, "MC to LLVM IR raiser\n");
 
   ToolName = argv[0];
+
+  // Set appropriate bug report message
+  llvm::setBugReportMsg(
+      "\n*** Please submit an issue at "
+      "https://github.com/microsoft/llvm-mctoll"
+      "\n*** along with a back trace and a reproducer, if possible.\n");
 
   // Defaults to a.out if no filenames specified.
   if (InputFilenames.size() == 0)

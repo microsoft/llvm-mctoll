@@ -700,9 +700,19 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
     //and is set if the number of set bits of ones is even.
     //Put another way, the parity bit is set if the sum of the bits is even.
     Module *M = x86MIRaiser->getModuleRaiser()->getModule();
+
+    Value *SrcVal = TestResultVal;
+
+    if (SrcVal->getType()->isIntegerTy() && SrcVal->getType()->getIntegerBitWidth() > 8) {
+      // Get least-significant byte
+      Instruction *LSB = BinaryOperator::CreateAnd(SrcVal, ConstantInt::get(SrcVal->getType(), 0xff));
+      RaisedBB->getInstList().push_back(LSB);
+      SrcVal = LSB;
+    }
+
     Function *IntrinsicFunc =
-        Intrinsic::getDeclaration(M, Intrinsic::ctpop, TestResultVal->getType());
-    Value *IntrinsicCallArgs[] = {TestResultVal};
+        Intrinsic::getDeclaration(M, Intrinsic::ctpop, SrcVal->getType());
+    Value *IntrinsicCallArgs[] = {SrcVal};
     Instruction *ParityValue =
         CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
 

@@ -69,14 +69,13 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
   assert(CmpOp1SzInBits == CmpOp2SzInBits &&
          "Different sizes of SSE compare instruction not expected");
 
-  uint8_t BitPrecision = getInstructionBitPrecision(MCIDesc.TSFlags);
+  LLVMContext &Ctx(MF.getFunction().getContext());
 
-  if (CmpOpVal1->getType()->getPrimitiveSizeInBits() != BitPrecision) {
-    CmpOpVal1 = resizeFPValue(MI, CmpOpVal1, BitPrecision);
-  }
-  if (CmpOpVal2->getType()->getPrimitiveSizeInBits() != BitPrecision) {
-    CmpOpVal2 = resizeFPValue(MI, CmpOpVal2, BitPrecision);
-  }
+  Type *OpType = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+  CmpOpVal1 = getRaisedValues()->reinterpretSSEValue(CmpOpVal1, OpType, RaisedBB);
+  CmpOpVal2 = getRaisedValues()->reinterpretSSEValue(CmpOpVal2, OpType, RaisedBB);
 
   return raiseSSECompareMachineInstr(MI, CmpOpVal1, CmpOpVal2, false);
 }
@@ -110,25 +109,13 @@ bool X86MachineInstructionRaiser::raiseSSECompareFromMemMachineInstr(
 
   unsigned int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
 
-  Type *SrcTy;
-  switch (getInstructionMemOpSize(MI.getOpcode()) * 8) {
-  case 32:
-    SrcTy = Type::getFloatTy(Ctx);
-    break;
-  case 64:
-    SrcTy = Type::getDoubleTy(Ctx);
-    break;
-  default:
-    llvm_unreachable("Unhandled floating point type with unknown mem op size");
-  }
+  Type *OpType = getRaisedValues()->getSSEInstructionType(MI, Ctx);
 
-  Value *CmpOpVal1 = getRegOrArgValue(CmpOpReg1, MBBNo);
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+  Value *CmpOpVal1 = getRaisedValues()->reinterpretSSEValue(
+      getRegOrArgValue(CmpOpReg1, MBBNo), OpType, RaisedBB);
   Value *CmpOpVal2 =
-      loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, SrcTy);
-
-  if (CmpOpVal1->getType() != SrcTy) {
-    CmpOpVal1 = resizeFPValue(MI, CmpOpVal1, SrcTy->getPrimitiveSizeInBits());
-  }
+      loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, OpType);
 
   return raiseSSECompareMachineInstr(MI, CmpOpVal1, CmpOpVal2, true);
 }
@@ -136,6 +123,7 @@ bool X86MachineInstructionRaiser::raiseSSECompareFromMemMachineInstr(
 bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
     const MachineInstr &MI, Value *CmpOpVal1, Value *CmpOpVal2,
     bool IsFromMem) {
+  LLVMContext &Ctx(MF.getFunction().getContext());
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
   int MBBNo = MI.getParent()->getNumber();
   MCInstrDesc MCIDesc = MI.getDesc();
@@ -154,6 +142,21 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
     assert(MCIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            MCIDesc.hasImplicitUseOfPhysReg(X86::MXCSR) &&
            "Unexpected operands found in SSE compare instruction");
+
+    assert(CmpOpVal1->getType()->isVectorTy() &&
+           CmpOpVal2->getType()->isVectorTy() &&
+           "Expected operand types to be vector types");
+
+    auto Idx = ConstantInt::get(Type::getInt64Ty(Ctx), 0);
+    CmpOpVal1 =
+        ExtractElementInst::Create(CmpOpVal1, Idx, "cmp_operand_1", RaisedBB);
+    CmpOpVal2 =
+        ExtractElementInst::Create(CmpOpVal2, Idx, "cmp_operand_2", RaisedBB);
+
+    assert(CmpOpVal1->getType()->isFloatingPointTy() &&
+           CmpOpVal2->getType()->isFloatingPointTy() &&
+           "Expected operand types to be of floating point type for SSE "
+           "compare instruction");
 
     // Initialize EFLAGS; AF and PF are not yet modeled
     raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
@@ -189,6 +192,11 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
     MachineOperand CmpTypeOperand = MI.getOperand(CmpOpTypeIdx);
     assert(CmpTypeOperand.isImm() &&
            "Expected comparison type to be immediate");
+
+    assert(CmpOpVal1->getType()->isFloatingPointTy() &&
+           CmpOpVal2->getType()->isFloatingPointTy() &&
+           "Expected operand types to be of floating point type for SSE "
+           "compare instruction");
 
     Instruction *CmpInst;
     // Different types of compare instruction:
@@ -280,9 +288,7 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   }
 
   MachineOperand SrcOp = MI.getOperand(SrcOpIdx);
-  assert(SrcOp.isReg() && "Expected register operand");
-
-  Value *SrcVal = getRegOrArgValue(SrcOp.getReg(), MBBNo);
+  assert(SrcOp.isReg() && DstOp.isReg() && "Expected register operand");
 
   LLVMContext &Ctx(MF.getFunction().getContext());
 
@@ -323,6 +329,14 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   default:
     MI.dump();
     llvm_unreachable("Unhandled sse convert instruction");
+  }
+
+  Value *SrcVal = getRegOrArgValue(SrcOp.getReg(), MBBNo);
+
+  if (isSSE2Reg(SrcOp.getReg())) {
+    // re-interpret value as expected source value
+    Type *SrcTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+    SrcVal = getRaisedValues()->reinterpretSSEValue(SrcVal, SrcTy, RaisedBB);
   }
 
   auto CastToInst =

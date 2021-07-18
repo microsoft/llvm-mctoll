@@ -375,13 +375,7 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
   if (isGPReg(PReg))
     return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
   else if (isSSE2Reg(PReg)) {
-    auto Precision = getInstructionBitPrecision(MI.getDesc().TSFlags);
-    if (Precision == 32)
-      return Type::getFloatTy(Ctx);
-    else if (Precision == 64)
-      return Type::getDoubleTy(Ctx);
-    llvm_unreachable("Unexpected memory operation size of instruction that "
-                     "uses SSE register");
+    return getRaisedValues()->getSSEInstructionType(MI, Ctx);
   }
 
   llvm_unreachable("Unhandled register type encountered");
@@ -2240,7 +2234,11 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
     Type *PRegTy = getPhysRegOperandType(MI, OpIndex);
     // Get the BasicBlock corresponding to MachineBasicBlock of MI.
     BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-    PRegValue = getRaisedValues()->castValue(PRegValue, PRegTy, RaisedBB);
+    if (isSSE2Reg(MO.getReg())) {
+      PRegValue = getRaisedValues()->reinterpretSSEValue(PRegValue, PRegTy, RaisedBB);
+    } else {
+      PRegValue = getRaisedValues()->castValue(PRegValue, PRegTy, RaisedBB);
+    }
   }
   return PRegValue;
 }

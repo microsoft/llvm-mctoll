@@ -826,7 +826,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       assert(((Src1Value->getType()->isIntegerTy() &&
                Src2Value->getType()->isIntegerTy()) ||
               (Src1Value->getType()->isFloatingPointTy() &&
-               Src2Value->getType()->isFloatingPointTy())) &&
+               Src2Value->getType()->isFloatingPointTy()) ||
+              (Src1Value->getType()->isVectorTy() &&
+               Src2Value->getType()->isVectorTy())) &&
              "Unhandled operand value types in reg-to-reg binary op "
              "instruction");
       if (Src1Value->getType() != Src2Value->getType()) {
@@ -1343,6 +1345,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
+  case X86::PANDrr:
+  case X86::ANDPDrr:
+  case X86::ANDPSrr:
+  case X86::PORrr:
+  case X86::ORPDrr:
+  case X86::ORPSrr:
+  case X86::PXORrr:
   case X86::XORPDrr:
   case X86::XORPSrr: {
     // bitwise operations on fp values do not exist in LLVM.
@@ -1351,7 +1360,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // - perform the operation
     // - bitcast back to original type
     dstReg = MI.getOperand(DestOpIndex).getReg();
-    bool isXorOperation = opc == X86::XORPDrr || opc == X86::XORPSrr;
+    bool isXorOperation =
+        opc == X86::XORPDrr || opc == X86::XORPSrr || opc == X86::PXORrr;
 
     if (isXorOperation && (MI.findTiedOperandIdx(1) == 0) &&
         (dstReg == MI.getOperand(UseOp2Index).getReg())) {
@@ -1377,7 +1387,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
                  Src2Value->getType()->getPrimitiveSizeInBits() &&
              "Expected operand types to have same size");
 
-      auto BitSize = Src1Value->getType()->getPrimitiveSizeInBits();
+      auto BitSize = std::max(Src1Value->getType()->getPrimitiveSizeInBits(),
+                              Src2Value->getType()->getPrimitiveSizeInBits());
 
       Instruction *BitCastToInt1 =
           new BitCastInst(Src1Value, Type::getIntNTy(Ctx, BitSize),
@@ -1389,6 +1400,19 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       Instruction *Result;
 
       switch (opc) {
+      case X86::PANDrr:
+      case X86::ANDPDrr:
+      case X86::ANDPSrr:
+        Result = BinaryOperator::CreateAnd(BitCastToInt1, BitCastToInt2,
+                                           "and_result", RaisedBB);
+        break;
+      case X86::PORrr:
+      case X86::ORPDrr:
+      case X86::ORPSrr:
+        Result = BinaryOperator::CreateOr(BitCastToInt1, BitCastToInt2,
+                                          "or_result", RaisedBB);
+        break;
+      case X86::PXORrr:
       case X86::XORPDrr:
       case X86::XORPSrr:
         Result = BinaryOperator::CreateXor(BitCastToInt1, BitCastToInt2,
@@ -1472,7 +1496,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
       loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, DestopTy);
   // Cast DestValue to the DestopTy, as for single-precision FP ops
   // DestValue type and DestopTy might be different.
-  DestValue = getRaisedValues()->castValue(DestValue, DestopTy, RaisedBB);
+  if (isSSE2Reg(DestPReg)) {
+    DestValue = getRaisedValues()->reinterpretSSEValue(DestValue, DestopTy, RaisedBB);
+  } else {
+    DestValue = getRaisedValues()->castValue(DestValue, DestopTy, RaisedBB);
+  }
   Instruction *BinOpInst = nullptr;
 
   switch (Opcode) {
@@ -4009,8 +4037,9 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
       default:
         llvm_unreachable("Unhandled return type");
       }
-    } else if (RetType->isFloatingPointTy()) {
+    } else if (RetType->isFloatingPointTy() || RetType->isVectorTy()) {
       switch (RetType->getPrimitiveSizeInBits()) {
+      case 128:
       case 64:
       case 32:
         retReg = X86::XMM0;
@@ -4394,8 +4423,13 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
             }
           }
         }
-        ArgVal =
-            getRaisedValues()->castValue(ArgVal, FuncArg.getType(), RaisedBB);
+        if (FuncArg.getType()->isFloatingPointTy()) {
+          ArgVal = getRaisedValues()->reinterpretSSEValue(ArgVal, FuncArg.getType(),
+                                                   RaisedBB);
+        } else {
+          ArgVal =
+              getRaisedValues()->castValue(ArgVal, FuncArg.getType(), RaisedBB);
+        }
       }
       assert(ArgVal != nullptr && "Unexpected null argument value");
       CallInstFuncArgs.push_back(ArgVal);
@@ -4441,8 +4475,16 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         default:
           assert(false && "Unhandled return value size");
         }
-      } else if (RetType->isFloatingPointTy()) {
-        RetReg = X86::XMM0;
+      } else if (RetType->isFloatingPointTy() || RetType->isVectorTy()) {
+        switch (RetType->getPrimitiveSizeInBits()) {
+        case 128:
+        case 64:
+        case 32:
+          RetReg = X86::XMM0;
+          break;
+        default:
+          llvm_unreachable("Unhandled return value size");
+        }
       } else {
         llvm_unreachable_internal("Unhandled return type");
       }

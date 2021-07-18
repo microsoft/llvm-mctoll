@@ -1073,6 +1073,57 @@ Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
   return SrcValue;
 }
 
+Value *X86RaisedValueTracker::reinterpretSSEValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock) {
+  if (SrcVal->getType() != DstTy) {
+
+    if (SrcVal->getType()->getPrimitiveSizeInBits() !=
+        DstTy->getPrimitiveSizeInBits()) {
+      // first bitcast the given value to an integer of the same size so we can
+      // truncate or extend with zeroes
+      Type *IntNTy =
+          Type::getIntNTy(DstTy->getContext(), SrcVal->getType()->getPrimitiveSizeInBits());
+      SrcVal = new BitCastInst(SrcVal, IntNTy,
+          "bitcast_to_int", InsertBlock);
+      // extend or truncate that value to the wanted bit size
+      SrcVal = CastInst::CreateIntegerCast(
+          SrcVal, Type::getIntNTy(DstTy->getContext(), DstTy->getPrimitiveSizeInBits()), false,
+          "resized_int", InsertBlock);
+    }
+
+    return new BitCastInst(SrcVal, DstTy, "sse_reg_val", InsertBlock);
+  }
+
+  return SrcVal;
+}
+
+Type *X86RaisedValueTracker::getSSEInstructionType(const MachineInstr &MI,
+                                                         LLVMContext &Ctx) {
+  uint64_t TSFlags = MI.getDesc().TSFlags;
+
+  if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XS) {
+    return Type::getFloatTy(Ctx);
+  } else if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XD) {
+    return Type::getDoubleTy(Ctx);
+  } else {
+    auto Domain = (TSFlags >> llvm::X86II::SSEDomainShift) & 3;
+
+    // X64BaseInfo.h does not define enums. X86InstrFormats.td specified
+    // GenericDomain = 0 (non-SSE instruction)
+    // SSEPackedSingle = 1
+    // SSEPackedDouble = 2
+    // SSEPackedInt = 3
+    switch (Domain) {
+    case 1:
+      return VectorType::get(Type::getFloatTy(Ctx), 4, false);
+    case 2:
+      return VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    case 3:
+      return VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+    }
+  }
+  llvm_unreachable("Unhandled SSE type");
+}
+
 // If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of
 // Inst; if SrcValue is an instruction with rodata index metadata, copy it to
 // Inst.

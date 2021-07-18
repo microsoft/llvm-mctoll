@@ -1057,6 +1057,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       // Set SF and ZF knowing that the value is 0
       raisedValues->setEflagBoolean(EFLAGS::SF, MBBNo, false);
       raisedValues->setEflagBoolean(EFLAGS::ZF, MBBNo, true);
+      // Set PF knowing that the value is 0, since 0 has
+      // an even number of bits set, namely, zero
+      raisedValues->setEflagBoolean(EFLAGS::PF, MBBNo, true);
     } else {
       Value *Src1Value = ExplicitSrcValues.at(0);
       Value *Src2Value = ExplicitSrcValues.at(1);
@@ -1092,10 +1095,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
       RaisedBB->getInstList().push_back(BinOpInst);
       dstValue = BinOpInst;
-      // Set SF and ZF based on dstValue; technically PF also needs
-      // to be set but ignoring for now.
+      // Set SF, PF, and ZF based on dstValue.
       raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
       raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, dstValue);
     }
     // Clear OF and CF
     raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
@@ -1126,10 +1129,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Clear OF and CF
     raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
     raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
-    // Set SF and ZF based on dstValue; technically PF also needs
-    // to be set but ignoring for now.
+    // Set SF, PF, and ZF based on dstValue.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, dstValue);
   } break;
   case X86::NEG8r:
   case X86::NEG16r:
@@ -1156,10 +1159,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     RaisedBB->getInstList().push_back(BinOpInst);
     // Now set up the flags according to the result
-    // Set SF and ZF based on dstValue; technically PF also needs
-    // to be set but ignoring for now.
+    // Set SF, PF, and ZF based on dstValue.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, dstValue);
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
@@ -1477,6 +1480,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::ADD8rm: {
     // Create add instruction
     BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::AND64rm:
   case X86::AND32rm:
@@ -1484,10 +1488,12 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::AND8rm: {
     // Create and instruction
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::OR32rm: {
     // Create or instruction
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::IMUL16rm:
   case X86::IMUL32rm:
@@ -1529,16 +1535,17 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     ClearedEFlags.insert(EFLAGS::CF);
     AffectedEFlags.insert(EFLAGS::SF);
     AffectedEFlags.insert(EFLAGS::ZF);
-    // PF not yet supported
-    // AffectedEFlags.insert(EFLAGS::PF);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::ADDSSrm_Int:
   case X86::ADDSDrm_Int: {
     BinOpInst = BinaryOperator::CreateFAdd(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::SUBSSrm_Int:
   case X86::SUBSDrm_Int: {
     BinOpInst = BinaryOperator::CreateFSub(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::MULSDrm_Int:
   case X86::MULSSrm_Int: {
@@ -2641,13 +2648,14 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   MCPhysReg ImpDefReg = MCIDesc.ImplicitDefs[0];
   assert(ImpDefReg == X86::EFLAGS &&
          "Expected implicit EFLAGS def in compare instruction");
-  // Create instructions to set CF, ZF, SF, and OF flags according to the result
+  // Create instructions to set CF, ZF, SF, PF, and OF flags according to the result
   // CmpInst.
-  // NOTE: Support for tracking AF and PF not yet implemented.
+  // NOTE: Support for tracking AF not yet implemented.
   raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, CmpInst);
   raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, CmpInst);
   raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, CmpInst);
   raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, CmpInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, CmpInst);
   return true;
 }
 
@@ -3246,6 +3254,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::OF);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::PF);
     } break;
     case X86::SUB32i32:
     case X86::SUB32ri:
@@ -3259,6 +3268,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::ZF);
       AffectedEFlags.insert(EFLAGS::CF);
       AffectedEFlags.insert(EFLAGS::OF);
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::AND8i8:
     case X86::AND8ri:
@@ -3279,7 +3289,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
-      // Test and set of PF not yet supported
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::OR8i8:
     case X86::OR8ri:
@@ -3300,7 +3310,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
-      // Test and set of PF not yet supported
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::ROL8r1:
     case X86::ROL16r1:
@@ -3364,7 +3374,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
-      // Test and set of PF not yet supported
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::IMUL16rri:
     case X86::IMUL32rri:
@@ -3437,6 +3447,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::INC8r:
     case X86::INC16r:

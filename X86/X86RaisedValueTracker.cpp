@@ -46,7 +46,9 @@ X86RaisedValueTracker::X86RaisedValueTracker(
         continue;
       ArgReg = X86RegisterUtils::GPR64ArgRegs64Bit[GPArgNum];
       GPArgNum++;
-    } else if (ArgTy->isFloatingPointTy()) {
+    } else if (ArgTy->isFloatingPointTy() ||
+               (ArgTy->isVectorTy() &&
+                ArgTy->getPrimitiveSizeInBits() == 128)) {
       if (SSEArgNum > SSERegArgCount)
         continue;
       ArgReg = X86RegisterUtils::SSEArgRegs64Bit[SSEArgNum];
@@ -341,29 +343,48 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
 
     // Get the super-type of all reaching definition values
     Type *AllocTy = nullptr;
+    // If an incoming def is null and the type is not of floating-point type
+    bool HasUnknownReachingDef = false;
     for (auto RD : ReachingDefs) {
-      if ((RD.second != nullptr) &&
-          (RD.second->getType()->isIntegerTy() ||
-           RD.second->getType()->isFloatingPointTy())) {
+      if (RD.second == nullptr) {
+        // we might not have found a incoming edge that tells us if we're dealing
+        // with int or floating point types -> continue for now
+        HasUnknownReachingDef = true;
+        continue;
+      }
+
+      if (RD.second->getType()->isIntegerTy() ||
+          RD.second->getType()->isVectorTy()) {
         Type *Ty = RD.second->getType();
         if ((AllocTy == nullptr) ||
             (Ty->getPrimitiveSizeInBits() > AllocTy->getPrimitiveSizeInBits()))
           AllocTy = Ty;
-      } else {
-        // Any non-integer type or null value is stored in a 64-bit stack slot.
-        // Note that a null value implies that this is an incoming edge from a
-        // block that is not yet raised. This will be recorded and handled
-        // later. So, assume the type to be the most generic, i.e., 64-bit and
-        // no further processing of the reaching value list is needed.
-        if (AllocTy != nullptr && AllocTy->isFloatingPointTy()) {
-          // If we know that AllocTy is a floating point type, use the most
-          // generic floating point type: double
-          AllocTy = Type::getDoubleTy(Ctxt);
-        } else {
-          AllocTy = Type::getInt64Ty(Ctxt);
-        }
+      } else if (RD.second->getType()->isFloatingPointTy()) {
+        // We know that FP types are stored in a 128 bit stack slot, so we don't
+        // need to further process the reaching value list
+        AllocTy = Type::getInt128Ty(Ctxt);
         break;
+      } else {
+        HasUnknownReachingDef = true;
       }
+    }
+
+    if (AllocTy != nullptr && AllocTy->isVectorTy()) {
+      // If the type is a vector, use a integer type of the same size
+      AllocTy = Type::getIntNTy(Ctxt, AllocTy->getPrimitiveSizeInBits());
+    }
+    if (HasUnknownReachingDef) {
+      // Any null value is stored in a 64-bit stack slot.
+      // Note that a null value implies that this is an incoming edge from a
+      // block that is not yet raised. This will be recorded and handled
+      // later. So, assume the type to be the most generic, i.e., 64-bit.
+
+      // If AllocTy is larger than 64 bits, use AllocTy's size
+      unsigned long long Sz = 64;
+      if (AllocTy != nullptr && AllocTy->getPrimitiveSizeInBits() > Sz)
+        Sz = AllocTy->getPrimitiveSizeInBits();
+
+      AllocTy = Type::getIntNTy(Ctxt, Sz);
     }
 
     Align typeAlign(DL.getPrefTypeAlignment(AllocTy));
@@ -462,15 +483,21 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
               LdReachingValType->isFloatingPointTy()) &&
              "Unhandled type mismatch of reaching register definition");
       if (RegType != LdReachingValType) {
-        // Create cast instruction
-        Instruction *CInst = CastInst::Create(
-            CastInst::getCastOpcode(LdReachingVal, false, RegType, false),
-            LdReachingVal, RegType);
-        // Insert the cast instruction
-        x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo))
-            ->getInstList()
-            .push_back(CInst);
-        LdReachingVal = CInst;
+        auto BB = x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
+        if (RegType->isFloatingPointTy() || RegType->isVectorTy()) {
+          assert(RegType->getPrimitiveSizeInBits() ==
+                     LdReachingValType->getPrimitiveSizeInBits() &&
+                 "Expected FP/vector types to match");
+          LdReachingVal = dyn_cast<Instruction>(
+              reinterpretSSERegValue(LdReachingVal, RegType, BB));
+        } else {
+          // Create cast instruction
+          Instruction *CInst = CastInst::Create(
+              CastInst::getCastOpcode(LdReachingVal, false, RegType, false),
+              LdReachingVal, RegType);
+          BB->getInstList().push_back(CInst);
+          LdReachingVal = CInst;
+        }
       }
     }
     RetValue = LdReachingVal;
@@ -1071,6 +1098,84 @@ Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
   }
 
   return SrcValue;
+}
+
+Value *X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
+                                                  BasicBlock *InsertBlock,
+                                                  Instruction *InsertBefore) {
+  assert((InsertBlock != nullptr || InsertBefore != nullptr) &&
+         "Expected either InsertBlock or InsertBefore to be not null");
+
+  if (SrcVal->getType() != DstTy) {
+
+    if (SrcVal->getType()->getPrimitiveSizeInBits() !=
+        DstTy->getPrimitiveSizeInBits()) {
+      // first bitcast the given value to an integer of the same size so we can
+      // truncate or extend with zeroes
+      Type *IntNTy = Type::getIntNTy(
+          DstTy->getContext(), SrcVal->getType()->getPrimitiveSizeInBits());
+      auto BitCastToInt = new BitCastInst(SrcVal, IntNTy, "bitcast_to_int");
+      setInstMetadataRODataIndex(SrcVal, BitCastToInt);
+      if (InsertBefore != nullptr) {
+        BitCastToInt->insertBefore(InsertBefore);
+      } else {
+        InsertBlock->getInstList().push_back(BitCastToInt);
+      }
+      // extend or truncate that value to the wanted bit size
+      auto ResizedInt = CastInst::CreateIntegerCast(
+          BitCastToInt,
+          Type::getIntNTy(DstTy->getContext(), DstTy->getPrimitiveSizeInBits()),
+          false, "resized_int");
+      setInstMetadataRODataIndex(BitCastToInt, ResizedInt);
+      if (InsertBefore != nullptr) {
+        ResizedInt->insertBefore(InsertBefore);
+      } else {
+        InsertBlock->getInstList().push_back(ResizedInt);
+      }
+      SrcVal = ResizedInt;
+    }
+
+    if (SrcVal->getType() != DstTy) {
+      auto SSERegVal = new BitCastInst(SrcVal, DstTy, "sse_reg_val");
+      setInstMetadataRODataIndex(SrcVal, SSERegVal);
+      if (InsertBefore != nullptr) {
+        SSERegVal->insertBefore(InsertBefore);
+      } else {
+        InsertBlock->getInstList().push_back(SSERegVal);
+      }
+      SrcVal = SSERegVal;
+    }
+  }
+
+  return SrcVal;
+}
+
+Type *X86RaisedValueTracker::getSSEInstructionType(const MachineInstr &MI,
+                                                         LLVMContext &Ctx) {
+  uint64_t TSFlags = MI.getDesc().TSFlags;
+
+  if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XS) {
+    return Type::getFloatTy(Ctx);
+  } else if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XD) {
+    return Type::getDoubleTy(Ctx);
+  } else {
+    auto Domain = (TSFlags >> llvm::X86II::SSEDomainShift) & 3;
+
+    // X64BaseInfo.h does not define enums. X86InstrFormats.td specified
+    // GenericDomain = 0 (non-SSE instruction)
+    // SSEPackedSingle = 1
+    // SSEPackedDouble = 2
+    // SSEPackedInt = 3
+    switch (Domain) {
+    case 1:
+      return VectorType::get(Type::getFloatTy(Ctx), 4, false);
+    case 2:
+      return VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    case 3:
+      return VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+    }
+  }
+  llvm_unreachable("Unhandled SSE type");
 }
 
 // If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of

@@ -217,9 +217,6 @@ private:
   bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
 
-  /// Cast a FP value to another size
-  Value *resizeFPValue(const MachineInstr &, Value *, uint8_t);
-
   std::vector<JumpTableInfo> jtList;
 };
 

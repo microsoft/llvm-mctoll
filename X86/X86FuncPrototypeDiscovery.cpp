@@ -368,7 +368,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
               if (!RetTy->isVoidTy()) {
                 unsigned RetReg = X86::NoRegister;
                 unsigned RetRegSizeInBits = 0;
-                assert((RetTy->isIntOrPtrTy() || RetTy->isFloatingPointTy()) &&
+                assert((RetTy->isIntOrPtrTy() || RetTy->isFloatingPointTy() ||
+                        RetTy->isVectorTy()) &&
                        "Unhandled called function return type");
                 if (RetTy->isPointerTy()) {
                   RetReg = X86::RAX;
@@ -392,9 +393,10 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
                     assert(false &&
                            "Unexpected size for called function return type");
                   }
-                } else if (RetTy->isFloatingPointTy()) {
+                } else if (RetTy->isFloatingPointTy() || RetTy->isVectorTy()) {
                   RetRegSizeInBits = RetTy->getPrimitiveSizeInBits();
                   switch (RetRegSizeInBits) {
+                  case 128:
                   case 64:
                   case 32:
                     RetReg = X86::XMM0;
@@ -598,8 +600,8 @@ Type *X86MachineInstructionRaiser::getReachingReturnType(
 Type *
 X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
                                                   bool &HasCall) {
+  LLVMContext &Ctx(MF.getFunction().getContext());
   Type *ReturnType = nullptr;
-  uint8_t BitPrecision = 0;
   HasCall = false;
 
   // Walk the block backwards
@@ -656,8 +658,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
         }
         if (DefReg == X86::NoRegister && PReg == X86::XMM0) {
           DefReg = X86::XMM0;
-          BitPrecision =
-              getInstructionBitPrecision(I->getDesc().TSFlags);
+          ReturnType = getRaisedValues()->getSSEInstructionType(*I, Ctx);
         }
       }
     }
@@ -676,8 +677,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     if (DefReg == X86::NoRegister &&
         hasExactImplicitDefOfPhysReg(*I, X86::XMM0, TRI)) {
       DefReg = X86::XMM0;
-      BitPrecision =
-          getInstructionBitPrecision(I->getDesc().TSFlags);
+      ReturnType = getRaisedValues()->getSSEInstructionType(*I, Ctx);
     }
 
     // If the defined register is a return register
@@ -686,11 +686,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
         continue;
 
       if (ReturnType == nullptr) {
-        if (isSSE2Reg(DefReg)) {
-          ReturnType = getPhysSSERegType(DefReg, BitPrecision);
-        } else {
-          ReturnType = getPhysRegType(DefReg);
-        }
+        ReturnType = getPhysRegType(DefReg);
         // Stop processing any further instructions as the return type is found.
         break;
       }

@@ -72,6 +72,19 @@ public:
   // Return the cast instruction upon inserting it at the end of InsertBlock
   Value *castValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock);
 
+  // Cast SrcVal to type DstTy if the types are different. This function does
+  // not change any bits in the value. This allows to interpret SSE register
+  // values as floats, doubles or vectors
+  // If the passed value is smaller than DstTy, it is extended and padded with
+  // 0's. Example:
+  // SrcVal = float, DstTy = <4 x i32>
+  // Return type: <0x0, 0x0, 0x0, (bitcast SrcVal as i32)>
+  // If the passed value is larger than DstTy, the excess bits are truncated.
+  // If the types are of the same size, the value is just bitcast
+  Value *reinterpretSSERegValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock = nullptr, Instruction *InsertBefore = nullptr);
+  // Returns the type of an SSE instruction
+  Type *getSSEInstructionType(const MachineInstr &, LLVMContext &);
+
   // If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of
   // Inst; if SrcValue is an instruction with rodata index metadata, copy it to
   // Inst.

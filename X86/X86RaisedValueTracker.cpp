@@ -695,6 +695,31 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       assert(false && "*** EFLAGS update abstraction not handled yet");
     }
   } break;
+  case X86RegisterUtils::EFLAGS::PF: {
+    //In x86 processors, the parity flag reflects the parity only of the least significant byte of the result,
+    //and is set if the number of set bits of ones is even.
+    //Put another way, the parity bit is set if the sum of the bits is even.
+    Module *M = x86MIRaiser->getModuleRaiser()->getModule();
+    Function *IntrinsicFunc =
+        Intrinsic::getDeclaration(M, Intrinsic::ctpop, TestResultVal->getType());
+    Value *IntrinsicCallArgs[] = {TestResultVal};
+    Instruction *ParityValue =
+        CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+
+    // Add the intrinsic call instruction
+    RaisedBB->getInstList().push_back(ParityValue);
+
+    Instruction *ParityEvenBit = BinaryOperator::CreateAnd(ParityValue, ConstantInt::get(ParityValue->getType(), 1));
+    RaisedBB->getInstList().push_back(ParityEvenBit);
+
+    // Test if ParityEvenBit is Zero
+    Value *ZeroValue =
+        ConstantInt::get(ParityEvenBit->getType(), 0, false /* isSigned */);
+    Instruction *PFTest = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ParityEvenBit,
+                                       ZeroValue, "PF");
+    RaisedBB->getInstList().push_back(PFTest);
+    physRegDefsInMBB[FlagBit][MBBNo].second = PFTest;
+  } break;
   case X86RegisterUtils::EFLAGS::CF: {
     Module *M = x86MIRaiser->getModuleRaiser()->getModule();
     Value *NewCF = nullptr;

@@ -356,8 +356,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
         // later. So, assume the type to be the most generic, i.e., 64-bit and
         // no further processing of the reaching value list is needed.
         if (AllocTy != nullptr && AllocTy->isFloatingPointTy()) {
-          // If we know that AllocTy is a floating point type, use the most generic
-          // floating point type: double
+          // If we know that AllocTy is a floating point type, use the most
+          // generic floating point type: double
           AllocTy = Type::getDoubleTy(Ctxt);
         } else {
           AllocTy = Type::getInt64Ty(Ctxt);
@@ -459,7 +459,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
                           : x86MIRaiser->getPhysRegType(PhysReg);
       Type *LdReachingValType = LdReachingVal->getType();
       assert((LdReachingValType->isIntegerTy() ||
-	      LdReachingValType->isFloatingPointTy()) &&
+              LdReachingValType->isFloatingPointTy()) &&
              "Unhandled type mismatch of reaching register definition");
       if (RegType != LdReachingValType) {
         // Create cast instruction
@@ -694,6 +694,43 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       LLVM_DEBUG(MI.dump());
       assert(false && "*** EFLAGS update abstraction not handled yet");
     }
+  } break;
+  case X86RegisterUtils::EFLAGS::PF: {
+    // PF is set if least-significant byte of the result contains an even number
+    // of 1 bits; else the flag is cleared.
+    Module *M = x86MIRaiser->getModuleRaiser()->getModule();
+
+    Value *SrcVal = TestResultVal;
+
+    if (SrcVal->getType()->isIntegerTy() &&
+        SrcVal->getType()->getIntegerBitWidth() > 8) {
+      // Get least-significant byte
+      Instruction *LSB = BinaryOperator::CreateAnd(
+          SrcVal, ConstantInt::get(SrcVal->getType(), 0xff));
+      RaisedBB->getInstList().push_back(LSB);
+      SrcVal = LSB;
+    }
+
+    Function *IntrinsicFunc =
+        Intrinsic::getDeclaration(M, Intrinsic::ctpop, SrcVal->getType());
+    Value *IntrinsicCallArgs[] = {SrcVal};
+    Instruction *ParityValue =
+        CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+
+    // Add the intrinsic call instruction
+    RaisedBB->getInstList().push_back(ParityValue);
+
+    Instruction *ParityEvenBit = BinaryOperator::CreateAnd(
+        ParityValue, ConstantInt::get(ParityValue->getType(), 1));
+    RaisedBB->getInstList().push_back(ParityEvenBit);
+
+    // Test if ParityEvenBit is Zero
+    Value *ZeroValue =
+        ConstantInt::get(ParityEvenBit->getType(), 0, false /* isSigned */);
+    Instruction *PFTest = new ICmpInst(CmpInst::Predicate::ICMP_EQ,
+                                       ParityEvenBit, ZeroValue, "PF");
+    RaisedBB->getInstList().push_back(PFTest);
+    physRegDefsInMBB[FlagBit][MBBNo].second = PFTest;
   } break;
   case X86RegisterUtils::EFLAGS::CF: {
     Module *M = x86MIRaiser->getModuleRaiser()->getModule();

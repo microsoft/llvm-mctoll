@@ -628,8 +628,10 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
         assert(CFValue != nullptr && ZFValue != nullptr &&
                "Failed to get EFLAGS value while raising CMOVBE");
-        auto CFCmp = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue, TrueValue, "Cond_CMOVBE_CF");
-        auto ZFCmp = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue, TrueValue, "Cond_CMOVBE_ZF");
+        auto CFCmp = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
+                                  TrueValue, "Cond_CMOVBE_CF");
+        auto ZFCmp = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
+                                  TrueValue, "Cond_CMOVBE_ZF");
         RaisedBB->getInstList().push_back(CFCmp);
         RaisedBB->getInstList().push_back(ZFCmp);
         CMOVCond = BinaryOperator::CreateOr(CFCmp, ZFCmp, "Cond_CMOVBE");
@@ -822,9 +824,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         Src2Value = ConvPtrToInst;
       }
       assert(((Src1Value->getType()->isIntegerTy() &&
-                  Src2Value->getType()->isIntegerTy() )||
+               Src2Value->getType()->isIntegerTy()) ||
               (Src1Value->getType()->isFloatingPointTy() &&
-                  Src2Value->getType()->isFloatingPointTy())) &&
+               Src2Value->getType()->isFloatingPointTy())) &&
              "Unhandled operand value types in reg-to-reg binary op "
              "instruction");
       if (Src1Value->getType() != Src2Value->getType()) {
@@ -1057,6 +1059,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       // Set SF and ZF knowing that the value is 0
       raisedValues->setEflagBoolean(EFLAGS::SF, MBBNo, false);
       raisedValues->setEflagBoolean(EFLAGS::ZF, MBBNo, true);
+      // Set PF knowing that the value is 0, since 0 has
+      // an even number of bits set, namely, zero
+      raisedValues->setEflagBoolean(EFLAGS::PF, MBBNo, true);
     } else {
       Value *Src1Value = ExplicitSrcValues.at(0);
       Value *Src2Value = ExplicitSrcValues.at(1);
@@ -1092,10 +1097,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
       RaisedBB->getInstList().push_back(BinOpInst);
       dstValue = BinOpInst;
-      // Set SF and ZF based on dstValue; technically PF also needs
-      // to be set but ignoring for now.
+      // Set SF, PF, and ZF based on dstValue.
       raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
       raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
+      raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, dstValue);
     }
     // Clear OF and CF
     raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
@@ -1126,10 +1131,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Clear OF and CF
     raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
     raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
-    // Set SF and ZF based on dstValue; technically PF also needs
-    // to be set but ignoring for now.
+    // Set SF, PF, and ZF based on dstValue.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, dstValue);
   } break;
   case X86::NEG8r:
   case X86::NEG16r:
@@ -1156,10 +1161,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     RaisedBB->getInstList().push_back(BinOpInst);
     // Now set up the flags according to the result
-    // Set SF and ZF based on dstValue; technically PF also needs
-    // to be set but ignoring for now.
+    // Set SF, PF, and ZF based on dstValue.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, dstValue);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, dstValue);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, dstValue);
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
@@ -1477,6 +1482,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::ADD8rm: {
     // Create add instruction
     BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::AND64rm:
   case X86::AND32rm:
@@ -1484,10 +1490,12 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::AND8rm: {
     // Create and instruction
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::OR32rm: {
     // Create or instruction
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::IMUL16rm:
   case X86::IMUL32rm:
@@ -1529,8 +1537,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     ClearedEFlags.insert(EFLAGS::CF);
     AffectedEFlags.insert(EFLAGS::SF);
     AffectedEFlags.insert(EFLAGS::ZF);
-    // PF not yet supported
-    // AffectedEFlags.insert(EFLAGS::PF);
+    AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::ADDSSrm_Int:
   case X86::ADDSDrm_Int: {
@@ -1559,8 +1566,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     Instruction *CmpInst =
         new FCmpInst(*RaisedBB, CmpType, DestValue, LoadValue, "cmp");
 
-    BinOpInst =
-        SelectInst::Create(CmpInst, DestValue, LoadValue, nameString);
+    BinOpInst = SelectInst::Create(CmpInst, DestValue, LoadValue, nameString);
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");
@@ -2086,6 +2092,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     assert((SrcValue != nullptr) && "Source value expected to be loaded while "
                                     "raising binary mem op instruction");
 
+    std::set<unsigned> AffectedEFlags;
+
     Instruction *BinOpInst = nullptr;
 
     switch (MI.getOpcode()) {
@@ -2107,6 +2115,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::INC64m: {
       // Generate Add instruction
       BinOpInst = BinaryOperator::CreateAdd(LdInst, SrcValue);
+
+      AffectedEFlags.insert(EFLAGS::PF);
     } break;
     case X86::AND8mi:
     case X86::AND8mi8:
@@ -2121,6 +2131,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::AND64mi32:
     case X86::AND64mr: {
       BinOpInst = BinaryOperator::CreateAnd(LdInst, SrcValue);
+
+      AffectedEFlags.insert(EFLAGS::PF);
     } break;
     case X86::OR8mi:
     case X86::OR8mi8:
@@ -2135,6 +2147,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::OR64mi32:
     case X86::OR64mr: {
       BinOpInst = BinaryOperator::CreateOr(LdInst, SrcValue);
+
+      AffectedEFlags.insert(EFLAGS::PF);
     } break;
     case X86::XOR8mi:
     case X86::XOR8mi8:
@@ -2149,12 +2163,16 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::XOR64mi32:
     case X86::XOR64mr: {
       BinOpInst = BinaryOperator::CreateXor(LdInst, SrcValue);
+
+      AffectedEFlags.insert(EFLAGS::PF);
     } break;
     case X86::DEC8m:
     case X86::DEC16m:
     case X86::DEC32m:
     case X86::DEC64m: {
       BinOpInst = BinaryOperator::CreateSub(LdInst, SrcValue);
+
+      AffectedEFlags.insert(EFLAGS::PF);
     } break;
     case X86::SAR8mi:
     case X86::SAR16mi:
@@ -2181,6 +2199,10 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     RaisedBB->getInstList().push_back(BinOpInst);
 
     SrcValue = BinOpInst;
+
+    // Test and set affected flags
+    for (auto Flag : AffectedEFlags)
+      raisedValues->testAndSetEflagSSAValue(Flag, MI, BinOpInst);
   }
 
   assert((SrcValue != nullptr) && "Unexpected null value to be stored while "
@@ -2641,13 +2663,13 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   MCPhysReg ImpDefReg = MCIDesc.ImplicitDefs[0];
   assert(ImpDefReg == X86::EFLAGS &&
          "Expected implicit EFLAGS def in compare instruction");
-  // Create instructions to set CF, ZF, SF, and OF flags according to the result
-  // CmpInst.
-  // NOTE: Support for tracking AF and PF not yet implemented.
+  // Create instructions to set CF, ZF, SF, PF, and OF flags according to the
+  // result CmpInst. NOTE: Support for tracking AF not yet implemented.
   raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, CmpInst);
   raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, CmpInst);
   raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, CmpInst);
   raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, CmpInst);
+  raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, CmpInst);
   return true;
 }
 
@@ -2870,6 +2892,26 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     RaisedBB->getInstList().push_back(SETCond);
     raisedValues->setPhysRegSSAValue(DestOp.getReg(),
                                      MI.getParent()->getNumber(), SETCond);
+    Success = true;
+  } break;
+  case X86::COND_NP: {
+    // Check if PF == 0
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    Value *PFValue = getRegOrArgValue(EFLAGS::PF, MBBNo);
+    CmpInst *CMP = new ICmpInst(Pred, PFValue, FalseValue);
+    RaisedBB->getInstList().push_back(CMP);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMP);
+    Success = true;
+  } break;
+  case X86::COND_P: {
+    // Check if PF == 1
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    Value *PFValue = getRegOrArgValue(EFLAGS::PF, MBBNo);
+    CmpInst *CMP = new ICmpInst(Pred, PFValue, TrueValue);
+    RaisedBB->getInstList().push_back(CMP);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMP);
     Success = true;
   } break;
   case X86::COND_INVALID:
@@ -3246,6 +3288,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::OF);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::PF);
     } break;
     case X86::SUB32i32:
     case X86::SUB32ri:
@@ -3259,6 +3302,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::ZF);
       AffectedEFlags.insert(EFLAGS::CF);
       AffectedEFlags.insert(EFLAGS::OF);
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::AND8i8:
     case X86::AND8ri:
@@ -3279,7 +3323,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
-      // Test and set of PF not yet supported
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::OR8i8:
     case X86::OR8ri:
@@ -3300,7 +3344,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
-      // Test and set of PF not yet supported
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::ROL8r1:
     case X86::ROL16r1:
@@ -3324,6 +3368,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
           CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
       // Mark affected EFLAGs
       AffectedEFlags.insert(EFLAGS::CF);
+      // The SF, ZF, AF, and PF flags are not affected.
     } break;
     case X86::ROR8r1:
     case X86::ROR16r1:
@@ -3332,6 +3377,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       SrcOp2Value = ConstantInt::get(SrcOp1Value->getType(), 1);
       // Mark affected EFLAGs. Note OF is affected only for 1-bit rotates.
       AffectedEFlags.insert(EFLAGS::OF);
+      // The SF, ZF, AF, and PF flags are not affected.
       LLVM_FALLTHROUGH;
     case X86::ROR8ri:
     case X86::ROR16ri:
@@ -3347,8 +3393,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
           CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
       // Mark affected EFLAGs
       AffectedEFlags.insert(EFLAGS::CF);
+      // The SF, ZF, AF, and PF flags are not affected.
     } break;
-
     case X86::XOR8ri:
     case X86::XOR16ri:
     case X86::XOR32ri:
@@ -3364,7 +3410,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       // Test and set EFLAGs
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
-      // Test and set of PF not yet supported
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::IMUL16rri:
     case X86::IMUL32rri:
@@ -3437,6 +3483,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::INC8r:
     case X86::INC16r:
@@ -3448,6 +3495,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       BinOpInstr = BinaryOperator::CreateAdd(SrcOp1Value, SrcOp2Value);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     case X86::DEC8r:
     case X86::DEC16r:
@@ -3459,6 +3507,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       BinOpInstr = BinaryOperator::CreateSub(SrcOp1Value, SrcOp2Value);
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
+      AffectedEFlags.insert(EFLAGS::PF);
       break;
     default:
       LLVM_DEBUG(MI.dump());
@@ -3828,8 +3877,8 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       assert(PFValue != nullptr &&
              "Failed to get EFLAGS value while raising JNP");
       // Construct a compare instruction
-      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, PFValue, FalseValue,
-                                "CmpPF_JNP");
+      BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, PFValue,
+                                FalseValue, "CmpPF_JNP");
       CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
     } break;
     case X86::COND_INVALID:
@@ -4296,9 +4345,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     // in C calling convention (the calling convention currently supported).
     for (unsigned i = 0; i < NumGPArgs + NumSSEArgs; i++) {
       // First check all GP registers, then FP registers
-      MCPhysReg ArgReg = i < NumGPArgs
-                             ? GPR64ArgRegs64Bit[i]
-                             : SSEArgRegs64Bit[i - NumGPArgs];
+      MCPhysReg ArgReg =
+          i < NumGPArgs ? GPR64ArgRegs64Bit[i] : SSEArgRegs64Bit[i - NumGPArgs];
       // Get the values of argument registers
       // Do not match types since we are explicitly using 64-bit GPR array.
       // Any necessary casting will be done later in this function.

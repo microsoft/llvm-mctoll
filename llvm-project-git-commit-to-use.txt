@@ -5,10 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 89c1c64cc3170a05a881bb9954feafc3edca6704
-Author: Simon Pilgrim <llvm-dev@redking.me.uk>
-Date:   Sat Jul 3 19:00:25 2021 +0100
+commit 67d6132463541d5e4cf7483cb3c7b5d95b46ee6d
+Author: Matt Arsenault <Matthew.Arsenault@amd.com>
+Date:   Fri Jul 16 12:55:41 2021 -0400
 
-    [KnownBits] Merge const/non-const KnownBits::extractBits implementations. NFC.
-
-    These are identical and can be just const.
+    GlobalISel: Preserve memory types for implicit sret load/stores

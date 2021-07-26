@@ -74,8 +74,8 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
   Type *OpType = getRaisedValues()->getSSEInstructionType(MI, Ctx);
 
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  CmpOpVal1 = getRaisedValues()->reinterpretSSEValue(CmpOpVal1, OpType, RaisedBB);
-  CmpOpVal2 = getRaisedValues()->reinterpretSSEValue(CmpOpVal2, OpType, RaisedBB);
+  CmpOpVal1 = getRaisedValues()->reinterpretSSERegValue(CmpOpVal1, OpType, RaisedBB);
+  CmpOpVal2 = getRaisedValues()->reinterpretSSERegValue(CmpOpVal2, OpType, RaisedBB);
 
   return raiseSSECompareMachineInstr(MI, CmpOpVal1, CmpOpVal2, false);
 }
@@ -112,7 +112,7 @@ bool X86MachineInstructionRaiser::raiseSSECompareFromMemMachineInstr(
   Type *OpType = getRaisedValues()->getSSEInstructionType(MI, Ctx);
 
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  Value *CmpOpVal1 = getRaisedValues()->reinterpretSSEValue(
+  Value *CmpOpVal1 = getRaisedValues()->reinterpretSSERegValue(
       getRegOrArgValue(CmpOpReg1, MBBNo), OpType, RaisedBB);
   Value *CmpOpVal2 =
       loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, OpType);
@@ -336,7 +336,7 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   if (isSSE2Reg(SrcOp.getReg())) {
     // re-interpret value as expected source value
     Type *SrcTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);
-    SrcVal = getRaisedValues()->reinterpretSSEValue(SrcVal, SrcTy, RaisedBB);
+    SrcVal = getRaisedValues()->reinterpretSSERegValue(SrcVal, SrcTy, RaisedBB);
   }
 
   auto CastToInst =

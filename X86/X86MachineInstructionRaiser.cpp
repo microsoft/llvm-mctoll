@@ -1497,7 +1497,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   // Cast DestValue to the DestopTy, as for single-precision FP ops
   // DestValue type and DestopTy might be different.
   if (isSSE2Reg(DestPReg)) {
-    DestValue = getRaisedValues()->reinterpretSSEValue(DestValue, DestopTy, RaisedBB);
+    DestValue = getRaisedValues()->reinterpretSSERegValue(DestValue, DestopTy, RaisedBB);
   } else {
     DestValue = getRaisedValues()->castValue(DestValue, DestopTy, RaisedBB);
   }
@@ -4060,8 +4060,14 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
     RetValue = getRaisedValues()->castValue(RetValue, RetType, RaisedBB);
 
   // Ensure RetValue type match RetType
-  if (RetValue != nullptr)
-    RetValue = getRaisedValues()->castValue(RetValue, RetType, RaisedBB);
+  if (RetValue != nullptr) {
+    if (retReg == X86::XMM0) {
+      RetValue =
+          getRaisedValues()->reinterpretSSERegValue(RetValue, RetType, RaisedBB);
+    } else {
+      RetValue = getRaisedValues()->castValue(RetValue, RetType, RaisedBB);
+    }
+  }
 
   // Create return instruction
   Instruction *retInstr =
@@ -4423,9 +4429,10 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
             }
           }
         }
-        if (FuncArg.getType()->isFloatingPointTy()) {
-          ArgVal = getRaisedValues()->reinterpretSSEValue(ArgVal, FuncArg.getType(),
-                                                   RaisedBB);
+        if (FuncArg.getType()->isFloatingPointTy() ||
+            FuncArg.getType()->isVectorTy()) {
+          ArgVal = getRaisedValues()->reinterpretSSERegValue(
+              ArgVal, FuncArg.getType(), RaisedBB);
         } else {
           ArgVal =
               getRaisedValues()->castValue(ArgVal, FuncArg.getType(), RaisedBB);

@@ -81,7 +81,7 @@ public:
   // Return type: <0x0, 0x0, 0x0, (bitcast SrcVal as i32)>
   // If the passed value is larger than DstTy, the excess bits are truncated.
   // If the types are of the same size, the value is just bitcast
-  Value *reinterpretSSEValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock);
+  Value *reinterpretSSERegValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock = nullptr, Instruction *InsertBefore = nullptr);
   // Returns the type of an SSE instruction
   Type *getSSEInstructionType(const MachineInstr &, LLVMContext &);
 

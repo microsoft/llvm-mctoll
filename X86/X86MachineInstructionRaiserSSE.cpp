@@ -514,22 +514,10 @@ bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
       }
     } else {
       DstType = Type::getIntNTy(Ctx, DstPRegSize * 8);
-
-      if (SrcValue->getType()->isFloatingPointTy() &&
-          SrcValue->getType()->getPrimitiveSizeInBits() !=
-              DstType->getPrimitiveSizeInBits()) {
-        SrcValue = resizeFPValue(MI, SrcValue, DstPRegSize * 8);
-      }
     }
 
-    assert(DstType->getPrimitiveSizeInBits() ==
-               SrcValue->getType()->getPrimitiveSizeInBits() &&
-           "Expected operand size to match for movd/movq instruction");
-
-    Instruction *BitCast =
-        new BitCastInst(SrcValue, DstType, "bitcast", RaisedBB);
-
-    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, BitCast);
+    SrcValue = getRaisedValues()->reinterpretSSERegValue(SrcValue, DstType, RaisedBB);
+    raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
   } break;
   default:
     llvm_unreachable("Unhandled sse mov instruction");

@@ -2423,28 +2423,4 @@ bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
   return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
 }
 
-Value *X86MachineInstructionRaiser::resizeFPValue(const MachineInstr &MI,
-                                                    Value *Val, uint8_t Bits) {
-  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  LLVMContext &Ctx(MF.getFunction().getContext());
-  assert(Val->getType()->isFloatingPointTy() && "Expected floating point type");
-
-  Type *DstType;
-  switch (Bits) {
-  case 32:
-    DstType = Type::getFloatTy(Ctx);
-    break;
-  case 64:
-    DstType = Type::getDoubleTy(Ctx);
-    break;
-  default:
-    llvm_unreachable("Unhandled bit precision");
-  }
-
-  Instruction *BitCastToFP =
-      CastInst::CreateFPCast(Val, DstType, "cast", RaisedBB);
-
-  return BitCastToFP;
-}
-
 #undef DEBUG_TYPE

@@ -170,20 +170,9 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
   // defined.
   if (returnType == nullptr) {
     for (MachineBasicBlock &MBB : MF) {
-      int MBBNo = MBB.getNumber();
-      // Get the register definition map of MBB
-      auto MBBDefinedPhysRegIter = PerMBBDefinedPhysRegMap.find(MBBNo);
-      if (MBBDefinedPhysRegIter != PerMBBDefinedPhysRegMap.end()) {
-        // If found, get the value defined for X86::RAX
-        MCPhysRegSizeMap DefinedPhysRegMap = MBBDefinedPhysRegIter->second;
-        auto DefinedPhysRegMapIter = DefinedPhysRegMap.find(X86::RAX);
-        // If RAX is defined by the end of the block, get the type. If found,
-        // this is a block with tail call. So, the return of the tail call is
-        // the return of this function as well.
-        if (DefinedPhysRegMapIter != DefinedPhysRegMap.end()) {
-          returnType = Type::getIntNTy(MF.getFunction().getContext(),
-                                       DefinedPhysRegMapIter->second * 8);
-        }
+      auto DiscoveredReturnType = getReachingReturnType(MBB);
+      if (DiscoveredReturnType != nullptr) {
+        returnType = DiscoveredReturnType;
       }
     }
   }
@@ -633,6 +622,12 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     // No need to inspect return instruction
     if (I->isReturn())
       continue;
+
+    // No need to inspect padding instructions. ld uses nop and lld uses int3 for
+    // alignment padding in text section.
+    auto Opcode = I->getOpcode();
+    if (isNoop(Opcode) || (Opcode == X86::INT3))
+    	continue;
 
     unsigned DefReg = X86::NoRegister;
     const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();

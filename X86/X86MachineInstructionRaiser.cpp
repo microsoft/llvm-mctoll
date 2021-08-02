@@ -2914,6 +2914,17 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
                                      MI.getParent()->getNumber(), CMP);
     Success = true;
   } break;
+  case X86::COND_L: {
+    // Check if SF != OF
+    Pred = CmpInst::Predicate::ICMP_NE;
+    Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
+    Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
+    CmpInst *CMP = new ICmpInst(Pred, SFValue, OFValue);
+    RaisedBB->getInstList().push_back(CMP);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMP);
+    Success = true;
+  } break;
   case X86::COND_INVALID:
     assert(false && "Set instruction with invalid condition found");
     break;

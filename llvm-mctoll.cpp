@@ -305,19 +305,19 @@ void llvm::error(Error E) {
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::error(Twine Message) {
+[[noreturn]] void llvm::error(Twine Message) {
   errs() << ToolName << ": " << Message << ".\n";
   errs().flush();
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef File, Twine Message) {
+[[noreturn]] void llvm::report_error(StringRef File, Twine Message) {
   WithColor::error(errs(), ToolName)
       << "'" << File << "': " << Message << ".\n";
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef File) {
+[[noreturn]] void llvm::report_error(Error E, StringRef File) {
   assert(E);
   std::string Buf;
   raw_string_ostream OS(Buf);
@@ -327,7 +327,7 @@ LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef File) {
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef ArchiveName,
+[[noreturn]] void llvm::report_error(Error E, StringRef ArchiveName,
                                                 StringRef FileName,
                                                 StringRef ArchitectureName) {
   assert(E);
@@ -346,7 +346,7 @@ LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef ArchiveName,
   exit(1);
 }
 
-LLVM_ATTRIBUTE_NORETURN void llvm::report_error(Error E, StringRef ArchiveName,
+[[noreturn]] void llvm::report_error(Error E, StringRef ArchiveName,
                                                 const object::Archive::Child &C,
                                                 StringRef ArchitectureName) {
   Expected<StringRef> NameOrErr = C.getName();

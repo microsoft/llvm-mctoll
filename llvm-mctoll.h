@@ -58,13 +58,13 @@ void printMachOLoadCommands(const object::ObjectFile *o);
 void printWasmFileHeader(const object::ObjectFile *o);
 void PrintSymbolTable(const object::ObjectFile *o, StringRef ArchiveName,
                       StringRef ArchitectureName = StringRef());
-LLVM_ATTRIBUTE_NORETURN void error(Twine Message);
-LLVM_ATTRIBUTE_NORETURN void report_error(StringRef File, Twine Message);
-LLVM_ATTRIBUTE_NORETURN void report_error(Error E, StringRef File);
-LLVM_ATTRIBUTE_NORETURN void
+[[noreturn]] void error(Twine Message);
+[[noreturn]] void report_error(StringRef File, Twine Message);
+[[noreturn]] void report_error(Error E, StringRef File);
+[[noreturn]] void
 report_error(Error E, StringRef FileName, StringRef ArchiveName,
              StringRef ArchitectureName = StringRef());
-LLVM_ATTRIBUTE_NORETURN void
+[[noreturn]] void
 report_error(Error E, StringRef ArchiveName, const object::Archive::Child &C,
              StringRef ArchitectureName = StringRef());
 

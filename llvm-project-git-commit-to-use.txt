@@ -5,8 +5,17 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 67d6132463541d5e4cf7483cb3c7b5d95b46ee6d
-Author: Matt Arsenault <Matthew.Arsenault@amd.com>
-Date:   Fri Jul 16 12:55:41 2021 -0400
+commit 1fdb3e36ff379e5b3b05a00d49b6081435df727a
+Author: Tom Lokovic <tdl@google.com>
+Date:   Tue Aug 10 16:26:02 2021 +0000
 
-    GlobalISel: Preserve memory types for implicit sret load/stores
+    abseil-string-find-str-contains should not propose an edit for the three-parameter version of find().
+    
+    std::string, std::string_view, and absl::string_view all have a three-parameter version of find()
+    which has a "count" (or "n") paremeter limiting the size of the substring to search.  We don't want
+    to propose changing to absl::StrContains in those cases.  This change fixes that and adds unit tests
+    to confirm.
+    
+    Reviewed By: ymandel
+    
+    Differential Revision: https://reviews.llvm.org/D107837

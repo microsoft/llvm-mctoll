@@ -453,13 +453,14 @@ const MachineInstr *X86MachineInstructionRaiser::getPhysRegDefiningInstInBlock(
       break;
     }
 
-    // If the instruction has a define
+    // Look if PhysReg is either an explicit or implicit register def
     if (MI.getNumDefs() > 0) {
-      for (auto MO : MI.defs()) {
-        // If the define operand is a register
-        if (MO.isReg()) {
+      for (auto MO : MI.operands()) {
+        // Consider only the register operand
+        if (MO.isReg() && MO.isDef()) {
           unsigned MOReg = MO.getReg();
-          if (Register::isPhysicalRegister(MOReg)) {
+          // If it is a physical register other than EFLAGS
+          if (MOReg != X86::EFLAGS && Register::isPhysicalRegister(MOReg)) {
             if (SuperReg == find64BitSuperReg(MOReg))
               return &MI;
           }

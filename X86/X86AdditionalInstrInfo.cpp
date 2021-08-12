@@ -1668,7 +1668,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::MOVSX32rr8_NOREX, {0, Unknown}},
     {X86::MOVSX64rm16, {2, MOV_FROM_MEM}},
     {X86::MOVSX64rm32, {4, MOV_FROM_MEM}},
-    {X86::MOVSX64rm8, {1, Unknown}},
+    {X86::MOVSX64rm8, {1, MOV_FROM_MEM}},
     {X86::MOVSX64rr16, {0, MOV_RR}},
     {X86::MOVSX64rr32, {0, MOV_RR}},
     {X86::MOVSX64rr8, {0, MOV_RR}},

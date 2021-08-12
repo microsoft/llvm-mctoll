@@ -215,6 +215,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
 
   PerMBBDefinedPhysRegMap.clear();
 
+  Type *DiscoveredRetType = nullptr;
+
   // Walk the CFG DFS to discover first register usage
   LoopTraversal Traversal;
   LoopTraversal::TraversalOrder TraversedMBBOrder = Traversal.traverse(MF);
@@ -407,6 +409,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
                 // Mark it as defined register
                 MBBDefRegs[find64BitSuperReg(RetReg)] = RetRegSizeInBits / 8;
               }
+
+              if (IsTailCall)
+                DiscoveredRetType = RetTy;
             }
           } else if (Opcode != X86::CALL64r && Opcode != X86::CALL64m) {
             // Not possible to statically determine the target of register-based
@@ -465,7 +470,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // first argument register usage.
   buildFuncArgTypeVector(FunctionLiveInRegs, argTypeVector);
   // 2. Discover function return type
-  Type *returnType = getFunctionReturnType();
+  Type *returnType = DiscoveredRetType != nullptr ? DiscoveredRetType
+                                                  : getFunctionReturnType();
   if (returnType == nullptr)
     return nullptr;
 

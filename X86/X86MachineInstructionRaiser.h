@@ -135,6 +135,7 @@ private:
   bool raiseInplaceMemOpInstr(const MachineInstr &, Value *);
   bool raiseMoveToMemInstr(const MachineInstr &, Value *);
   bool raiseMoveFromMemInstr(const MachineInstr &, Value *);
+  bool raiseDivideFromMemInstr(const MachineInstr &, Value *);
   bool raiseDivideInstr(const MachineInstr &, Value *);
   bool raiseLoadIntToFloatRegInstr(const MachineInstr &, Value *);
   bool raiseStoreIntToFloatRegInstr(const MachineInstr &, Value *);

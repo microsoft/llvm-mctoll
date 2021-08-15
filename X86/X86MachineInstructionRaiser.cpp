@@ -2273,7 +2273,20 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   return true;
 }
 
-// Raise idiv instruction with source operand with value srcValue.
+// Raise idiv instruction with memory reference value
+bool X86MachineInstructionRaiser::raiseDivideFromMemInstr(
+    const MachineInstr &MI, Value *MemRefValue) {
+  LLVMContext &Ctx(MF.getFunction().getContext());
+  unsigned int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+  Type *DestopTy =
+      Type::getIntNTy(Ctx, getInstructionMemOpSize(MI.getOpcode()) * 8);
+
+  Value *SrcValue =
+      loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, DestopTy);
+  return raiseDivideInstr(MI, SrcValue);
+}
+
+// Raise idiv instruction with source operand with value SrcValue.
 bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
                                                    Value *SrcValue) {
   const MCInstrDesc &MIDesc = MI.getDesc();
@@ -2358,19 +2371,6 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
       BinaryOperator::CreateOr(LShlInst, DividendLowBytesDT);
   RaisedBB->getInstList().push_back(FullDividend);
 
-  // If the srcValue is a stack allocation, load the value from the stack
-  // slot
-  if (isa<AllocaInst>(SrcValue)) {
-    // Load the value from memory location
-    auto memAlignment = Align(
-        SrcValue->getType()->getPointerElementType()->getPrimitiveSizeInBits() /
-        8);
-    LoadInst *loadInst =
-        new LoadInst(SrcValue->getType()->getPointerElementType(), SrcValue, "",
-                     false, memAlignment, RaisedBB);
-
-    SrcValue = loadInst;
-  }
   // Cast divisor (srcValue) to double type
   CastInst *srcValueDT = CastInst::Create(
       CastInst::getCastOpcode(SrcValue, isSigned, DoubleTy, isSigned), SrcValue,
@@ -2713,7 +2713,7 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
   case InstructionKind::BINARY_OP_RM:
     return raiseBinaryOpMemToRegInstr(MI, MemoryRefValue);
   case InstructionKind::DIVIDE_MEM_OP:
-    return raiseDivideInstr(MI, MemoryRefValue);
+    return raiseDivideFromMemInstr(MI, MemoryRefValue);
   case InstructionKind::LOAD_FPU_REG:
     return raiseLoadIntToFloatRegInstr(MI, MemoryRefValue);
   case InstructionKind::STORE_FPU_REG:

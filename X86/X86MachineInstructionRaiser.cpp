@@ -4245,65 +4245,13 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       uint8_t PositionMask = 0;
 
       const MachineBasicBlock *CurMBB = MI.getParent();
-      // If an argument register does not have a definition in a block that
-      // has a call instruction between block entry and MI, there is no need
-      // (and is not correct) to look for a reaching definition in its
-      // predecessors.
-      bool HasCallInst = false;
       unsigned int ArgNo = 1;
       // Find if CurMBB has call between block entry and MI
 
       for (auto ArgReg : GPR64ArgRegs64Bit) {
-        if (getPhysRegDefiningInstInBlock(ArgReg, &MI, CurMBB, MCID::Call,
-                                          HasCallInst) != nullptr)
+        BitVector BlocksVisited(MF.getNumBlockIDs(), false);
+        if (hasReachingRegister(CurMBB, &MI, ArgReg, BlocksVisited)) {
           PositionMask |= (1 << ArgNo);
-        else if (!HasCallInst) {
-          // Look to see if the argument register has a reaching definition in
-          // the predecessors of CurMBB.
-          unsigned int ReachDefPredEdgeCount = 0;
-
-          for (auto P : CurMBB->predecessors()) {
-            SmallVector<MachineBasicBlock *, 8> WorkList;
-            // No blocks visited in this walk up the predecessor P
-            BitVector BlockVisited(MF.getNumBlockIDs(), false);
-
-            // Start at predecessor P
-            WorkList.push_back(P);
-
-            while (!WorkList.empty()) {
-              MachineBasicBlock *PredMBB = WorkList.pop_back_val();
-              if (!BlockVisited[PredMBB->getNumber()]) {
-                // Mark block as visited
-                BlockVisited.set(PredMBB->getNumber());
-                // Need to consider definitions after any call instructions in
-                // the block. This is the reason we can not use
-                // getReachingDefs() which does not consider the position
-                // where the register is defined.
-                bool Ignored;
-                if (getPhysRegDefiningInstInBlock(ArgReg, nullptr, PredMBB,
-                                                  MCID::Call,
-                                                  Ignored) != nullptr)
-                  ReachDefPredEdgeCount++;
-                else {
-                  // Reach info not found, continue walking the predecessors
-                  // of CurBB.
-                  for (auto P : PredMBB->predecessors()) {
-                    // push_back the block which was not visited.
-                    if (!BlockVisited[P->getNumber()])
-                      WorkList.push_back(P);
-                  }
-                }
-              } else if (PredMBB->getNumber() == CurMBB->getNumber())
-                // This is a loop. Simply increment ReachDefPredEdgeCount to
-                // indicate that we have a reaching def.
-                ReachDefPredEdgeCount++;
-            }
-          }
-          // If there is a reaching def on all predecessor edges then consider
-          // it as an argument used by the variadic function.
-          if ((ReachDefPredEdgeCount > (unsigned)0) &&
-              (ReachDefPredEdgeCount == CurMBB->pred_size()))
-            PositionMask |= (1 << ArgNo);
         }
         ArgNo++;
       }

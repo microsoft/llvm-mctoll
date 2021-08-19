@@ -205,6 +205,9 @@ private:
   getPhysRegDefiningInstInBlock(int PhysReg, const MachineInstr *StartMI,
                                 const MachineBasicBlock *MBB,
                                 unsigned StopAtInstProp, bool &HasStopInst);
+  bool hasReachingRegister(const MachineBasicBlock *MBB,
+                           const MachineInstr *StartMI, MCPhysReg reg,
+                           BitVector BlocksVisited);
 
   void addRegisterToFunctionLiveInSet(MCPhysRegSet &CurLiveSet, unsigned Reg);
   int64_t getBranchTargetMBBNumber(const MachineInstr &MI);

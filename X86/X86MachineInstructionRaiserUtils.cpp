@@ -472,6 +472,41 @@ const MachineInstr *X86MachineInstructionRaiser::getPhysRegDefiningInstInBlock(
   return nullptr;
 }
 
+// Check recursively if either this MBB or all of it's predecessors define Reg
+bool X86MachineInstructionRaiser::hasReachingRegister(
+    const MachineBasicBlock *MBB, const MachineInstr *StartMI, MCPhysReg Reg,
+    BitVector BlocksVisited) {
+  // If MBB is already visited, it is part of a loop. Return true
+  if (BlocksVisited[MBB->getNumber()]) {
+    return true;
+  }
+
+  BlocksVisited.set(MBB->getNumber());
+  // If an argument register does not have a definition in a block that
+  // has a call instruction between block entry and MI, there is no need
+  // (and is not correct) to look for a reaching definition in its
+  // predecessors.
+  bool HasCallInst = false;
+  // First check if this MBB defines this register
+  if (getPhysRegDefiningInstInBlock(Reg, StartMI, MBB, MCID::Call, HasCallInst) !=
+      nullptr) {
+    return true;
+  } else if (!HasCallInst) {
+    // MBB does not define the register, check predecessors
+    // If a MBB has no predecessor, Reg is not defined for this block
+    bool result = MBB->pred_size() > 0;
+
+    for (auto Pred : MBB->predecessors()) {
+      result &= hasReachingRegister(Pred, nullptr, Reg, BlocksVisited);
+    }
+
+    return result;
+  } else {
+    // Block has call instruction and does not define Reg
+    return false;
+  }
+}
+
 // FPU Access functions
 void X86MachineInstructionRaiser::FPURegisterStackPush(Value *val) {
   assert(val->getType()->isFloatingPointTy() &&

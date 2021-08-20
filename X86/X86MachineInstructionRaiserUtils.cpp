@@ -312,7 +312,7 @@ Type *X86MachineInstructionRaiser::getPhysRegType(unsigned int PReg) {
     // Since float- and double types both use the same width SSE registers, we
     // can't check which one is correct. Use getPhysSSERegType with a
     // BitPrecision argument
-    return Type::getDoubleTy(Ctx);
+    return Type::getInt128Ty(Ctx);
   }
 
   assert(false && "Immediate operand of unknown size");
@@ -375,13 +375,7 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
   if (isGPReg(PReg))
     return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
   else if (isSSE2Reg(PReg)) {
-    auto Precision = getInstructionBitPrecision(MI.getDesc().TSFlags);
-    if (Precision == 32)
-      return Type::getFloatTy(Ctx);
-    else if (Precision == 64)
-      return Type::getDoubleTy(Ctx);
-    llvm_unreachable("Unexpected memory operation size of instruction that "
-                     "uses SSE register");
+    return getRaisedValues()->getSSEInstructionType(MI, Ctx);
   }
 
   llvm_unreachable("Unhandled register type encountered");
@@ -898,35 +892,30 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
              ReachingValue &&
          "Inconsistent reaching defined value found");
   assert((ReachingValue->getType()->isIntOrPtrTy() ||
-          ReachingValue->getType()->isFloatingPointTy()) &&
+          ReachingValue->getType()->isFloatingPointTy() ||
+          ReachingValue->getType()->isVectorTy()) &&
          "Unsupported: Stack promotion of non-integer / non-pointer value");
   // Prepare to store this value in stack location.
   // Get the size of defined physical register
   int DefinedPhysRegSzInBits =
       raisedValues->getInBlockPhysRegSize(PhysReg, DefiningMBB);
-  assert(((DefinedPhysRegSzInBits == 64) || (DefinedPhysRegSzInBits == 32) ||
-          (DefinedPhysRegSzInBits == 16) || (DefinedPhysRegSzInBits == 8) ||
-          (DefinedPhysRegSzInBits == 1)) &&
+  assert(((DefinedPhysRegSzInBits == 128) || (DefinedPhysRegSzInBits == 64) ||
+          (DefinedPhysRegSzInBits == 32) || (DefinedPhysRegSzInBits == 16) ||
+          (DefinedPhysRegSzInBits == 8) || (DefinedPhysRegSzInBits == 1)) &&
          "Unexpected physical register size of reaching definition ");
   // This could simply be set to 64 because the stack slot allocated is
   // a 64-bit value.
   int StackLocSzInBits =
       Alloca->getType()->getPointerElementType()->getPrimitiveSizeInBits();
   Type *StackLocTy;
-  if (ReachingValue->getType()->isIntOrPtrTy()) {
+  if (ReachingValue->getType()->isIntOrPtrTy() ||
+      ReachingValue->getType()->isVectorTy()) {
     // Cast the current value to int64 if needed
     StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
   } else if (ReachingValue->getType()->isFloatingPointTy()) {
-    switch (StackLocSzInBits) {
-    case 64:
-      StackLocTy = Type::getDoubleTy(Ctxt);
-      break;
-    case 32:
-      StackLocTy = Type::getFloatTy(Ctxt);
-      break;
-    default:
-      llvm_unreachable("Unhandled floating point type with unknown size");
-    }
+    assert(StackLocSzInBits == 128 &&
+           "Expected FP types to be stored in 128 bit stack location");
+    StackLocTy = Type::getInt128Ty(Ctxt);
   } else {
     llvm_unreachable("Unhandled type");
   }
@@ -936,14 +925,21 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   // terminator instruction if one exists.
   Instruction *TermInst = ReachingBB->getTerminator();
   if (StackLocTy != ReachingValue->getType()) {
-    CastInst *CInst = CastInst::Create(
-        CastInst::getCastOpcode(ReachingValue, false, StackLocTy, false),
-        ReachingValue, StackLocTy);
-    if (TermInst == nullptr)
-      ReachingBB->getInstList().push_back(CInst);
-    else
-      CInst->insertBefore(TermInst);
-    ReachingValue = CInst;
+    if (ReachingValue->getType()->isFloatingPointTy() ||
+        ReachingValue->getType()->isVectorTy()) {
+      // Don't cast values stored in SSE registers
+      ReachingValue = getRaisedValues()->reinterpretSSERegValue(
+          ReachingValue, StackLocTy, ReachingBB, TermInst);
+    } else {
+      CastInst *CInst = CastInst::Create(
+          CastInst::getCastOpcode(ReachingValue, false, StackLocTy, false),
+          ReachingValue, StackLocTy);
+      if (TermInst == nullptr)
+        ReachingBB->getInstList().push_back(CInst);
+      else
+        CInst->insertBefore(TermInst);
+      ReachingValue = CInst;
+    }
   }
   StInst = new StoreInst(ReachingValue, Alloca, false, Align());
   if (TermInst == nullptr)
@@ -2241,7 +2237,11 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
     Type *PRegTy = getPhysRegOperandType(MI, OpIndex);
     // Get the BasicBlock corresponding to MachineBasicBlock of MI.
     BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-    PRegValue = getRaisedValues()->castValue(PRegValue, PRegTy, RaisedBB);
+    if (isSSE2Reg(MO.getReg())) {
+      PRegValue = getRaisedValues()->reinterpretSSERegValue(PRegValue, PRegTy, RaisedBB);
+    } else {
+      PRegValue = getRaisedValues()->castValue(PRegValue, PRegTy, RaisedBB);
+    }
   }
   return PRegValue;
 }
@@ -2422,30 +2422,6 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
 bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
                                                       StringRef name) const {
   return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
-}
-
-Value *X86MachineInstructionRaiser::resizeFPValue(const MachineInstr &MI,
-                                                    Value *Val, uint8_t Bits) {
-  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  LLVMContext &Ctx(MF.getFunction().getContext());
-  assert(Val->getType()->isFloatingPointTy() && "Expected floating point type");
-
-  Type *DstType;
-  switch (Bits) {
-  case 32:
-    DstType = Type::getFloatTy(Ctx);
-    break;
-  case 64:
-    DstType = Type::getDoubleTy(Ctx);
-    break;
-  default:
-    llvm_unreachable("Unhandled bit precision");
-  }
-
-  Instruction *BitCastToFP =
-      CastInst::CreateFPCast(Val, DstType, "cast", RaisedBB);
-
-  return BitCastToFP;
 }
 
 #undef DEBUG_TYPE

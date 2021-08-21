@@ -97,14 +97,21 @@ Value *X86MachineInstructionRaiser::getMemoryRefValue(const MachineInstr &MI) {
         assert((MemoryRefValue != nullptr) &&
                "Unexpected null value of stack or base pointer register");
         Type *MemRefValTy = MemoryRefValue->getType();
-        assert((MemRefValTy->isPointerTy()) &&
+        assert((MemRefValTy->isPointerTy() ||
+                (MemRefValTy->isIntegerTy() &&
+                 MemRefValTy->getIntegerBitWidth() == 64)) &&
                "Unexpected non-pointer type of a stack allocated value");
         // Convert MemRefValue to integer
         LLVMContext &Ctx(MF.getFunction().getContext());
         Type *CastTy = Type::getInt64Ty(Ctx);
         BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-        PtrToIntInst *MemRefValAddr =
-            new PtrToIntInst(MemoryRefValue, CastTy, "", RaisedBB);
+        Value *MemRefValAddr;
+        if (MemRefValTy->isPointerTy()) {
+          MemRefValAddr =
+              new PtrToIntInst(MemoryRefValue, CastTy, "", RaisedBB);
+        } else {
+          MemRefValAddr = MemoryRefValue;
+        }
 
         unsigned ScaleAmt = MemRef.Scale;
         // IndexReg * Scale

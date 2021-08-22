@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ExternalFunctions.h"
+#include "IncludedFileInfo.h"
 #include "MachineFunctionRaiser.h"
 #include "X86InstrBuilder.h"
 #include "X86MachineInstructionRaiser.h"

@@ -1,4 +1,4 @@
-//===-- ExternalFunctions.cpp -----------------------------------*- C++ -*-===//
+//===-- IncludedFileInfo.cpp -----------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ExternalFunctions.h"
+#include "IncludedFileInfo.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -32,8 +32,10 @@
 // as Type being used in this file are from clang namespace and not from llvm
 // namespace.
 
-std::map<std::string, ExternalFunctions::RetAndArgs>
-    ExternalFunctions::UserSpecifiedFunctions;
+std::map<std::string, IncludedFileInfo::FunctionRetAndArgs>
+    IncludedFileInfo::ExternalFunctions;
+
+std::set<std::string> IncludedFileInfo::ExternalVariables;
 
 // FuncDeclVisitor
 
@@ -46,7 +48,7 @@ public:
   }
 
   bool VisitFunctionDecl(clang::FunctionDecl *FuncDecl) {
-    ExternalFunctions::RetAndArgs Entry;
+    IncludedFileInfo::FunctionRetAndArgs Entry;
     clang::QualType RetTy = FuncDecl->getDeclaredReturnType();
     Entry.ReturnType =
         getUnqualifiedTypeString(RetTy, FuncDecl->getASTContext());
@@ -62,17 +64,17 @@ public:
     // function name to detect duplicate function prototype specification. Need
     // to update this check to include argument types when support to raise C++
     // binary is added.
-    if (ExternalFunctions::UserSpecifiedFunctions.find(
+    if (IncludedFileInfo::ExternalFunctions.find(
             FuncDecl->getQualifiedNameAsString()) !=
-        ExternalFunctions::UserSpecifiedFunctions.end()) {
+        IncludedFileInfo::ExternalFunctions.end()) {
       LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
                         << " : Ignoring duplicate entry at "
                         << FuncDecl->getLocation().printToString(
                                Context.getSourceManager())
                         << "\n");
     } else {
-      ExternalFunctions::UserSpecifiedFunctions.insert(
-          std::pair<std::string, ExternalFunctions::RetAndArgs>(
+      IncludedFileInfo::ExternalFunctions.insert(
+          std::pair<std::string, IncludedFileInfo::FunctionRetAndArgs>(
               FuncDecl->getQualifiedNameAsString(), Entry));
       LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
                         << " : Entry found at "
@@ -161,13 +163,17 @@ public:
     auto Decls = Context.getTranslationUnitDecl()->decls();
     clang::SourceManager &SourceManager(Context.getSourceManager());
     for (auto &Decl : Decls) {
-      if (!Decl->isFunctionOrFunctionTemplate())
-        continue;
-      const auto &FileID = SourceManager.getFileID(Decl->getLocation());
-      if (FileID != SourceManager.getMainFileID())
-        continue;
-      clang::FunctionDecl *FuncDecl = Decl->getAsFunction();
-      Visitor.TraverseFunctionDecl(FuncDecl);
+      if (Decl->isFunctionOrFunctionTemplate()) {
+        const auto &FileID = SourceManager.getFileID(Decl->getLocation());
+        if (FileID != SourceManager.getMainFileID())
+          continue;
+        clang::FunctionDecl *FuncDecl = Decl->getAsFunction();
+        Visitor.TraverseFunctionDecl(FuncDecl);
+      } else if (Decl->getKind() == clang::Decl::Kind::Var) {
+        auto VarDecl = dyn_cast<clang::VarDecl>(Decl);
+        IncludedFileInfo::ExternalVariables.insert(
+            VarDecl->getQualifiedNameAsString());
+      }
     }
   }
 };
@@ -183,7 +189,7 @@ public:
 };
 
 // Construct and return a Function* corresponding to a known external function
-Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
+Function *IncludedFileInfo::CreateFunction(StringRef &CFuncName, ModuleRaiser &MR) {
   Module *M = MR.getModule();
   assert(M != nullptr && "Uninitialized ModuleRaiser!");
 
@@ -191,15 +197,15 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
   if (Func != nullptr)
     return Func;
 
-  auto iter = ExternalFunctions::UserSpecifiedFunctions.find(CFuncName.str());
-  if (iter == ExternalFunctions::UserSpecifiedFunctions.end()) {
+  auto iter = IncludedFileInfo::ExternalFunctions.find(CFuncName.str());
+  if (iter == IncludedFileInfo::ExternalFunctions.end()) {
     errs() << "Unknown prototype for function : " << CFuncName.data() << "\n";
     errs() << "Use -I </full/path/to/file>, where /full/path/to/file declares "
               "its prototype\n";
     return nullptr;
   }
 
-  const ExternalFunctions::RetAndArgs &retAndArgs = iter->second;
+  const IncludedFileInfo::FunctionRetAndArgs &retAndArgs = iter->second;
   Type *RetType =
       MR.getFunctionFilter()->getPrimitiveDataType(retAndArgs.ReturnType);
   std::vector<Type *> ArgVec;
@@ -227,7 +233,7 @@ Function *ExternalFunctions::Create(StringRef &CFuncName, ModuleRaiser &MR) {
   return nullptr;
 }
 
-bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
+bool IncludedFileInfo::getExternalFunctionPrototype(
     std::vector<std::string> &FileNames, std::string &CompDBDir) {
   static llvm::cl::OptionCategory InclFileParseCategory(
       "parse-header-files options");
@@ -274,6 +280,18 @@ bool ExternalFunctions::getUserSpecifiedFuncPrototypes(
   }
 
   return true;
+}
+
+bool IncludedFileInfo::IsExternalVariable(std::string Name) {
+  // If there is a suffix like stdout@@GLIBC_2.2.5, remove it to check
+  // if the symbol is defined in a user-passed header file
+  auto NameEnd = Name.find("@@");
+  if (NameEnd != std::string::npos) {
+    Name = Name.substr(0, NameEnd);
+  }
+  // Declare external global variables as external and don't initalize them
+  return IncludedFileInfo::ExternalVariables.find(Name) !=
+      IncludedFileInfo::ExternalVariables.end();
 }
 
 #undef DEBUG_TYPE

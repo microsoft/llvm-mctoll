@@ -14,7 +14,7 @@
 #include "ARMMIRevising.h"
 #include "ARMModuleRaiser.h"
 #include "ARMSubtarget.h"
-#include "ExternalFunctions.h"
+#include "IncludedFileInfo.h"
 #include "MCInstRaiser.h"
 #include "MachineFunctionRaiser.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -169,7 +169,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
         // Set CallTargetIndex for plt offset to map undefined function symbol
         // for emit CallInst use.
         Function *CalledFunc =
-            ExternalFunctions::Create(*CalledFuncSymName, *MR);
+            IncludedFileInfo::CreateFunction(*CalledFuncSymName, *MR);
         // Bail out if function prototype is not available
         if (!CalledFunc)
           exit(-1);

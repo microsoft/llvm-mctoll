@@ -12,7 +12,7 @@
 
 #include "llvm-mctoll.h"
 #include "EmitRaisedOutputPass.h"
-#include "ExternalFunctions.h"
+#include "IncludedFileInfo.h"
 #include "MCInstOrData.h"
 #include "MachineFunctionRaiser.h"
 #include "ModuleRaiser.h"
@@ -1603,7 +1603,7 @@ int main(int argc, char **argv) {
   std::vector<string> InclFNames(InclFNameSet.begin(), InclFNameSet.end());
 
   if (!InclFNames.empty()) {
-    if (!ExternalFunctions::getUserSpecifiedFuncPrototypes(InclFNames,
+    if (!IncludedFileInfo::getExternalFunctionPrototype(InclFNames,
                                                            CompilationDBDir)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }

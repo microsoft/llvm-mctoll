@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ExternalFunctions.h"
+#include "IncludedFileInfo.h"
 #include "X86MachineInstructionRaiser.h"
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"

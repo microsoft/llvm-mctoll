@@ -30,7 +30,7 @@ FunctionFilter::~FunctionFilter() {
 }
 
 /// Get the data type corresponding to type string. These correspond to type
-/// strings generated in ExternalFunctions.cpp upon parsing user specified
+/// strings generated in IncludedFileInfo.cpp upon parsing user specified
 /// include files with external function prototypes.
 Type *FunctionFilter::getPrimitiveDataType(const StringRef &TypeStr) {
   LLVMContext &CTX = M.getContext();

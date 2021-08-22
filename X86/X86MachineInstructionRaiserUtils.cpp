@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ExternalFunctions.h"
+#include "IncludedFileInfo.h"
 #include "InstMetadata.h"
 #include "X86MachineInstructionRaiser.h"
 #include "X86RaisedValueTracker.h"
@@ -750,9 +750,17 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
               break;
             }
           }
-          Constant *GlobalInit = (DynRelocType == ELF::R_X86_64_GLOB_DAT)
-                                     ? ConstantInt::get(GlobalValTy, SymbVal)
-                                     : nullptr;
+
+          Constant *GlobalInit;
+          if (IncludedFileInfo::IsExternalVariable(Symname->str())) {
+            GlobalInit = nullptr;
+            Lnkg = GlobalValue::ExternalLinkage;
+          } else {
+            GlobalInit = (DynRelocType == ELF::R_X86_64_GLOB_DAT)
+                             ? ConstantInt::get(GlobalValTy, SymbVal)
+                             : nullptr;
+          }
+
           auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                               false /* isConstant */, Lnkg,
                                               GlobalInit, Symname->data());
@@ -864,7 +872,14 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
           assert(false && "Unexpected symbol size");
         }
 
-        Constant *GlobalInit = ConstantInt::get(GlobalValTy, SymInitVal);
+        Constant *GlobalInit;
+        if (IncludedFileInfo::IsExternalVariable(Symname->str())) {
+          GlobalInit = nullptr;
+          Lnkg = GlobalValue::ExternalLinkage;
+        } else {
+          GlobalInit = ConstantInt::get(GlobalValTy, SymInitVal);
+        }
+
         auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                             false /* isConstant */, Lnkg,
                                             GlobalInit, Symname->data());
@@ -1491,7 +1506,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
         // This is an undefined function symbol. Look through the list of
         // user provided function prototypes and construct a Function
         // accordingly.
-        CalledFunc = ExternalFunctions::Create(*CalledFuncSymName,
+        CalledFunc = IncludedFileInfo::CreateFunction(*CalledFuncSymName,
                                                *const_cast<ModuleRaiser *>(MR));
         // Bail out if function prototype is not available
         if (!CalledFunc)
@@ -1865,6 +1880,13 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             }
           } else
             GlobalInit = ConstantInt::get(GlobalValTy, SV);
+        }
+
+        // Declare external global variables as external and don't initalize them
+        if (IncludedFileInfo::IsExternalVariable(
+                GlobalDataSymNameIndexStrRef.str())) {
+          Lnkg = GlobalValue::ExternalLinkage;
+          GlobalInit = nullptr;
         }
 
         // Now, create the global variable for the symbol at given Offset.

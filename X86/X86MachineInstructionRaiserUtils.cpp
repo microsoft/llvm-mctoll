@@ -198,18 +198,18 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
   // Following are the exceptions when MemRefValue needs to be considered as
   // memory content and not as memory reference.
   if (IsPCRelMemRef) {
-    // If it is a PC-relative global variable with an initializer, it is memory
-    // content and should not be loaded from.
-    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
-      LoadFromMemrefValue = !(GV->hasInitializer());
+    // If it is a PC-relative dynamically relocated global variable, it is
+    // memory content and should not be loaded from.
+    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue)) {
+      if (isDynRelocatedGlobalVariable(GV->getName().str())) {
+        LoadFromMemrefValue = false;
+      } else {
+        LoadFromMemrefValue = true;
+      }
     // If it is not a PC-relative constant expression accessed using
     // GetElementPtrInst, it is memory content and should not be loaded from.
-    else {
-      const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(MemRefValue);
-      if (CExpr != nullptr) {
-        LoadFromMemrefValue =
-            (CExpr->getOpcode() == Instruction::GetElementPtr);
-      }
+    } else if (auto *CExpr = dyn_cast<ConstantExpr>(MemRefValue)) {
+      LoadFromMemrefValue = (CExpr->getOpcode() == Instruction::GetElementPtr);
     }
   }
 
@@ -754,17 +754,16 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
               break;
             }
           }
-
           Constant *GlobalInit;
           if (IncludedFileInfo::IsExternalVariable(Symname->str())) {
             GlobalInit = nullptr;
             Lnkg = GlobalValue::ExternalLinkage;
+          } else if (DynRelocType == ELF::R_X86_64_GLOB_DAT) {
+            GlobalInit = ConstantInt::get(GlobalValTy, SymbVal);
+            DynRelocatedGlobalVariables.insert(Symname->str());
           } else {
-            GlobalInit = (DynRelocType == ELF::R_X86_64_GLOB_DAT)
-                             ? ConstantInt::get(GlobalValTy, SymbVal)
-                             : nullptr;
+            GlobalInit = nullptr;
           }
-
           auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                               false /* isConstant */, Lnkg,
                                               GlobalInit, Symname->data());

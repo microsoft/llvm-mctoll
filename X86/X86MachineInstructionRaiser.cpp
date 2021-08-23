@@ -46,6 +46,8 @@ using namespace llvm;
 using namespace mctoll;
 using namespace X86RegisterUtils;
 
+std::set<std::string> X86MachineInstructionRaiser::DynRelocatedGlobalVariables;
+
 // Constructor
 
 X86MachineInstructionRaiser::X86MachineInstructionRaiser(MachineFunction &MF,
@@ -2083,18 +2085,14 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   // Following are the exceptions when MemRefValue needs to be considered as
   // memory content and not as memory reference.
   if (IsPCRelMemRef) {
-    // If it is a PC-relative global variable with an initializer, it is memory
-    // content and should not be loaded from.
-    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
-      LoadFromMemrefValue = !(GV->hasInitializer());
-    // If it is not a PC-relative constant expression accessed using
-    // GetElementPtrInst, it is memory content and should not be loaded from.
-    else {
-      const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(MemRefValue);
-      if (CExpr != nullptr) {
-        LoadFromMemrefValue =
-            (CExpr->getOpcode() == Instruction::GetElementPtr);
-      }
+    // If it is a PC-relative dynamically relocated global variable, it is
+    // memory content and should not be loaded from.
+    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue)) {
+      LoadFromMemrefValue = !isDynRelocatedGlobalVariable(GV->getName().str());
+      // If it is not a PC-relative constant expression accessed using
+      // GetElementPtrInst, it is memory content and should not be loaded from.
+    } else if (auto *CExpr = dyn_cast<ConstantExpr>(MemRefValue)) {
+      LoadFromMemrefValue = (CExpr->getOpcode() == Instruction::GetElementPtr);
     }
   }
 

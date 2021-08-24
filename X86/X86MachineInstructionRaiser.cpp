@@ -789,46 +789,62 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   std::vector<Value *> ExplicitSrcValues;
   int MBBNo = MI.getParent()->getNumber();
   bool Success = true;
+  unsigned opc = MI.getOpcode();
 
-  for (const MachineOperand &MO : MI.explicit_uses()) {
-    assert(MO.isReg() &&
-           "Unexpected non-register operand in binary op instruction");
-    auto UseOpIndex = MI.findRegisterUseOperandIdx(MO.getReg(), false, nullptr);
-    Value *SrcValue = getRegOperandValue(MI, UseOpIndex);
+  // Check if this instruction is a xor reg1, reg1 instruction, and does not need
+  // to look up the value of the operand values
+  bool IsXorSetZeroInstruction =
+      (opc == X86::XOR64rr || opc == X86::XOR32rr || opc == X86::XOR16rr ||
+       opc == X86::XOR8rr || opc == X86::XORPSrr || opc == X86::XORPDrr ||
+       opc == X86::PXORrr) &&
+      (MI.findTiedOperandIdx(1) == 0 &&
+       MI.getOperand(DestOpIndex).getReg() ==
+           MI.getOperand(UseOp2Index).getReg());
 
-    ExplicitSrcValues.push_back(SrcValue);
-  }
+  // If we are raising a xor instruction that's just zeroing-out a register,
+  // we don't need to look up the register operand values
+  if (!IsXorSetZeroInstruction) {
+    for (const MachineOperand &MO : MI.explicit_uses()) {
+      assert(MO.isReg() &&
+             "Unexpected non-register operand in binary op instruction");
+      auto UseOpIndex =
+          MI.findRegisterUseOperandIdx(MO.getReg(), false, nullptr);
+      Value *SrcValue = getRegOperandValue(MI, UseOpIndex);
 
-  // Verify the instruction has 1 or 2 use operands
-  assert((ExplicitSrcValues.size() == 1 || ((ExplicitSrcValues.size() == 2))) &&
-         "Unexpected number of operands in register binary op instruction");
+      ExplicitSrcValues.push_back(SrcValue);
+    }
 
-  // If the instruction has two use operands, ensure that their values are
-  // of the same type and non-pointer type.
-  if (ExplicitSrcValues.size() == 2) {
-    Value *Src1Value = ExplicitSrcValues.at(0);
-    Value *Src2Value = ExplicitSrcValues.at(1);
-    // The user operand values can be null if the instruction is 'xor op
-    // op'. See below.
-    if ((Src1Value != nullptr) && (Src2Value != nullptr)) {
-      // If this is a pointer type, convert it to int type
-      while (Src1Value->getType()->isPointerTy()) {
-        PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
-            Src1Value, Src1Value->getType()->getPointerElementType());
-        RaisedBB->getInstList().push_back(ConvPtrToInst);
-        Src1Value = ConvPtrToInst;
-      }
+    // Verify the instruction has 1 or 2 use operands
+    assert(
+        (ExplicitSrcValues.size() == 1 || ((ExplicitSrcValues.size() == 2))) &&
+        "Unexpected number of operands in register binary op instruction");
 
-      // If this is a pointer type, convert it to int type
-      while (Src2Value->getType()->isPointerTy()) {
-        PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
-            Src2Value, Src2Value->getType()->getPointerElementType());
-        RaisedBB->getInstList().push_back(ConvPtrToInst);
-        Src2Value = ConvPtrToInst;
-      }
-      assert(((Src1Value->getType()->isIntegerTy() &&
-               Src2Value->getType()->isIntegerTy()) ||
-              (Src1Value->getType()->isFloatingPointTy() &&
+    // If the instruction has two use operands, ensure that their values are
+    // of the same type and non-pointer type.
+    if (ExplicitSrcValues.size() == 2) {
+      Value *Src1Value = ExplicitSrcValues.at(0);
+      Value *Src2Value = ExplicitSrcValues.at(1);
+      // The user operand values can be null if the instruction is 'xor op
+      // op'. See below.
+      if ((Src1Value != nullptr) && (Src2Value != nullptr)) {
+        // If this is a pointer type, convert it to int type
+        while (Src1Value->getType()->isPointerTy()) {
+          PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
+              Src1Value, Src1Value->getType()->getPointerElementType());
+          RaisedBB->getInstList().push_back(ConvPtrToInst);
+          Src1Value = ConvPtrToInst;
+        }
+
+        // If this is a pointer type, convert it to int type
+        while (Src2Value->getType()->isPointerTy()) {
+          PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
+              Src2Value, Src2Value->getType()->getPointerElementType());
+          RaisedBB->getInstList().push_back(ConvPtrToInst);
+          Src2Value = ConvPtrToInst;
+        }
+        assert(((Src1Value->getType()->isIntegerTy() &&
+                 Src2Value->getType()->isIntegerTy()) ||
+                (Src1Value->getType()->isFloatingPointTy() &&
                Src2Value->getType()->isFloatingPointTy()) ||
               (Src1Value->getType()->isVectorTy() &&
                Src2Value->getType()->isVectorTy())) &&
@@ -847,6 +863,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       }
       ExplicitSrcValues[0] = Src1Value;
       ExplicitSrcValues[1] = Src2Value;
+      }
     }
   }
 
@@ -854,7 +871,6 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   // binary operator.
   unsigned int dstReg = X86::NoRegister;
   Value *dstValue = nullptr;
-  unsigned opc = MI.getOpcode();
   // Construct the appropriate binary operation instruction
   switch (opc) {
   case X86::ADD8rr:
@@ -1051,7 +1067,6 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::XOR64rr: {
     // Verify the def operand is a register.
     const MachineOperand &DestOp = MI.getOperand(DestOpIndex);
-    const MachineOperand &Use2Op = MI.getOperand(UseOp2Index);
     assert(DestOp.isReg() && "Expecting destination of xor instruction to "
                              "be a register operand");
     assert((MCID.getNumDefs() == 1) &&
@@ -1061,7 +1076,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Generate an or instruction to set the zero flag if the
     // operands are the same. An instruction such as 'xor $ecx, ecx' is
     // generated to set the register value to 0.
-    if ((MI.findTiedOperandIdx(1) == 0) && (dstReg == Use2Op.getReg())) {
+    if (IsXorSetZeroInstruction) {
       // No instruction to generate. Just set destReg value to 0.
       Type *DestTy = getPhysRegOperandType(MI, 0);
       Value *Val = ConstantInt::get(DestTy, 0, false /* isSigned */);
@@ -1390,11 +1405,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // - perform the operation
     // - bitcast back to original type
     dstReg = MI.getOperand(DestOpIndex).getReg();
-    bool isXorOperation =
-        opc == X86::XORPDrr || opc == X86::XORPSrr || opc == X86::PXORrr;
 
-    if (isXorOperation && (MI.findTiedOperandIdx(1) == 0) &&
-        (dstReg == MI.getOperand(UseOp2Index).getReg())) {
+    if (IsXorSetZeroInstruction) {
       // No instruction to generate. Just set destReg value to 0.
       Type *DestTy = getPhysRegOperandType(MI, 0);
       if (DestTy->isFPOrFPVectorTy()) {

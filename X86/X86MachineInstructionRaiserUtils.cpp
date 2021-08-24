@@ -17,6 +17,7 @@
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
 #include "llvm-mctoll.h"
+#include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
@@ -898,15 +899,16 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
 // Promote the ReachingValue of PhysReg defined in DefiningMBB to specified
 // stack slot Alloca.
 StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
-    int PhysReg, Value *ReachingValue, int DefiningMBB, Instruction *Alloca) {
+    int PhysReg, Value *ReachingValue, int DefiningMBBNo, Instruction *Alloca) {
   StoreInst *StInst = nullptr;
   LLVMContext &Ctxt(MF.getFunction().getContext());
 
   assert((ReachingValue != nullptr) &&
          "Null incoming value of reaching definition found");
-  assert(raisedValues->getInBlockRegOrArgDefVal(PhysReg, DefiningMBB).second ==
-             ReachingValue &&
-         "Inconsistent reaching defined value found");
+  assert(
+      raisedValues->getInBlockRegOrArgDefVal(PhysReg, DefiningMBBNo).second ==
+          ReachingValue &&
+      "Inconsistent reaching defined value found");
   assert((ReachingValue->getType()->isIntOrPtrTy() ||
           ReachingValue->getType()->isFloatingPointTy() ||
           ReachingValue->getType()->isVectorTy()) &&
@@ -914,7 +916,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   // Prepare to store this value in stack location.
   // Get the size of defined physical register
   int DefinedPhysRegSzInBits =
-      raisedValues->getInBlockPhysRegSize(PhysReg, DefiningMBB);
+      raisedValues->getInBlockPhysRegSize(PhysReg, DefiningMBBNo);
   assert(((DefinedPhysRegSzInBits == 128) || (DefinedPhysRegSzInBits == 64) ||
           (DefinedPhysRegSzInBits == 32) || (DefinedPhysRegSzInBits == 16) ||
           (DefinedPhysRegSzInBits == 8) || (DefinedPhysRegSzInBits == 1)) &&
@@ -936,7 +938,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
     llvm_unreachable("Unhandled type");
   }
   BasicBlock *ReachingBB =
-      getRaisedBasicBlock(MF.getBlockNumbered(DefiningMBB));
+      getRaisedBasicBlock(MF.getBlockNumbered(DefiningMBBNo));
   // get terminating instruction. Add new instructions before
   // terminator instruction if one exists.
   Instruction *TermInst = ReachingBB->getTerminator();
@@ -975,12 +977,27 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
       isa<LoadInst>(ReachingValue))
     return StInst;
 
+  MachineDominatorTree MDT(MF);
+  auto DefiningMBB = MF.getBlockNumbered(DefiningMBBNo);
   // Construct instructions that use ReachingValue and are in a basic block
   // other than DefiningMBB.
   for (auto U : ReachingValue->users()) {
     if (auto I = dyn_cast<Instruction>(U)) {
-      if (I->getParent() != ReachingBB)
+      if (I->getParent() == ReachingBB)
+        continue;
+
+      // find MBB number from which the instruction was raised
+      auto InstMBBNo =
+          std::find_if(std::begin(mbbToBBMap), std::end(mbbToBBMap),
+                       [&](const std::pair<unsigned int, BasicBlock *> &pair) {
+                         return pair.second == I->getParent();
+                       });
+
+      // Only replace I with LdInst, if StInst dominates I
+      if (InstMBBNo != std::end(mbbToBBMap) &&
+          MDT.dominates(DefiningMBB, MF.getBlockNumbered(InstMBBNo->first))) {
         UsageInstList.push_back(I);
+      }
     }
   }
 

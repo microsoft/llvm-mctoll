@@ -1450,6 +1450,29 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstReg = MI.getOperand(DestOpIndex).getReg();
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, SelectInst);
   } break;
+  case X86::SBB16rr:
+  case X86::SBB32rr:
+  case X86::SBB64rr:
+  case X86::SBB8rr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+    Value *CFValue = getRegOrArgValue(EFLAGS::CF, MBBNo);
+    assert(CFValue && "Expected CF to be set for sbb instruction");
+
+    auto CFExtended = CastInst::Create(Instruction::ZExt, CFValue,
+                                       Src2Value->getType(), "", RaisedBB);
+
+    auto Src2AndCFValue =
+        BinaryOperator::CreateAdd(Src2Value, CFExtended, "", RaisedBB);
+
+    auto Result =
+        BinaryOperator::CreateSub(Src1Value, Src2AndCFValue, "", RaisedBB);
+
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, Result);
+    raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, Result);
+  } break;
   default:
     MI.dump();
     assert(false && "Unhandled binary instruction");
@@ -1595,6 +1618,25 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
         new FCmpInst(*RaisedBB, CmpType, DestValue, LoadValue, "cmp");
 
     BinOpInst = SelectInst::Create(CmpInst, DestValue, LoadValue, nameString);
+  } break;
+  case X86::SBB16rm:
+  case X86::SBB32rm:
+  case X86::SBB64rm:
+  case X86::SBB8rm: {
+    auto CFValue = getRegOrArgValue(EFLAGS::CF, MI.getParent()->getNumber());
+    assert(CFValue && "Expected CF to be set for sbb instruction");
+
+    auto CFExtended = CastInst::Create(Instruction::ZExt, CFValue,
+                                       LoadValue->getType(), "", RaisedBB);
+
+    auto LoadAndCFValue =
+        BinaryOperator::CreateAdd(LoadValue, CFExtended, "", RaisedBB);
+
+    BinOpInst =
+        BinaryOperator::CreateSub(DestValue, LoadAndCFValue);
+
+    AffectedEFlags.insert(EFLAGS::OF);
+    AffectedEFlags.insert(EFLAGS::CF);
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");

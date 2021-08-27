@@ -581,7 +581,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
                                     "testing and setting of EFLAGS");
 
     if ((x86MIRaiser->instrNameStartsWith(MI, "SUB")) ||
-        (x86MIRaiser->instrNameStartsWith(MI, "CMP"))) {
+        (x86MIRaiser->instrNameStartsWith(MI, "CMP")) ||
+        (x86MIRaiser->instrNameStartsWith(MI, "SBB"))) {
       IntrinsicOF = Intrinsic::ssub_with_overflow;
       TestArg[0] = TestInst->getOperand(0);
       TestArg[1] = TestInst->getOperand(1);
@@ -798,7 +799,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       RaisedBB->getInstList().push_back(CmpInst);
       NewCF = CmpInst;
     } else if ((x86MIRaiser->instrNameStartsWith(MI, "SUB")) ||
-               (x86MIRaiser->instrNameStartsWith(MI, "CMP"))) {
+               (x86MIRaiser->instrNameStartsWith(MI, "CMP")) ||
+               (x86MIRaiser->instrNameStartsWith(MI, "SBB"))) {
       Value *TestArg[2];
       Instruction *TestInst = dyn_cast<Instruction>(TestResultVal);
       assert((TestInst != nullptr) && "Expect test producing instruction while "

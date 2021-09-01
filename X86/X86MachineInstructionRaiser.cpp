@@ -292,8 +292,11 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
     Type *ImmTy = getImmOperandType(MI, 1);
     Value *SrcValue = ConstantInt::get(ImmTy, SrcImm);
 
-    SrcValue = getRaisedValues()->castValue(
-        SrcValue, getPhysRegType(DstPReg), getRaisedBasicBlock(MI.getParent()));
+    bool SignExtend = Opcode == X86::MOV64ri32;
+
+    SrcValue = getRaisedValues()->castValue(SrcValue, getPhysRegType(DstPReg),
+                                            getRaisedBasicBlock(MI.getParent()),
+                                            SignExtend);
 
     if (SrcImm > 0) {
       // Check if the immediate value corresponds to a global variable.

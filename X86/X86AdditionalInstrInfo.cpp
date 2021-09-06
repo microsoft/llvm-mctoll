@@ -633,7 +633,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::DIV32m, {4, DIVIDE_MEM_OP}},
     {X86::DIV32r, {0, DIVIDE_REG_OP}},
     {X86::DIV64m, {8, DIVIDE_MEM_OP}},
-    {X86::DIV64r, {0, Unknown}},
+    {X86::DIV64r, {0, DIVIDE_REG_OP}},
     {X86::DIV8m, {0, Unknown}},
     {X86::DIV8r, {0, Unknown}},
     {X86::DIVPDrm, {0, Unknown}},

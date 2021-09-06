@@ -4981,7 +4981,9 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     std::string BBName = MBBNo == 0 ? "entry" : "bb." + std::to_string(MBBNo);
     // Create a BasicBlock instance corresponding to MBB being looked at.
     // The raised form of MachineInstr of MBB will be added to curBlock.
-    BasicBlock *CurIBB = BasicBlock::Create(Ctx, BBName, CurFunction);
+    // Do not use CurFunction here, as CurFunction might change if it's return
+    // type is changed
+    BasicBlock *CurIBB = BasicBlock::Create(Ctx, BBName, getRaisedFunction());
     // Record the mapping of the number of MBB to corresponding BasicBlock.
     // This information is used to raise branch instructions, if any, of the
     // MBB in a later walk of MachineBasicBlocks of MF.

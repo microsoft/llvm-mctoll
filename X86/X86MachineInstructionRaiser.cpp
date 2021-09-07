@@ -3162,6 +3162,16 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
                                      MI.getParent()->getNumber(), CMP);
     Success = true;
   } break;
+  case X86::COND_AE: {
+    // Check if CF = 0
+    Pred = CmpInst::Predicate::ICMP_EQ;
+    Value *CFValue = getRegOrArgValue(EFLAGS::CF, MBBNo);
+    CmpInst *CMP = new ICmpInst(Pred, CFValue, FalseValue);
+    RaisedBB->getInstList().push_back(CMP);
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), CMP);
+    Success = true;
+  } break;
   case X86::COND_A: {
     // Check CF == 0 and ZF == 0
     Value *CFValue = getRegOrArgValue(EFLAGS::CF, MBBNo);

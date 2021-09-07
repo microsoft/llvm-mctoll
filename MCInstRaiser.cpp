@@ -299,7 +299,9 @@ uint64_t MCInstRaiser::getMCInstSize(uint64_t Offset) const {
 
 uint64_t MCInstRaiser::getMCInstIndex(const MachineInstr &MI) const {
   unsigned NumExpOps = MI.getNumExplicitOperands();
-  const MachineOperand &MO = MI.getOperand(NumExpOps);
+  const MachineOperand &MO = NumExpOps < MI.getNumOperands()
+                                 ? MI.getOperand(NumExpOps)
+                                 : MI.getOperand(MI.getNumOperands() - 1);
   assert(MO.isMetadata() &&
          "Unexpected non-metadata operand in branch instruction");
   const MDNode *MDN = MO.getMetadata();

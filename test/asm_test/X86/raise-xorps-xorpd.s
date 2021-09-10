@@ -8,6 +8,7 @@
 // CHECK: 1.0
 // CHECK: 0.0
 // CHECK: 0.0
+// CHECK: 0.0
 // CHECK-EMPTY
 
 .text
@@ -33,6 +34,15 @@ test_xorp_zero:
 .type    test_pxor,@function
 test_pxor:
     pxor xmm0, xmm1
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_pxor_zero,@function
+test_pxor_zero:
+    pxor xmm0, xmm0
     mov al, 1
     mov rdi, offset .L.str
     call printf
@@ -76,6 +86,9 @@ main:                                   # @main
     movsd xmm0, [.L.val]
     movss xmm1, [.L.val.2]
     call test_xorp_zero
+
+    movsd xmm0, [.L.val]
+    call test_pxor_zero
 
     xor rax, rax
     ret

@@ -2110,12 +2110,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     auto Opc = MI.getOpcode();
     auto MemSzInBits = getInstructionMemOpSize(Opc) * 8;
     if (isSSE2Instruction(Opc)) {
-      if (MemSzInBits == 32)
-        PtrTy = Type::getFloatPtrTy(Ctx);
-      else if (MemSzInBits == 64)
-        PtrTy = Type::getDoublePtrTy(Ctx);
-      else
-        llvm_unreachable("Unhandled memory access size of SSE2 instruction");
+      PtrTy = getRaisedValues()->getSSEInstructionType(MI, Ctx)->getPointerTo();
     } else {
       assert(MemSzInBits > 0 && "Unexpected memory access size of instruction");
       PtrTy = Type::getIntNPtrTy(Ctx, MemSzInBits);

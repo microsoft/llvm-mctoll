@@ -1231,25 +1231,25 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   InstructionKind InstrKind = getInstructionKind(MI.getOpcode());
   bool SSE2MemOp = ((InstrKind == InstructionKind::SSE_MOV_FROM_MEM) ||
                     (InstrKind == InstructionKind::SSE_MOV_TO_MEM));
-  switch (stackObjectSize) {
-  case 8:
-    MemOpTy = SSE2MemOp ? Type::getDoubleTy(llvmContext)
-                        : Type::getInt64Ty(llvmContext);
-    break;
-  case 4:
-    MemOpTy = SSE2MemOp ? Type::getFloatTy(llvmContext)
-                        : Type::getInt32Ty(llvmContext);
-    break;
-  case 2: {
-    assert(!SSE2MemOp && "Unexpected memory access sized SSE2 instruction");
-    MemOpTy = Type::getInt16Ty(llvmContext);
-  } break;
-  case 1: {
-    assert(!SSE2MemOp && "Unexpected memory access sized SSE2 instruction");
-    MemOpTy = Type::getInt8Ty(llvmContext);
-  } break;
-  default:
-    llvm_unreachable("Unexpected access size of memory ref instruction");
+  if (SSE2MemOp) {
+    MemOpTy = getRaisedValues()->getSSEInstructionType(MI, llvmContext);
+  } else {
+    switch (stackObjectSize) {
+    case 8:
+      MemOpTy = Type::getInt64Ty(llvmContext);
+      break;
+    case 4:
+      MemOpTy = Type::getInt32Ty(llvmContext);
+      break;
+    case 2:
+      MemOpTy = Type::getInt16Ty(llvmContext);
+      break;
+    case 1:
+      MemOpTy = Type::getInt8Ty(llvmContext);
+      break;
+    default:
+      llvm_unreachable("Unexpected access size of memory ref instruction");
+    }
   }
 
   assert(stackObjectSize != 0 && MemOpTy != nullptr &&

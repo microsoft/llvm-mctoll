@@ -1367,7 +1367,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         (dstReg == MI.getOperand(UseOp2Index).getReg())) {
       // No instruction to generate. Just set destReg value to 0.
       Type *DestTy = getPhysRegOperandType(MI, 0);
-      dstValue = ConstantFP::get(DestTy, 0);
+      if (DestTy->isFPOrFPVectorTy()) {
+        dstValue = ConstantFP::get(DestTy, 0);
+      } else {
+        dstValue = ConstantInt::get(DestTy, 0);
+      }
     } else {
       LLVMContext &Ctx(MF.getFunction().getContext());
 

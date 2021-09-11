@@ -63,6 +63,7 @@ add_llvm_tool(llvm-mctoll
   MCInstRaiser.cpp
   EmitRaisedOutputPass.cpp
   PeepholeOptimizationPass.cpp
+  PointerArgumentPromotionPass.cpp
   RuntimeFunction.cpp
 )
 

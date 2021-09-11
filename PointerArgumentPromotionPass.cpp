@@ -22,6 +22,8 @@ char PointerArgumentPromotionPass::ID = 0;
   If an integer argument is always used in inttoptr instructions,
   replace it with a pointer argument.
   Adjust all calls to this function to properly use the pointer arguments.
+  Raising the level of abstraction has the benefit of enabling better code
+  analysis and further optimizations.
 */
 static bool ReplacePtrArguments(Function *F) {
   std::map<Argument*, Type*> ArgPtrTy;

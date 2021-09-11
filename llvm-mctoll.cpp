@@ -17,6 +17,7 @@
 #include "MachineFunctionRaiser.h"
 #include "ModuleRaiser.h"
 #include "PeepholeOptimizationPass.h"
+#include "PointerArgumentPromotionPass.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -1457,6 +1458,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     // Add optimizations prior to emitting the output file.
     PM.add(new PeepholeOptimizationPass());
+    PM.add(new PointerArgumentPromotionPass());
 
     // Add print pass to emit ouptut file.
     PM.add(new EmitRaisedOutputPass(*OS, OutputFormat));

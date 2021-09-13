@@ -32,11 +32,11 @@ bool PeepholeOptimizationPass::runOnFunction(Function &F) {
         if (auto *BinOp = dyn_cast<BinaryOperator>(V)) {
 	  if (BinOp->getOpcode()==Instruction::Add) {
              /*
-               Simplifies the following pattern:
+               The code pattern bellow:
                  %tos = ptrtoint i8* %stktop_8 to i64
                  %0 = add i64 %tos, 16
                  %RBP_N.8 = inttoptr i64 %0 to i32*
-               replacing them with:
+               is replaced with:
                  %0 = getelementptr i8, i8* %stktop_8, i64 16
                  %RBP_N.8 = bitcast i8* %0 to i32*
              */
@@ -68,10 +68,10 @@ bool PeepholeOptimizationPass::runOnFunction(Function &F) {
                }
 	     } else if (isa<Argument>(BinOp->getOperand(0)) && isa<IntegerType>(BinOp->getOperand(0)->getType()) ) {
                 /*
-                  Simplifies the following pattern:
+                  The code pattern bellow:
                     %0 = add i64 %arg, 8
                     %RBP_N.8 = inttoptr i64 %0 to i64*
-                  eplacing them with:
+                  is replaced with:
                     %0 = inttoptr i64 %arg to i8*
                     %1 = getelementptr i8, i8* %0, i64 8
                     %RBP_N.8 = bitcast i8* %1 to i64*
@@ -98,9 +98,11 @@ bool PeepholeOptimizationPass::runOnFunction(Function &F) {
           }
         } else if (auto *P2I = dyn_cast<PtrToIntInst>(V)) {
 	  /*
-	    Simplifies the following pattern into a simple pointer casting.
+	    The code pattern bellow:
               %0 = ptrtoint i8* %stktop_8 to i64
               %1 = inttoptr i64 %0 to i32*
+	    is replaced with a simple pointer casting:
+	      %1 = bitcast i8* %stktop_8 to i32*
 	  */
           IRBuilder<> Builder(&I);
           auto *FinalPtr = Builder.CreatePointerCast(P2I->getOperand(0), I2P->getType());

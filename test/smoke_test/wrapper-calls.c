@@ -22,7 +22,7 @@
         that returns the tail call return is not possible.
 */
 
-#include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 void * __attribute__((noinline))

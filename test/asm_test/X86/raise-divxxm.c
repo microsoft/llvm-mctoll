@@ -3,7 +3,13 @@
 // RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
 // RUN: clang -o %t1 %t-dis.ll
 // RUN: %t1 2>&1 | FileCheck %s
-// CHECK: [Implicit AX/DX]
+// CHECK: [Implicit AH/AL]
+// CHECK-NEXT: Test 0xfa DIV8m 0xf0
+// CHECK-NEXT: Quotient = 0x1, Remainder = 0xa
+// CHECK-NEXT: [Implicit AH/AL]
+// CHECK-NEXT: Test 0xfffffffa IDIV8m 0xfffffff0
+// CHECK-NEXT: Quotient = 0xfffffff1, Remainder = 0xa
+// CHECK-NEXT: [Implicit AX/DX]
 // CHECK-NEXT: Test 0xf1d2 DIV16m 0xf123
 // CHECK-NEXT: Quotient = 0x1, Remainder = 0xaf
 // CHECK-NEXT: [Implicit EAX/EDX]
@@ -111,11 +117,59 @@ test_divm64_rax_rdx(unsigned long int a, unsigned long int b) {
   return 0;
 }
 
+// IDIV8m
+int __attribute__((noinline))
+test_idivm8(char a, char b) {
+  char q = 0;
+  char r = 0;
+  char spill; // spill loc
+
+  printf("[Implicit AH/AL]\nTest 0x%x IDIV8m 0x%x\n", a, b);
+
+  asm("movzbw  %[a], %%ax\n"
+      "mov %[b], %[spill]\n"
+      "idivb  %[spill]\n"
+      "mov  %%ah, %[r]\n"
+      "mov  %%al, %[q]\n"
+      : [q] "=r"(q), [r] "=r"(r),
+	[spill] "=m"(spill)                  /* output operands */
+      : [a] "r"(a), [b] "r"(b)                       /* input operands */
+      : "%ax"                                /* list of clobbered registers */
+  );
+
+  printf("Quotient = 0x%x, Remainder = 0x%x\n", q, r);
+  return 0;
+}
+
+// DIV8m
+int __attribute__((noinline))
+test_divm8(unsigned char a, unsigned char b) {
+  unsigned char q = 0;
+  unsigned char r = 0;
+  unsigned char spill; // spill loc
+
+  printf("[Implicit AH/AL]\nTest 0x%x DIV8m 0x%x\n", a, b);
+
+  asm("movzbw  %[a], %%ax\n"
+      "mov %[b], %[spill]\n"
+      "divb  %[spill]\n"
+      "mov  %%ah, %[r]\n"
+      "mov  %%al, %[q]\n"
+      : [q] "=r"(q), [r] "=r"(r),
+	[spill] "=m"(spill)                  /* output operands */
+      : [a] "r"(a), [b] "r"(b)               /* input operands */
+      : "%ax"                                /* list of clobbered registers */
+  );
+
+  printf("Quotient = 0x%x, Remainder = 0x%x\n", q, r);
+  return 0;
+}
+
 int main() {
+  test_divm8(0xFA, 0xF0);
+  test_idivm8(0xFA, 0xF0);
   test_divm16_ax_dx(0xF1D2, 0xF123);
-
   test_divm32_eax_edx(0x9FEEDDCC, 0xF8);
-
   test_divm64_rax_rdx(0xBBAACCDD12345678, 0xABCDEF);
   return 0;
 }

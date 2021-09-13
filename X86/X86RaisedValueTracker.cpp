@@ -347,8 +347,8 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     bool HasUnknownReachingDef = false;
     for (auto RD : ReachingDefs) {
       if (RD.second == nullptr) {
-        // we might not have found a incoming edge that tells us if we're dealing
-        // with int or floating point types -> continue for now
+        // we might not have found a incoming edge that tells us if we're
+        // dealing with int or floating point types -> continue for now
         HasUnknownReachingDef = true;
         continue;
       }
@@ -1085,11 +1085,13 @@ Value *X86RaisedValueTracker::getEflagReachingDef(unsigned int FlagBit,
 // Cast SrcVal to the type of DstVal, if their types are different.
 // Return the cast instruction upon inserting it at the end of InsertBlock
 Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
-                                        BasicBlock *InsertBlock) {
+                                        BasicBlock *InsertBlock,
+                                        bool SrcIsSigned) {
   if (SrcValue->getType() != DstTy) {
-    Instruction *CInst =
-        CastInst::Create(CastInst::getCastOpcode(SrcValue, false, DstTy, false),
-                         SrcValue, DstTy);
+    // If SrcValue is signed, Dst is also signed
+    Instruction *CInst = CastInst::Create(
+        CastInst::getCastOpcode(SrcValue, SrcIsSigned, DstTy, SrcIsSigned),
+        SrcValue, DstTy);
     // Set RODataIndex metadata
     setInstMetadataRODataIndex(SrcValue, CInst);
     // Add the cast instruction RaisedBB.
@@ -1100,9 +1102,10 @@ Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
   return SrcValue;
 }
 
-Value *X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
-                                                  BasicBlock *InsertBlock,
-                                                  Instruction *InsertBefore) {
+Value *
+X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
+                                              BasicBlock *InsertBlock,
+                                              Instruction *InsertBefore) {
   assert((InsertBlock != nullptr || InsertBefore != nullptr) &&
          "Expected either InsertBlock or InsertBefore to be not null");
 
@@ -1151,7 +1154,7 @@ Value *X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
 }
 
 Type *X86RaisedValueTracker::getSSEInstructionType(const MachineInstr &MI,
-                                                         LLVMContext &Ctx) {
+                                                   LLVMContext &Ctx) {
   uint64_t TSFlags = MI.getDesc().TSFlags;
 
   if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XS) {

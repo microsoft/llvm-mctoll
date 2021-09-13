@@ -70,7 +70,8 @@ public:
   unsigned getInBlockPhysRegSize(unsigned int PhysReg, int MBBNo);
   // Cast SrcVal to type DstTy, if the type of SrcVal is different from DstTy.
   // Return the cast instruction upon inserting it at the end of InsertBlock
-  Value *castValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock);
+  Value *castValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock,
+                   bool SrcIsSigned = false);
 
   // Cast SrcVal to type DstTy if the types are different. This function does
   // not change any bits in the value. This allows to interpret SSE register
@@ -81,7 +82,9 @@ public:
   // Return type: <0x0, 0x0, 0x0, (bitcast SrcVal as i32)>
   // If the passed value is larger than DstTy, the excess bits are truncated.
   // If the types are of the same size, the value is just bitcast
-  Value *reinterpretSSERegValue(Value *SrcVal, Type *DstTy, BasicBlock *InsertBlock = nullptr, Instruction *InsertBefore = nullptr);
+  Value *reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
+                                BasicBlock *InsertBlock = nullptr,
+                                Instruction *InsertBefore = nullptr);
   // Returns the type of an SSE instruction
   Type *getSSEInstructionType(const MachineInstr &, LLVMContext &);
 

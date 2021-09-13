@@ -1497,7 +1497,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   // Cast DestValue to the DestopTy, as for single-precision FP ops
   // DestValue type and DestopTy might be different.
   if (isSSE2Reg(DestPReg)) {
-    DestValue = getRaisedValues()->reinterpretSSERegValue(DestValue, DestopTy, RaisedBB);
+    DestValue = getRaisedValues()->reinterpretSSERegValue(DestValue, DestopTy,
+                                                          RaisedBB);
   } else {
     DestValue = getRaisedValues()->castValue(DestValue, DestopTy, RaisedBB);
   }
@@ -2301,7 +2302,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   return true;
 }
 
-// Raise idiv instruction with memory reference value
+// Raise signed or unsigned division instruction with memory reference value
 bool X86MachineInstructionRaiser::raiseDivideFromMemInstr(
     const MachineInstr &MI, Value *MemRefValue) {
   LLVMContext &Ctx(MF.getFunction().getContext());
@@ -2314,7 +2315,8 @@ bool X86MachineInstructionRaiser::raiseDivideFromMemInstr(
   return raiseDivideInstr(MI, SrcValue);
 }
 
-// Raise idiv instruction with source operand with value SrcValue.
+// Raise signed or unsigned division instruction with source operand with value
+// SrcValue.
 bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
                                                    Value *SrcValue) {
   const MCInstrDesc &MIDesc = MI.getDesc();
@@ -2324,125 +2326,145 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  // idiv uses AX(AH:AL or DX:AX or EDX:EAX or RDX:RAX pairs as dividend and
-  // stores the result in the same pair. Additionally, EFLAGS is an implicit
-  // def.
-  assert(MIDesc.getNumImplicitUses() == 2 && MIDesc.getNumImplicitDefs() == 3 &&
-         MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
-         "Unexpected number of implicit uses and defs in div instruction");
-  MCPhysReg UseDefReg_0 = MIDesc.ImplicitUses[0];
-  MCPhysReg UseDefReg_1 = MIDesc.ImplicitUses[1];
-  assert((UseDefReg_0 == MIDesc.ImplicitDefs[0]) &&
-         (UseDefReg_1 == MIDesc.ImplicitDefs[1]) &&
-         "Unexpected use/def registers in div instruction");
+  // div uses AX or DX:AX or EDX:EAX or RDX:RAX registers as dividend and
+  // stores the result in AX(AH:AL) or DX:AX or EDX:EAX or RDX:RAX.
+  // Additionally, EFLAGS is an implicit def.
+  bool is8BOperand =
+      (instrNameStartsWith(MI, "IDIV8") || instrNameStartsWith(MI, "DIV8"));
 
-  bool isSigned = true;
-  switch (MI.getOpcode()) {
-  case X86::DIV16m:
-  case X86::DIV32m:
-  case X86::DIV64m:
-    isSigned = false;
-    break;
-  default:
-    isSigned = true;
+  // Determine if the instruction is a signed division or not
+  bool isSigned = instrNameStartsWith(MI, "IDIV");
+
+  // Handle 8-bit division differentrly as it does not use register pairs.
+  if (is8BOperand) {
+    assert(MIDesc.getNumImplicitUses() == 1 &&
+           MIDesc.getNumImplicitDefs() == 3 &&
+           MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+           "Unexpected number of implicit uses and defs in div instruction");
+    // Ensure AX is the implicit use operand
+    MCPhysReg UseDefReg = MIDesc.ImplicitUses[0];
+    assert((UseDefReg == X86::AX) &&
+           "Expected AX operand of div instruction not found");
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    // This is the instruction result type
+    Type *ResultType = Type::getInt16Ty(Ctx);
+    Value *DividendValue = getPhysRegValue(MI, UseDefReg);
+    // Cast SrcValue and DividendValue to ResultType
+    Value *SrcValue16b =
+        getRaisedValues()->castValue(SrcValue, ResultType, RaisedBB, isSigned);
+    Value *DividendValue16b = getRaisedValues()->castValue(
+        DividendValue, ResultType, RaisedBB, isSigned);
+
+    // quotient
+    auto DivOp = (isSigned) ? Instruction::SDiv : Instruction::UDiv;
+    Instruction *Quotient = BinaryOperator::Create(
+        DivOp, DividendValue16b, SrcValue16b, "div8_q", RaisedBB);
+
+    // remainder
+    auto RemOp = (isSigned) ? Instruction::SRem : Instruction::URem;
+    Instruction *Remainder = BinaryOperator::Create(
+        RemOp, DividendValue16b, SrcValue16b, "div8_r", RaisedBB);
+
+    // Construct a value of ResultType holding quotient in AL and remainder in
+    // AH. Clear high-byte of Quotient
+    Instruction *ALValue = BinaryOperator::CreateAnd(
+        Quotient, ConstantInt::get(ResultType, 0xff), "div8_al", RaisedBB);
+    // Shift Remainder by 8
+    Instruction *AHValue = BinaryOperator::CreateShl(
+        Remainder, ConstantInt::get(ResultType, 8), "div8_ah", RaisedBB);
+    // Construct AX value
+    Instruction *AXValue =
+        BinaryOperator::CreateOr(ALValue, AHValue, "div8_ax", RaisedBB);
+    // CF, OF, SF, ZF, AF and PF flags are undefined. So, no need to generate
+    // code to compute any of the status flags. Update value of UseDefReg
+    raisedValues->setPhysRegSSAValue(UseDefReg, MI.getParent()->getNumber(),
+                                     AXValue);
+
+  } else {
+    assert(MIDesc.getNumImplicitUses() == 2 &&
+           MIDesc.getNumImplicitDefs() == 3 &&
+           MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
+           "Unexpected number of implicit uses and defs in div instruction");
+    MCPhysReg UseDefReg_0 = MIDesc.ImplicitUses[0];
+    MCPhysReg UseDefReg_1 = MIDesc.ImplicitUses[1];
+    assert((UseDefReg_0 == MIDesc.ImplicitDefs[0]) &&
+           (UseDefReg_1 == MIDesc.ImplicitDefs[1]) &&
+           "Unexpected use/def registers in div instruction");
+
+    Value *DividendLowBytes = getPhysRegValue(MI, UseDefReg_0);
+    Value *DividendHighBytes = getPhysRegValue(MI, UseDefReg_1);
+    if ((DividendLowBytes == nullptr) || (DividendHighBytes == nullptr))
+      return false;
+
+    // Divisor is srcValue.
+    // Create a Value representing the dividend.
+    assert((DividendLowBytes->getType() == DividendHighBytes->getType()) &&
+           "Unexpected types of dividend registers in div instruction");
+    unsigned int UseDefRegSize =
+        DividendLowBytes->getType()->getScalarSizeInBits();
+    // Generate the following code
+    // %h = lshl DividendHighBytes, UseDefRegSize
+    // %f = or %h, DividendLowBytes
+    // %quo = (s/u)div %f, srcValue
+    // %rem = (s/u)rem %f, srcValue
+    // UseDef_0 = %quo
+    // UseDef_1 = %rem
+
+    // Logical Shift left DividendHighBytes by n-bits (where n is the size of
+    // UseDefRegSize) to get the high bytes and set DefReg_1 to the resulting
+    // value.
+    // DoubleTy type is of type twice the use reg size
+    Type *DoubleTy = Type::getIntNTy(Ctx, UseDefRegSize * 2);
+    Value *ShiftAmountVal =
+        ConstantInt::get(DoubleTy, UseDefRegSize, false /* isSigned */);
+    // Cast DividendHighBytes and DividendLowBytes to types with double the
+    // size.
+    Value *DividendLowBytesDT = getRaisedValues()->castValue(
+        DividendLowBytes, DoubleTy, RaisedBB, isSigned);
+
+    Value *DividendHighBytesDT = getRaisedValues()->castValue(
+        DividendHighBytes, DoubleTy, RaisedBB, isSigned);
+
+    Instruction *LShlInst = BinaryOperator::CreateNUWShl(
+        DividendHighBytesDT, ShiftAmountVal, "div_hb_ls", RaisedBB);
+
+    // Combine the dividend values to get full dividend.
+    // or instruction
+    Instruction *FullDividend = BinaryOperator::CreateOr(
+        LShlInst, DividendLowBytesDT, "dividend", RaisedBB);
+
+    // Cast divisor (srcValue) to double type
+    Value *srcValueDT =
+        getRaisedValues()->castValue(SrcValue, DoubleTy, RaisedBB, isSigned);
+    // quotient
+    auto DivOp = (isSigned) ? Instruction::SDiv : Instruction::UDiv;
+    Instruction *QuotientDT = BinaryOperator::Create(
+        DivOp, FullDividend, srcValueDT, "div_q", RaisedBB);
+
+    // Cast Quotient back to UseDef reg value type
+    Value *Quotient = getRaisedValues()->castValue(
+        QuotientDT, DividendLowBytes->getType(), RaisedBB, isSigned);
+
+    // Update ssa val of UseDefReg_0
+    raisedValues->setPhysRegSSAValue(UseDefReg_0, MI.getParent()->getNumber(),
+                                     Quotient);
+
+    // remainder
+    auto RemOp = (isSigned) ? Instruction::SRem : Instruction::URem;
+    Instruction *RemainderDT = BinaryOperator::Create(
+        RemOp, FullDividend, srcValueDT, "div_r", RaisedBB);
+
+    // Cast RemainderDT back to UseDef reg value type
+    CastInst *Remainder = CastInst::Create(
+        CastInst::getCastOpcode(RemainderDT, isSigned,
+                                DividendHighBytes->getType(), isSigned),
+        RemainderDT, DividendHighBytes->getType(), "", RaisedBB);
+
+    // CF, OF, SF, ZF, AF and PF flags are undefined. So, no need to generate
+    // code to compute any of the status flags. Update value of UseDefReg_1
+    raisedValues->setPhysRegSSAValue(UseDefReg_1, MI.getParent()->getNumber(),
+                                     Remainder);
   }
-
-  Value *DividendLowBytes = getPhysRegValue(MI, UseDefReg_0);
-  Value *DividendHighBytes = getPhysRegValue(MI, UseDefReg_1);
-  if ((DividendLowBytes == nullptr) || (DividendHighBytes == nullptr))
-    return false;
-
-  // Divisor is srcValue.
-  // Create a Value representing the dividend.
-  // TODO: Not sure how the implicit use registers of IDIV8m are encode.
-  // Does the instruction have AX as a single use/def register or does it
-  // have 2 use/def registers, viz., AH:AL pair similar to the other IDIV
-  // instructions? Handle it when it is encountered.
-  assert((DividendLowBytes->getType() == DividendHighBytes->getType()) &&
-         "Unexpected types of dividend registers in idiv instruction");
-  unsigned int UseDefRegSize =
-      DividendLowBytes->getType()->getScalarSizeInBits();
-  // Generate the following code
-  // %h = lshl DividendHighBytes, UseDefRegSize
-  // %f = or %h, DividendLowBytes
-  // %quo = idiv %f, srcValue
-  // %rem = irem %f, srcValue
-  // UseDef_0 = %quo
-  // UseDef_1 = %rem
-
-  // Logical Shift left DividendHighBytes by n-bits (where n is the size of
-  // UseDefRegSize) to get the high bytes and set DefReg_1 to the resulting
-  // value.
-  // DoubleTy type is of type twice the use reg size
-  Type *DoubleTy = Type::getIntNTy(Ctx, UseDefRegSize * 2);
-  Value *ShiftAmountVal =
-      ConstantInt::get(DoubleTy, UseDefRegSize, false /* isSigned */);
-  // Cast DividendHighBytes and DividendLowBytes to types with double the
-  // size.
-  CastInst *DividendLowBytesDT = CastInst::Create(
-      CastInst::getCastOpcode(DividendLowBytes, isSigned, DoubleTy, isSigned),
-      DividendLowBytes, DoubleTy);
-  RaisedBB->getInstList().push_back(DividendLowBytesDT);
-
-  CastInst *DividendHighBytesDT = CastInst::Create(
-      CastInst::getCastOpcode(DividendHighBytes, isSigned, DoubleTy, isSigned),
-      DividendHighBytes, DoubleTy);
-  RaisedBB->getInstList().push_back(DividendHighBytesDT);
-
-  Instruction *LShlInst =
-      BinaryOperator::CreateNUWShl(DividendHighBytesDT, ShiftAmountVal);
-  RaisedBB->getInstList().push_back(LShlInst);
-
-  // Combine the dividend values to get full dividend.
-  // or instruction
-  Instruction *FullDividend =
-      BinaryOperator::CreateOr(LShlInst, DividendLowBytesDT);
-  RaisedBB->getInstList().push_back(FullDividend);
-
-  // Cast divisor (srcValue) to double type
-  CastInst *srcValueDT = CastInst::Create(
-      CastInst::getCastOpcode(SrcValue, isSigned, DoubleTy, isSigned), SrcValue,
-      DoubleTy);
-  RaisedBB->getInstList().push_back(srcValueDT);
-
-  // quotient
-  Instruction *QuotientDT = nullptr;
-  if (isSigned)
-    QuotientDT = BinaryOperator::CreateSDiv(FullDividend, srcValueDT);
-  else
-    QuotientDT = BinaryOperator::CreateUDiv(FullDividend, srcValueDT);
-  RaisedBB->getInstList().push_back(QuotientDT);
-
-  // Cast Quotient back to UseDef reg value type
-  CastInst *Quotient = CastInst::Create(
-      CastInst::getCastOpcode(QuotientDT, isSigned, DividendLowBytes->getType(),
-                              isSigned),
-      QuotientDT, DividendLowBytes->getType());
-
-  RaisedBB->getInstList().push_back(Quotient);
-  // Update ssa val of UseDefReg_0
-  raisedValues->setPhysRegSSAValue(UseDefReg_0, MI.getParent()->getNumber(),
-                                   Quotient);
-
-  // remainder
-  Instruction *RemainderDT = nullptr;
-  if (isSigned)
-    RemainderDT = BinaryOperator::CreateSRem(FullDividend, srcValueDT);
-  else
-    RemainderDT = BinaryOperator::CreateURem(FullDividend, srcValueDT);
-  RaisedBB->getInstList().push_back(RemainderDT);
-
-  // Cast RemainderDT back to UseDef reg value type
-  CastInst *Remainder = CastInst::Create(
-      CastInst::getCastOpcode(RemainderDT, isSigned,
-                              DividendHighBytes->getType(), isSigned),
-      RemainderDT, DividendHighBytes->getType());
-
-  RaisedBB->getInstList().push_back(Remainder);
-  // CF, OF, SF, ZF, AF and PF flags are undefined. So, no need to generate code
-  // to compute any of the status flags. Update ssa val of UseDefReg_1
-  raisedValues->setPhysRegSSAValue(UseDefReg_1, MI.getParent()->getNumber(),
-                                   Remainder);
 
   return true;
 }
@@ -2632,13 +2654,11 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
   raisedValues->setEflagBoolean(EFLAGS::CF, MBBNo, false);
   // CmpInst is of type Value * to allow for a potential need to pass it to
   // castValue(), if needed.
-  Value *CmpInst = nullptr;
   // If MI is a test instruction, the compare instruction should be an and
   // instruction.
-  if (isTESTInst)
-    CmpInst = BinaryOperator::CreateAnd(OpValues[0], OpValues[1]);
-  else
-    CmpInst = BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
+  Value *CmpInst = (isTESTInst)
+                       ? BinaryOperator::CreateAnd(OpValues[0], OpValues[1])
+                       : BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
   // Casting CmpInst to instruction to be added to the raised basic
   // block is correct since it is known to be specifically of type Instruction.
   RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CmpInst));
@@ -4062,8 +4082,8 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   // Ensure RetValue type match RetType
   if (RetValue != nullptr) {
     if (retReg == X86::XMM0) {
-      RetValue =
-          getRaisedValues()->reinterpretSSERegValue(RetValue, RetType, RaisedBB);
+      RetValue = getRaisedValues()->reinterpretSSERegValue(RetValue, RetType,
+                                                           RaisedBB);
     } else {
       RetValue = getRaisedValues()->castValue(RetValue, RetType, RaisedBB);
     }

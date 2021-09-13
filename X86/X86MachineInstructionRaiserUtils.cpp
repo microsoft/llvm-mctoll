@@ -193,8 +193,8 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
     // content and should not be loaded from.
     if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
       LoadFromMemrefValue = !(GV->hasInitializer());
-      // If it is not a PC-relative constant expression accessed using
-      // GetElementPtrInst, it is memory content and should not be loaded from.
+    // If it is not a PC-relative constant expression accessed using
+    // GetElementPtrInst, it is memory content and should not be loaded from.
     else {
       const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(MemRefValue);
       if (CExpr != nullptr) {
@@ -1503,8 +1503,8 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
         // This is an undefined function symbol. Look through the list of
         // user provided function prototypes and construct a Function
         // accordingly.
-        CalledFunc = IncludedFileInfo::CreateFunction(*CalledFuncSymName,
-                                               *const_cast<ModuleRaiser *>(MR));
+        CalledFunc = IncludedFileInfo::CreateFunction(
+            *CalledFuncSymName, *const_cast<ModuleRaiser *>(MR));
         // Bail out if function prototype is not available
         if (!CalledFunc)
           exit(-1);
@@ -1879,7 +1879,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             GlobalInit = ConstantInt::get(GlobalValTy, SV);
         }
 
-        // Declare external global variables as external and don't initalize them
+        // Declare external global variables as external and don't initalize
+        // them
         if (IncludedFileInfo::IsExternalVariable(
                 GlobalDataSymNameIndexStrRef.str())) {
           Lnkg = GlobalValue::ExternalLinkage;
@@ -2004,7 +2005,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
     if (IndexRegVal->getType()->isPointerTy()) {
       Type *LdTy = IndexRegVal->getType()->getPointerElementType();
       LoadInst *LdInst =
-        new LoadInst(LdTy, IndexRegVal, "memload", false, Align());
+          new LoadInst(LdTy, IndexRegVal, "memload", false, Align());
       RaisedBB->getInstList().push_back(LdInst);
       IndexRegVal = LdInst;
     }
@@ -2251,7 +2252,8 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
   const MachineOperand &MO = MI.getOperand(OpIndex);
   Value *PRegValue = nullptr; // Unknown, to start with.
   assert(MO.isReg() && "Register operand expected");
-  PRegValue = getRegOrArgValue(MO.getReg(), MI.getParent()->getNumber());
+  auto PReg = MO.getReg();
+  PRegValue = getRegOrArgValue(PReg, MI.getParent()->getNumber());
 
   if (PRegValue != nullptr) {
     // Cast the value in accordance with the register size of the operand,
@@ -2259,9 +2261,23 @@ Value *X86MachineInstructionRaiser::getRegOperandValue(const MachineInstr &MI,
     Type *PRegTy = getPhysRegOperandType(MI, OpIndex);
     // Get the BasicBlock corresponding to MachineBasicBlock of MI.
     BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-    if (isSSE2Reg(MO.getReg())) {
-      PRegValue = getRaisedValues()->reinterpretSSERegValue(PRegValue, PRegTy, RaisedBB);
+    if (isSSE2Reg(PReg)) {
+      PRegValue = getRaisedValues()->reinterpretSSERegValue(PRegValue, PRegTy,
+                                                            RaisedBB);
     } else {
+      // If PReg is one of AH, BH, CH or DH extract and return the high-byte of
+      // PRegValue.
+      if ((PReg == X86::AH) || (PReg == X86::BH) || (PReg == X86::CH) ||
+          (PReg == X86::DH)) {
+        LLVMContext &Ctx(MF.getFunction().getContext());
+        // Cast the value to i16
+        Value *PRegValue16b = getRaisedValues()->castValue(
+            PRegValue, Type::getInt16Ty(Ctx), RaisedBB);
+        // Perform logical shift of PRValue
+        PRegValue = BinaryOperator::CreateLShr(
+            PRegValue16b, ConstantInt::get(PRegValue16b->getType(), 8), "",
+            RaisedBB);
+      }
       PRegValue = getRaisedValues()->castValue(PRegValue, PRegTy, RaisedBB);
     }
   }

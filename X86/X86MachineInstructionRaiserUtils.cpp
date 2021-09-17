@@ -67,6 +67,7 @@ Value *X86MachineInstructionRaiser::getMemoryRefValue(const MachineInstr &MI) {
       case InstructionKind::DIVIDE_MEM_OP:
       case InstructionKind::LOAD_FPU_REG:
       case InstructionKind::SSE_COMPARE_RM:
+      case InstructionKind::BIT_TEST_OP:
         break;
       default:
         MI.print(errs());

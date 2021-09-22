@@ -1480,6 +1480,27 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, Result);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, Result);
   } break;
+  case X86::SQRTSDr:
+  case X86::SQRTSDr_Int:
+  case X86::SQRTSSr:
+  case X86::SQRTSSr_Int: {
+    LLVMContext &Ctx(MF.getFunction().getContext());
+
+    Type *InstrTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+    Value *SrcValue = getRaisedValues()->reinterpretSSERegValue(
+        ExplicitSrcValues.at(0), InstrTy, RaisedBB);
+
+    Module *M = MR->getModule();
+    auto IntrinsicFunc = Intrinsic::getDeclaration(M, Intrinsic::sqrt, InstrTy);
+
+    Value *IntrinsicCallArgs[] = {SrcValue};
+    auto Result = CallInst::Create(
+        IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs), "", RaisedBB);
+    raisedValues->setInstMetadataRODataIndex(SrcValue, Result);
+
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
+  } break;
   default:
     MI.dump();
     assert(false && "Unhandled binary instruction");
@@ -1644,6 +1665,23 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
 
     AffectedEFlags.insert(EFLAGS::OF);
     AffectedEFlags.insert(EFLAGS::CF);
+  } break;
+  case X86::SQRTSDm:
+  case X86::SQRTSDm_Int:
+  case X86::SQRTSSm:
+  case X86::SQRTSSm_Int: {
+    LLVMContext &Ctx(MF.getFunction().getContext());
+
+    Type *InstrTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+    assert(LoadValue->getType() == InstrTy &&
+           "Unexpected value type for sqrtsd/sqrtss instruction");
+
+    Module *M = MR->getModule();
+    auto IntrinsicFunc = Intrinsic::getDeclaration(M, Intrinsic::sqrt, InstrTy);
+
+    Value *IntrinsicCallArgs[] = {LoadValue};
+    BinOpInst = CallInst::Create(
+        IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");

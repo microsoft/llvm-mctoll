@@ -913,7 +913,14 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Set the dstReg value
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
-  case X86::IMUL64r: {
+  case X86::IMUL16r:
+  case X86::IMUL32r:
+  case X86::IMUL64r:
+  case X86::MUL16r:
+  case X86::MUL32r:
+  case X86::MUL64r: {
+    bool IsSigned = instrNameStartsWith(MI, "IMUL");
+
     assert(MCID.getNumDefs() == 0 && MCID.getNumImplicitDefs() == 3 &&
            MCID.getNumImplicitUses() == 1 &&
            "Unexpected operands in imul instruction");
@@ -948,16 +955,16 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     LLVMContext &Ctx(MF.getFunction().getContext());
     // Widen the source values since the result of the multiplication
     Type *WideTy = Type::getIntNTy(Ctx, SrcOpSize * 2);
-    CastInst *Src1ValueDT =
-        CastInst::Create(CastInst::getCastOpcode(Src1Value, true, WideTy, true),
-                         Src1Value, WideTy);
+    CastInst *Src1ValueDT = CastInst::Create(
+        CastInst::getCastOpcode(Src1Value, IsSigned, WideTy, IsSigned),
+        Src1Value, WideTy);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, Src1ValueDT);
     RaisedBB->getInstList().push_back(Src1ValueDT);
 
-    CastInst *Src2ValueDT =
-        CastInst::Create(CastInst::getCastOpcode(Src2Value, true, WideTy, true),
-                         Src2Value, WideTy);
+    CastInst *Src2ValueDT = CastInst::Create(
+        CastInst::getCastOpcode(Src2Value, IsSigned, WideTy, IsSigned),
+        Src2Value, WideTy);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src2Value, Src2ValueDT);
     RaisedBB->getInstList().push_back(Src2ValueDT);
@@ -971,8 +978,6 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Shift amount equal to size of source operand
     Value *ShiftAmountVal =
         ConstantInt::get(FullProductValue->getType(), SrcOpSize);
-    Value *ZeroValueDT =
-        ConstantInt::get(FullProductValue->getType(), 0, false /* isSigned */);
 
     // Split the value into ImplicitDefs[0]:ImplicitDefs[1]
     // Compute shr of FullProductValue
@@ -981,56 +986,56 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(FullProductValue, ShrDT);
     RaisedBB->getInstList().push_back(ShrDT);
-    // Now generate ShrDT OR 0
-    Instruction *OrDT = BinaryOperator::CreateOr(ShrDT, ZeroValueDT);
+    // Truncate ShrDT to SrcOpSize
+    Type *SrcValTy = Type::getIntNTy(Ctx, SrcOpSize);
+    CastInst *ProductUpperValue =
+        CastInst::Create(CastInst::Trunc, ShrDT, SrcValTy);
     // Copy any necessary rodata related metadata
-    raisedValues->setInstMetadataRODataIndex(ShrDT, OrDT);
-    RaisedBB->getInstList().push_back(OrDT);
-    // Cast OrValDT to SrcOpSize
-    Type *SrcValTy = Src1Value->getType();
-    CastInst *ProductUpperValue = CastInst::Create(
-        CastInst::getCastOpcode(OrDT, true, SrcValTy, true), OrDT, SrcValTy);
-    // Copy any necessary rodata related metadata
-    raisedValues->setInstMetadataRODataIndex(OrDT, ProductUpperValue);
+    raisedValues->setInstMetadataRODataIndex(ShrDT, ProductUpperValue);
     RaisedBB->getInstList().push_back(ProductUpperValue);
-    // Set the value of ImplicitDef[0] as ProductLowreHalfValue
-    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[0], MBBNo,
+    // Set the value of ImplicitDef[1] as ProductLowreHalfValue
+    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[1], MBBNo,
                                      ProductUpperValue);
 
-    // Now generate and instruction to get lower half value
-    Value *MaskValue = Constant::getAllOnesValue(SrcValTy);
-    Instruction *MaskValDT =
-        CastInst::Create(CastInst::getCastOpcode(MaskValue, true, WideTy, true),
-                         MaskValue, WideTy);
-    RaisedBB->getInstList().push_back(MaskValDT);
-
-    Instruction *AndValDT =
-        BinaryOperator::CreateAnd(FullProductValue, MaskValDT);
+    // Truncate the multiplication result to get the lower half value
+    CastInst *ProductLowerHalfValue =
+        CastInst::Create(CastInst::Trunc, FullProductValue, SrcValTy);
     // Copy any necessary rodata related metadata
-    raisedValues->setInstMetadataRODataIndex(FullProductValue, AndValDT);
-    RaisedBB->getInstList().push_back(AndValDT);
-    // Cast AndValDT to SrcOpSize
-    CastInst *ProductLowerHalfValue = CastInst::Create(
-        CastInst::getCastOpcode(AndValDT, true, SrcValTy, true), AndValDT,
-        SrcValTy);
-    // Copy any necessary rodata related metadata
-    raisedValues->setInstMetadataRODataIndex(AndValDT, ProductLowerHalfValue);
+    raisedValues->setInstMetadataRODataIndex(FullProductValue,
+                                             ProductLowerHalfValue);
     RaisedBB->getInstList().push_back(ProductLowerHalfValue);
-    // Set the value of ImplicitDef[1] as ProductLowerHalfValue
-    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[1], MBBNo,
+    // Set the value of ImplicitDef[0] as ProductLowerHalfValue
+    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[0], MBBNo,
                                      ProductLowerHalfValue);
-    // Set OF and CF flags to 0 if upper half of the result is 0; else to 1.
-    Value *ZeroValue = ConstantInt::get(SrcValTy, 0, false /* isSigned */);
 
-    Instruction *ZFTest =
-        new ICmpInst(CmpInst::Predicate::ICMP_EQ, ProductLowerHalfValue,
-                     ZeroValue, "Test_Zero");
+    if (IsSigned) {
+      // For IMUL instruction, we check if the full result is equal to the
+      // sign-extended lower half If they are equal, set OF and CF to 0, 1
+      // otherwise
+      auto LowerSExtended = CastInst::Create(
+          CastInst::SExt, ProductLowerHalfValue, WideTy, "", RaisedBB);
+      auto EqualToFullValue = new ICmpInst(CmpInst::Predicate::ICMP_NE,
+                                           LowerSExtended, FullProductValue);
+      RaisedBB->getInstList().push_back(EqualToFullValue);
 
-    RaisedBB->getInstList().push_back(ZFTest);
-    raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::OF, MBBNo,
-                                     ZFTest);
-    raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::SF, MBBNo,
-                                     ZFTest);
+      raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::OF, MBBNo,
+                                       EqualToFullValue);
+      raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::CF, MBBNo,
+                                       EqualToFullValue);
+    } else {
+      // Set OF and CF flags to 0 if upper half of the result is 0; else to 1.
+      Value *ZeroValue = ConstantInt::get(SrcValTy, 0, IsSigned);
+
+      Instruction *ZFTest =
+          new ICmpInst(CmpInst::Predicate::ICMP_NE, ProductUpperValue,
+                       ZeroValue, "Test_Not_Zero");
+
+      RaisedBB->getInstList().push_back(ZFTest);
+      raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::OF, MBBNo,
+                                       ZFTest);
+      raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::CF, MBBNo,
+                                       ZFTest);
+    }
   } break;
   case X86::AND8rr:
   case X86::AND16rr:

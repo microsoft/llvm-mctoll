@@ -15,9 +15,9 @@ char PeepholeOptimizationPass::ID = 0;
 
 bool PeepholeOptimizationPass::runOnFunction(Function &F) {
   for (BasicBlock &BB : F) {
-    
+
     auto It = BB.begin();
-    while (It!=BB.end()) {
+    while (It != BB.end()) {
       Instruction &I = *It;
       It++;
 
@@ -32,49 +32,58 @@ bool PeepholeOptimizationPass::runOnFunction(Function &F) {
             replacing them with:
               %0 = getelementptr i8, i8* %stktop_8, i64 16
               %RBP_N.8 = bitcast i8* %0 to i32*
-            This has a significant impact when recompiling the raised program with other
-            optimizations, such as -O2.
+            This has a significant impact when recompiling the raised program
+            with other optimizations, such as -O2.
           */
           auto *P2I = dyn_cast<PtrToIntInst>(BinOp->getOperand(0));
-          if (P2I && (BinOp->getOpcode()==Instruction::Add || BinOp->getOpcode()==Instruction::Or)) {
-             auto *Ptr = P2I->getOperand(0);
-  
-             auto *PtrElemTy = dyn_cast<PointerType>(Ptr->getType())->getElementType();
-             if (isa<IntegerType>(PtrElemTy)) {
-               Value *Idx = BinOp->getOperand(1);
-               std::vector<Value*> GEPIdx;
-               GEPIdx.push_back(Idx);
+          if (P2I && (BinOp->getOpcode() == Instruction::Add ||
+                      BinOp->getOpcode() == Instruction::Or)) {
+            auto *Ptr = P2I->getOperand(0);
 
-               IRBuilder<> Builder(&I);
+            auto *PtrElemTy =
+                dyn_cast<PointerType>(Ptr->getType())->getElementType();
+            if (isa<IntegerType>(PtrElemTy)) {
+              Value *Idx = BinOp->getOperand(1);
+              std::vector<Value *> GEPIdx;
+              GEPIdx.push_back(Idx);
 
-               auto *BytePtrTy = PointerType::getUnqual(IntegerType::get(F.getContext(),8));
-               auto *BytePtr = Builder.CreatePointerCast(Ptr, BytePtrTy);
+              IRBuilder<> Builder(&I);
 
-               auto *GEP = Builder.CreateGEP(BytePtr, GEPIdx);
-  
-               auto *FinalPtr = Builder.CreatePointerCast(GEP, I2P->getType());
-               I2P->replaceAllUsesWith(FinalPtr);
+              auto *BytePtrTy =
+                  PointerType::getUnqual(IntegerType::get(F.getContext(), 8));
+              auto *BytePtr = Builder.CreatePointerCast(Ptr, BytePtrTy);
 
-               FinalPtr->takeName(I2P);
-               I2P->eraseFromParent();
+              auto *GEP = Builder.CreateGEP(
+                  BytePtr->getType()->getScalarType()->getPointerElementType(),
+                  BytePtr, GEPIdx);
 
-               if (BinOp->getNumUses()==0) BinOp->eraseFromParent();
-               if (P2I->getNumUses()==0) P2I->eraseFromParent();
-             }
+              auto *FinalPtr = Builder.CreatePointerCast(GEP, I2P->getType());
+              I2P->replaceAllUsesWith(FinalPtr);
+
+              FinalPtr->takeName(I2P);
+              I2P->eraseFromParent();
+
+              if (BinOp->getNumUses() == 0)
+                BinOp->eraseFromParent();
+              if (P2I->getNumUses() == 0)
+                P2I->eraseFromParent();
+            }
           }
         } else if (auto *P2I = dyn_cast<PtrToIntInst>(V)) {
-	  /*
-	    Simplifies the following pattern into a simple pointer casting.
+          /*
+            Simplifies the following pattern into a simple pointer casting.
               %0 = ptrtoint i8* %stktop_8 to i64
               %1 = inttoptr i64 %0 to i32*
-	  */
+          */
           IRBuilder<> Builder(&I);
-          auto *FinalPtr = Builder.CreatePointerCast(P2I->getOperand(0), I2P->getType());
+          auto *FinalPtr =
+              Builder.CreatePointerCast(P2I->getOperand(0), I2P->getType());
           I2P->replaceAllUsesWith(FinalPtr);
 
           FinalPtr->takeName(I2P);
           I2P->eraseFromParent();
-          if (P2I->getNumUses()==0) P2I->eraseFromParent();
+          if (P2I->getNumUses() == 0)
+            P2I->eraseFromParent();
         }
       }
     }

@@ -45,6 +45,7 @@ enum InstructionKind : uint8_t {
   NOOP,
   INPLACE_MEM_OP,
   SETCC,
+  BIT_TEST_OP,
   STORE_FPU_REG,
   SSE_KIND_BEGIN,
   SSE_MOV_TO_MEM,

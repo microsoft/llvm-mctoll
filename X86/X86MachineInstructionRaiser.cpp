@@ -2511,6 +2511,147 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
   return true;
 }
 
+bool X86MachineInstructionRaiser::raiseBitTestMachineInstr(
+    const MachineInstr &MI, Value *MemRefValue, bool isMemBT) {
+  // Get index of memory reference in the instruction.
+  int memoryRefOpIndex = getMemoryRefOpIndex(MI);
+  int MBBNo = MI.getParent()->getNumber();
+  assert((((memoryRefOpIndex != -1) && isMemBT) ||
+          ((memoryRefOpIndex == -1) && !isMemBT)) &&
+         "Inconsistent memory reference operand information specified for "
+         "compare instruction");
+  MCInstrDesc MCIDesc = MI.getDesc();
+  unsigned NumImplicitUses = MCIDesc.getNumImplicitUses();
+  // Get the BasicBlock corresponding to MachineBasicBlock of MI.
+  // Raised instruction is added to this BasicBlock.
+  BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
+
+  SmallVector<Value *, 2> OpValues{nullptr, nullptr};
+
+  bool isBTSInstr = instrNameStartsWith(MI, "BTS");
+  bool isBTRInstr = instrNameStartsWith(MI, "BTR");
+  bool isBTCInstr = instrNameStartsWith(MI, "BTC");
+
+  unsigned Op2Index;
+  if (isMemBT) {
+    assert(MemRefValue != nullptr && "Null memory reference value encountered "
+                                     "while raising compare instruction");
+    assert(memoryRefOpIndex == 0 &&
+           "Unexpected memory operand index in compare instruction");
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    auto MemOpSize = getInstructionMemOpSize(MI.getOpcode());
+    assert(MemOpSize != 0 && "Expected mem op size to be > 0");
+
+    Type *OpTy = Type::getIntNTy(Ctx, MemOpSize * 8);
+
+    auto LoadedVal =
+        loadMemoryRefValue(MI, MemRefValue, memoryRefOpIndex, OpTy);
+
+    OpValues[0] = LoadedVal;
+    Op2Index = X86::AddrNumOperands;
+  } else {
+    // The instruction operands do not reference memory
+    unsigned Op1Index;
+
+    if (NumImplicitUses == 1) {
+      // If an implicit operand is used, that is op1.
+      MCPhysReg UseReg = MCIDesc.ImplicitUses[0];
+      Op1Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
+      Op2Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
+    } else {
+      // Explicit operands are used
+      Op1Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
+      Op2Index = Op1Index + 1;
+    }
+
+    MachineOperand CmpOp1 = MI.getOperand(Op1Index);
+
+    assert((CmpOp1.isReg()) &&
+           "Unhandled first operand type in bt instruction");
+
+    OpValues[0] = getRegOrArgValue(CmpOp1.getReg(), MBBNo);
+  }
+
+  MachineOperand Op2 = MI.getOperand(Op2Index);
+  Value *Op2Val = nullptr;
+  if (Op2.isReg()) {
+    Op2Val = raisedValues->castValue(getRegOrArgValue(Op2.getReg(), MBBNo),
+                                     OpValues[0]->getType(), RaisedBB);
+  } else if (Op2.isImm()) {
+    Op2Val = ConstantInt::get(OpValues[0]->getType(), Op2.getImm());
+  } else {
+    LLVM_DEBUG(MI.dump());
+    assert(false && "Unhandled operand type in compare instruction");
+  }
+  OpValues[1] = Op2Val;
+
+  assert(OpValues[0] != nullptr && OpValues[1] != nullptr &&
+         "Unable to materialize compare operand values");
+
+  assert((OpValues[0]->getType() == OpValues[1]->getType()) &&
+         "Mis-matched operand types encountered while raising bt instruction");
+
+  // An index greater than the width of the first operand should wrap around
+  auto BitWidth = OpValues[0]->getType()->getPrimitiveSizeInBits();
+  auto ModuloOperand = ConstantInt::get(OpValues[1]->getType(), BitWidth);
+  auto PositionModulo =
+      BinaryOperator::CreateURem(OpValues[1], ModuloOperand, "", RaisedBB);
+
+  // Create a bitmask to select the bit we want to check
+  auto ConstOne = ConstantInt::get(OpValues[0]->getType(), 1);
+  auto BitMask =
+      BinaryOperator::CreateShl(ConstOne, PositionModulo, "", RaisedBB);
+
+  // Check if the bit is set by checking if logical and with the bitmask is not
+  // zero
+  auto BitValue = BinaryOperator::CreateAnd(OpValues[0], BitMask, "", RaisedBB);
+  auto ConstZero = ConstantInt::get(OpValues[0]->getType(), 0);
+  auto CFValue = ICmpInst::Create(Instruction::ICmp, ICmpInst::ICMP_NE,
+                                  BitValue, ConstZero, "", RaisedBB);
+
+  raisedValues->setEflagValue(EFLAGS::CF, MI.getParent()->getNumber(), CFValue);
+
+  // For BTS, BTR and BTC the bit at the specified index needs to be changed
+  Value *WriteBackVal = nullptr;
+  if (isBTSInstr) {
+    // Set the bit to 1
+    WriteBackVal = BinaryOperator::CreateOr(OpValues[0], BitMask, "", RaisedBB);
+  } else if (isBTRInstr) {
+    // Set the bit to 0
+    BitMask = BinaryOperator::CreateNot(BitMask, "", RaisedBB);
+    WriteBackVal =
+        BinaryOperator::CreateAnd(OpValues[0], BitMask, "", RaisedBB);
+  } else if (isBTCInstr) {
+    // Flip the bit
+    WriteBackVal =
+        BinaryOperator::CreateXor(OpValues[0], BitMask, "", RaisedBB);
+  }
+
+  if (WriteBackVal != nullptr) {
+    if (isMemBT) {
+      assert(MemRefValue->getType()->isPointerTy() &&
+             "Expected MemRefVal to be of pointer type for bt instruction");
+      if (MemRefValue->getType()->getPointerElementType() !=
+          WriteBackVal->getType()) {
+        MemRefValue = new BitCastInst(
+            MemRefValue, WriteBackVal->getType()->getPointerTo(), "", RaisedBB);
+      }
+      new StoreInst(WriteBackVal, MemRefValue, RaisedBB);
+    } else {
+      assert(MCIDesc.getNumDefs() == 1 &&
+             "Expected one def for bt instruction");
+      auto DestOp = MI.getOperand(0);
+      assert(DestOp.isReg() &&
+             "Expected dest to be register for bt instruction");
+      raisedValues->setPhysRegSSAValue(
+          DestOp.getReg(), MI.getParent()->getNumber(), WriteBackVal);
+    }
+  }
+
+  return true;
+}
+
 // Raise compare instruction. If the the instruction is a memory compare, it
 // is expected that this function is called from raiseMemRefMachineInstr
 // after verifying the accessibility of memory location and with
@@ -2812,6 +2953,8 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     return raiseSSECompareFromMemMachineInstr(MI, MemoryRefValue);
   case InstructionKind::SSE_CONVERT_RM:
     return raiseSSEConvertPrecisionFromMemMachineInstr(MI, MemoryRefValue);
+  case InstructionKind::BIT_TEST_OP:
+    return raiseBitTestMachineInstr(MI, MemoryRefValue, true);
   default:
     LLVM_DEBUG(MI.dump());
     assert(false && "Unhandled memory referencing instruction");
@@ -4049,6 +4192,9 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
         getRegOrArgValue(SrcOp.getReg(), MI.getParent()->getNumber());
     success = raiseDivideInstr(MI, SrcVal);
   } break;
+  case InstructionKind::BIT_TEST_OP:
+    success = raiseBitTestMachineInstr(MI, nullptr, false);
+    break;
   case InstructionKind::SSE_MOV_RR:
     success = raiseSSEMoveRegToRegMachineInstr(MI);
     break;

@@ -13844,8 +13844,6 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::V_SETALLONES, {0, Unknown}},
     {X86::WAIT, {0, Unknown}},
     {X86::WBINVD, {0, Unknown}},
-    {X86::WIN_ALLOCA_32, {0, Unknown}},
-    {X86::WIN_ALLOCA_64, {0, Unknown}},
     {X86::WRFLAGS32, {0, Unknown}},
     {X86::WRFLAGS64, {0, Unknown}},
     {X86::WRFSBASE, {0, Unknown}},

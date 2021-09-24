@@ -90,9 +90,9 @@ using namespace object;
 
 static cl::OptionCategory LLVMMCToLLCategory("llvm-mctoll options");
 
-static cl::list<std::string> InputFilenames(cl::Positional,
+static cl::list<std::string> InputFileNames(cl::Positional,
                                             cl::desc("<input object files>"),
-                                            cl::ZeroOrMore);
+                                            cl::OneOrMore);
 static cl::opt<std::string> OutputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"),
                                            cl::cat(LLVMMCToLLCategory),
@@ -328,8 +328,8 @@ void llvm::error(Error E) {
 }
 
 [[noreturn]] void llvm::report_error(Error E, StringRef ArchiveName,
-                                                StringRef FileName,
-                                                StringRef ArchitectureName) {
+                                     StringRef FileName,
+                                     StringRef ArchitectureName) {
   assert(E);
   WithColor::error(errs(), ToolName);
   if (ArchiveName != "")
@@ -347,8 +347,8 @@ void llvm::error(Error E) {
 }
 
 [[noreturn]] void llvm::report_error(Error E, StringRef ArchiveName,
-                                                const object::Archive::Child &C,
-                                                StringRef ArchitectureName) {
+                                     const object::Archive::Child &C,
+                                     StringRef ArchitectureName) {
   Expected<StringRef> NameOrErr = C.getName();
   // TODO: if we have a error getting the name then it would be nice to print
   // the index of which archive member this is and or its offset in the
@@ -422,19 +422,17 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   return TheTarget;
 }
 
-static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
-                                                       Triple::OSType OS,
-                                                       const char *ProgName) {
-  // If we don't yet have an output filename, make one.
+static std::unique_ptr<ToolOutputFile> GetOutputStream(StringRef InfileName) {
+  // If output file name is not explicitly specified construct a name based on
+  // the input file name.
   if (OutputFilename.empty()) {
     // If InputFilename ends in .o, remove it.
-    StringRef IFN = InputFilenames[0];
-    if (IFN.endswith(".o"))
-      OutputFilename = std::string(IFN.drop_back(2));
-    else if (IFN.endswith(".so"))
-      OutputFilename = std::string(IFN.drop_back(3));
+    if (InfileName.endswith(".o"))
+      OutputFilename = std::string(InfileName.drop_back(2));
+    else if (InfileName.endswith(".so"))
+      OutputFilename = std::string(InfileName.drop_back(3));
     else
-      OutputFilename = std::string(IFN);
+      OutputFilename = std::string(InfileName);
 
     switch (OutputFormat) {
     case CGFT_AssemblyFile:
@@ -1428,9 +1426,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   Triple TheTriple = Triple(TripleName);
 
   // Decide where to send the output.
-  std::unique_ptr<ToolOutputFile> Out =
-      GetOutputStream(TheTarget->getName(), TheTriple.getOS(), ToolName.data());
-
+  std::unique_ptr<ToolOutputFile> Out = GetOutputStream(Obj->getFileName());
   if (!Out)
     return;
 
@@ -1593,28 +1589,34 @@ int main(int argc, char **argv) {
       "https://github.com/microsoft/llvm-mctoll"
       "\n*** along with a back trace and a reproducer, if possible.\n");
 
-  // Defaults to a.out if no filenames specified.
-  if (InputFilenames.size() == 0)
-    InputFilenames.push_back("a.out");
+  // Create a string vector of include files to parse for external definitions
+  std::vector<string> IncludeFNames;
 
-  // Read declarations in user-specified include files
-  std::set<string> InclFNameSet(IncludeFileNames.begin(),
-                                IncludeFileNames.end());
-  std::vector<string> InclFNames(InclFNameSet.begin(), InclFNameSet.end());
+  for (auto fname : IncludeFileNames) {
+    IncludeFNames.emplace_back(fname);
+  }
 
-  if (!InclFNames.empty()) {
-    if (!IncludedFileInfo::getExternalFunctionPrototype(InclFNames,
-                                                           CompilationDBDir)) {
+  // Create a string vector with copy of input file as positional arguments
+  // would be erased as part of include file parsing done by
+  // clang::tooling::CommonOptionsParser invoked in
+  // getExternalFunctionPrototype().
+  std::vector<string> InputFNames;
+  for (auto fname : InputFileNames) {
+    InputFNames.emplace_back(fname);
+  }
+
+  if (!IncludeFNames.empty()) {
+    if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFNames,
+                                                        CompilationDBDir)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }
-
   // Disassemble contents of .text section.
   Disassemble = true;
   FilterSections.addValue(".text");
 
   llvm::setCurrentDebugType(DEBUG_TYPE);
-  std::for_each(InputFilenames.begin(), InputFilenames.end(), DumpInput);
+  std::for_each(InputFNames.begin(), InputFNames.end(), DumpInput);
 
   return EXIT_SUCCESS;
 }

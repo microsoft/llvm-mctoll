@@ -189,7 +189,8 @@ public:
 };
 
 // Construct and return a Function* corresponding to a known external function
-Function *IncludedFileInfo::CreateFunction(StringRef &CFuncName, ModuleRaiser &MR) {
+Function *IncludedFileInfo::CreateFunction(StringRef &CFuncName,
+                                           ModuleRaiser &MR) {
   Module *M = MR.getModule();
   assert(M != nullptr && "Uninitialized ModuleRaiser!");
 
@@ -246,9 +247,10 @@ bool IncludedFileInfo::getExternalFunctionPrototype(
   if (llvm::DebugFlag)
     ArgPtrVec.push_back("-debug");
 
-  // A dummy positional argument to satisfy the requirement of having atleast
-  // one positional argument.
-  ArgPtrVec.push_back("dummy-positional-arg");
+  // Dummy positional arguments to satisfy the requirement of having at least
+  // two positional arguments.
+  ArgPtrVec.push_back("dummy-positional-arg-1");
+  ArgPtrVec.push_back("dummy-positional-arg-2");
 
   if (CompDBDir.empty())
     ArgPtrVec.push_back("--");
@@ -291,7 +293,7 @@ bool IncludedFileInfo::IsExternalVariable(std::string Name) {
   }
   // Declare external global variables as external and don't initalize them
   return IncludedFileInfo::ExternalVariables.find(Name) !=
-      IncludedFileInfo::ExternalVariables.end();
+         IncludedFileInfo::ExternalVariables.end();
 }
 
 #undef DEBUG_TYPE

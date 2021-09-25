@@ -4510,6 +4510,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
             // No blocks visited in this walk up the predecessor P
             BitVector BlockVisited(MF.getNumBlockIDs(), false);
 
+            // CurMBB has already been visited. Mark it so.
+            BlockVisited.set(CurMBB->getNumber());
             // Start at predecessor P
             WorkList.push_back(P);
 
@@ -4536,10 +4538,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
                       WorkList.push_back(P);
                   }
                 }
-              } else if (PredMBB->getNumber() == CurMBB->getNumber())
-                // This is a loop. Simply increment ReachDefPredEdgeCount to
-                // indicate that we have a reaching def.
-                ReachDefPredEdgeCount++;
+              }
             }
           }
           // If there is a reaching def on all predecessor edges then consider

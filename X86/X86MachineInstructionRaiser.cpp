@@ -4721,10 +4721,21 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     }
     // Add 'unreachable' instruction after callInst if it is a call to glibc
     // function 'void exit(int)'
+    // 'void __assert_fail(char *, char *, unsigned int, char *)'
     if (CalledFunc->getName().equals("exit")) {
       FunctionType *FT = CalledFunc->getFunctionType();
       if (FT->getReturnType()->isVoidTy() && (FT->getNumParams() == 1) &&
           FT->getParamType(0)->isIntegerTy(32)) {
+        Instruction *UR = new UnreachableInst(Ctx);
+        RaisedBB->getInstList().push_back(UR);
+      }
+    } else if (CalledFunc->getName().equals("__assert_fail")) {
+      FunctionType *FT = CalledFunc->getFunctionType();
+      if (FT->getReturnType()->isVoidTy() && FT->getNumParams() == 4 &&
+          FT->getParamType(0)->isPointerTy() &&
+          FT->getParamType(1)->isPointerTy() &&
+          FT->getParamType(2)->isIntegerTy() &&
+          FT->getParamType(3)->isPointerTy()) {
         Instruction *UR = new UnreachableInst(Ctx);
         RaisedBB->getInstList().push_back(UR);
       }

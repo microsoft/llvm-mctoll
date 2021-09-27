@@ -4,11 +4,14 @@
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
 // CHECK: 1.0
-// CHECK: 1.0
-// CHECK: 1.0
-// CHECK: 0.0
-// CHECK: 0.0
-// CHECK: 0.0
+// CHECK-NEXT: 1.0
+// CHECK-NEXT: 1.0
+// CHECK-NEXT: 0.0
+// CHECK-NEXT: 0.0
+// CHECK-NEXT: 0.0
+// CHECK-NEXT: 1.0
+// CHECK-NEXT: 1.0
+// CHECK-NEXT: 1.0
 // CHECK-EMPTY
 
 .text
@@ -67,6 +70,36 @@ test_xorpd:
     call printf
     ret
 
+# memory referencing
+
+.p2align    4, 0x90
+.type    test_pxor_mem,@function
+test_pxor_mem:
+    pxor xmm0, [.L.val.4]
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_xorps_mem,@function
+test_xorps_mem:
+    xorps xmm0, [.L.val.5]
+    cvtss2sd xmm0, xmm0
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_xorpd_mem,@function
+test_xorpd_mem:
+    xorpd xmm0, [.L.val.4]
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
 .globl    main                    # -- Begin function main
 .p2align    4, 0x90
 .type    main,@function
@@ -90,6 +123,15 @@ main:                                   # @main
     movsd xmm0, [.L.val]
     call test_pxor_zero
 
+    movsd xmm0, [.L.val]
+    call test_pxor_mem
+
+    movsd xmm0, [.L.val]
+    call test_xorpd_mem
+
+    movss xmm0, [.L.val.2]
+    call test_xorps_mem
+
     xor rax, rax
     ret
 
@@ -108,3 +150,11 @@ main:                                   # @main
     .long 0x3fc00000 # float 1.5
 .L.val.3:
     .long 0x400000 # used to flip single bit in .L.val.2
+.section    .rodata.cst16,"aM",@progbits,16
+.align 16
+.L.val.4:
+    .quad 0x0008000000000000 # used to flip single bit in .L.val
+    .quad 0x0000000000000000 # padding
+.L.val.5:
+    .quad 0x0000000000400000 # used to flip single bit in .L.val.4
+    .quad 0x0000000000000000 # padding

@@ -1672,6 +1672,47 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
 
     BinOpInst = SelectInst::Create(CmpInst, DestValue, LoadValue, nameString);
   } break;
+  case X86::ANDPDrm:
+  case X86::ANDPSrm:
+  case X86::ORPDrm:
+  case X86::ORPSrm:
+  case X86::XORPDrm:
+  case X86::XORPSrm: {
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    auto Int128Ty = Type::getInt128Ty(Ctx);
+    // BitCast operands to integer types to perform and/or/xor operation
+    auto DestValueInt = new BitCastInst(DestValue, Int128Ty, "", RaisedBB);
+    auto LoadValueInt = new BitCastInst(LoadValue, Int128Ty, "", RaisedBB);
+
+    Value *Result;
+    switch (Opcode) {
+    case X86::ANDPDrm:
+    case X86::ANDPSrm:
+      Result = BinaryOperator::CreateAnd(DestValueInt, LoadValueInt, "", RaisedBB);
+      break;
+    case X86::ORPDrm:
+    case X86::ORPSrm:
+      Result = BinaryOperator::CreateOr(DestValueInt, LoadValueInt, "", RaisedBB);
+      break;
+    case X86::XORPDrm:
+    case X86::XORPSrm:
+      Result = BinaryOperator::CreateXor(DestValueInt, LoadValueInt, "", RaisedBB);
+      break;
+    default:
+      llvm_unreachable("Unhandled opcode for packed bitwise instruction");
+    }
+    // Cast back to operand type
+    BinOpInst = new BitCastInst(Result, DestopTy);
+  } break;
+  case X86::PANDrm: {
+    BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
+  } break;
+  case X86::PORrm: {
+    BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
+  } break;
+  case X86::PXORrm: {
+    BinOpInst = BinaryOperator::CreateXor(DestValue, LoadValue);
+  } break;
   case X86::SBB16rm:
   case X86::SBB32rm:
   case X86::SBB64rm:

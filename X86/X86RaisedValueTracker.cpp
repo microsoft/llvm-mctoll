@@ -1104,55 +1104,74 @@ Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
   return SrcValue;
 }
 
+// Reinterpret a SSE register value to another type
+// This function does not modify any bits, it only zero-extends or truncates
+// passed values
+// Example inputs:
+// SrcVal = float 0x3fc00000 (= 1.5), DstTy = double
+// Return Val = double 0x000000003fc00000
 Value *
 X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
                                               BasicBlock *InsertBlock,
                                               Instruction *InsertBefore) {
+#define INSERT_INSTRUCTION(Inst)                                               \
+  do {                                                                         \
+    if (InsertBefore != nullptr) {                                             \
+      Inst->insertBefore(InsertBefore);                                        \
+    } else {                                                                   \
+      InsertBlock->getInstList().push_back(Inst);                              \
+    }                                                                          \
+  } while (0)
+
   assert((InsertBlock != nullptr || InsertBefore != nullptr) &&
          "Expected either InsertBlock or InsertBefore to be not null");
 
-  if (SrcVal->getType() != DstTy) {
-
-    if (SrcVal->getType()->getPrimitiveSizeInBits() !=
-        DstTy->getPrimitiveSizeInBits()) {
-      // first bitcast the given value to an integer of the same size so we can
-      // truncate or extend with zeroes
-      Type *IntNTy = Type::getIntNTy(
-          DstTy->getContext(), SrcVal->getType()->getPrimitiveSizeInBits());
-      auto BitCastToInt = new BitCastInst(SrcVal, IntNTy, "bitcast_to_int");
-      setInstMetadataRODataIndex(SrcVal, BitCastToInt);
-      if (InsertBefore != nullptr) {
-        BitCastToInt->insertBefore(InsertBefore);
-      } else {
-        InsertBlock->getInstList().push_back(BitCastToInt);
-      }
-      // extend or truncate that value to the wanted bit size
-      auto ResizedInt = CastInst::CreateIntegerCast(
-          BitCastToInt,
-          Type::getIntNTy(DstTy->getContext(), DstTy->getPrimitiveSizeInBits()),
-          false, "resized_int");
-      setInstMetadataRODataIndex(BitCastToInt, ResizedInt);
-      if (InsertBefore != nullptr) {
-        ResizedInt->insertBefore(InsertBefore);
-      } else {
-        InsertBlock->getInstList().push_back(ResizedInt);
-      }
-      SrcVal = ResizedInt;
-    }
-
-    if (SrcVal->getType() != DstTy) {
-      auto SSERegVal = new BitCastInst(SrcVal, DstTy, "sse_reg_val");
-      setInstMetadataRODataIndex(SrcVal, SSERegVal);
-      if (InsertBefore != nullptr) {
-        SSERegVal->insertBefore(InsertBefore);
-      } else {
-        InsertBlock->getInstList().push_back(SSERegVal);
-      }
-      SrcVal = SSERegVal;
-    }
+  if (SrcVal->getType() == DstTy) {
+    return SrcVal;
   }
 
-  return SrcVal;
+  Instruction *Result;
+  if (SrcVal->getType()->getPrimitiveSizeInBits() >
+      DstTy->getPrimitiveSizeInBits()) {
+    Type *SrcTyVec =
+        VectorType::get(DstTy,
+                        SrcVal->getType()->getPrimitiveSizeInBits() /
+                            DstTy->getPrimitiveSizeInBits(),
+                        false);
+    auto SrcVec = new BitCastInst(SrcVal, SrcTyVec);
+    INSERT_INSTRUCTION(SrcVec);
+
+    auto Zero = ConstantInt::get(Type::getInt64Ty(DstTy->getContext()), 0);
+    Result = ExtractElementInst::Create(SrcVec, Zero);
+  } else if (SrcVal->getType()->getPrimitiveSizeInBits() <
+             DstTy->getPrimitiveSizeInBits()) {
+    Type *SrcTyVec =
+        VectorType::get(SrcVal->getType(),
+                        DstTy->getPrimitiveSizeInBits() /
+                            SrcVal->getType()->getPrimitiveSizeInBits(),
+                        false);
+    Value *SrcVec;
+    if (SrcVal->getType()->isFloatingPointTy()) {
+      SrcVec = ConstantFP::get(SrcTyVec, 0);
+    } else {
+      SrcVec = ConstantInt::get(SrcTyVec, 0);
+    }
+
+    auto Zero = ConstantInt::get(Type::getInt64Ty(DstTy->getContext()), 0);
+    auto InsertElem = InsertElementInst::Create(SrcVec, SrcVal, Zero);
+    INSERT_INSTRUCTION(InsertElem);
+
+    Result = new BitCastInst(InsertElem, DstTy);
+  } else {
+    // same width, just bitcast
+    Result = new BitCastInst(SrcVal, DstTy);
+  }
+
+  assert(Result->getType() == DstTy);
+
+  INSERT_INSTRUCTION(Result);
+  return Result;
+#undef INSERT_INSTRUCTION
 }
 
 Type *X86RaisedValueTracker::getSSEInstructionType(const MachineInstr &MI,

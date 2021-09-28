@@ -353,38 +353,31 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
         continue;
       }
 
-      if (RD.second->getType()->isIntegerTy() ||
-          RD.second->getType()->isVectorTy()) {
+      if (RD.second->getType()->isIntegerTy()) {
         Type *Ty = RD.second->getType();
         if ((AllocTy == nullptr) ||
             (Ty->getPrimitiveSizeInBits() > AllocTy->getPrimitiveSizeInBits()))
           AllocTy = Ty;
-      } else if (RD.second->getType()->isFloatingPointTy()) {
+      } else if (RD.second->getType()->isFloatingPointTy() ||
+                 RD.second->getType()->isVectorTy()) {
         // We know that FP types are stored in a 128 bit stack slot, so we don't
         // need to further process the reaching value list
-        AllocTy = Type::getInt128Ty(Ctxt);
+        AllocTy = VectorType::get(Type::getInt32Ty(Ctxt), 4, false);
         break;
       } else {
         HasUnknownReachingDef = true;
       }
     }
 
-    if (AllocTy != nullptr && AllocTy->isVectorTy()) {
-      // If the type is a vector, use a integer type of the same size
-      AllocTy = Type::getIntNTy(Ctxt, AllocTy->getPrimitiveSizeInBits());
-    }
-    if (HasUnknownReachingDef) {
+    // if we have an unknown reaching def and we don't already have a value
+    // that's greater than the largest int value
+    if (HasUnknownReachingDef &&
+        (AllocTy == nullptr || AllocTy->getPrimitiveSizeInBits() < 64)) {
       // Any null value is stored in a 64-bit stack slot.
       // Note that a null value implies that this is an incoming edge from a
       // block that is not yet raised. This will be recorded and handled
       // later. So, assume the type to be the most generic, i.e., 64-bit.
-
-      // If AllocTy is larger than 64 bits, use AllocTy's size
-      unsigned long long Sz = 64;
-      if (AllocTy != nullptr && AllocTy->getPrimitiveSizeInBits() > Sz)
-        Sz = AllocTy->getPrimitiveSizeInBits();
-
-      AllocTy = Type::getIntNTy(Ctxt, Sz);
+      AllocTy = Type::getInt64Ty(Ctxt);
     }
 
     Align typeAlign(DL.getPrefTypeAlignment(AllocTy));
@@ -480,16 +473,14 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
                           : x86MIRaiser->getPhysRegType(PhysReg);
       Type *LdReachingValType = LdReachingVal->getType();
       assert((LdReachingValType->isIntegerTy() ||
-              LdReachingValType->isFloatingPointTy()) &&
+              LdReachingValType->isFloatingPointTy() ||
+              LdReachingValType->isVectorTy()) &&
              "Unhandled type mismatch of reaching register definition");
       if (RegType != LdReachingValType) {
         auto BB = x86MIRaiser->getRaisedBasicBlock(MF.getBlockNumbered(MBBNo));
-        if (RegType->isFloatingPointTy() || RegType->isVectorTy()) {
-          assert(RegType->getPrimitiveSizeInBits() ==
-                     LdReachingValType->getPrimitiveSizeInBits() &&
-                 "Expected FP/vector types to match");
-          LdReachingVal = dyn_cast<Instruction>(
-              reinterpretSSERegValue(LdReachingVal, RegType, BB));
+        if (isSSE2Reg(PhysReg)) {
+          assert(LdReachingValType->getPrimitiveSizeInBits() == 128 &&
+                 "Expected FP/vector types to be stored in 128 bit stack slot");
         } else {
           // Create cast instruction
           Instruction *CInst = CastInst::Create(

@@ -931,14 +931,14 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   int StackLocSzInBits =
       Alloca->getType()->getPointerElementType()->getPrimitiveSizeInBits();
   Type *StackLocTy;
-  if (ReachingValue->getType()->isIntOrPtrTy() ||
-      ReachingValue->getType()->isVectorTy()) {
+  if (ReachingValue->getType()->isIntOrPtrTy()) {
     // Cast the current value to int64 if needed
     StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
-  } else if (ReachingValue->getType()->isFloatingPointTy()) {
+  } else if (ReachingValue->getType()->isFloatingPointTy() ||
+             ReachingValue->getType()->isVectorTy()) {
     assert(StackLocSzInBits == 128 &&
-           "Expected FP types to be stored in 128 bit stack location");
-    StackLocTy = Type::getInt128Ty(Ctxt);
+           "Expected FP types and vectors to be stored in 128 bit stack location");
+    StackLocTy = VectorType::get(Type::getInt32Ty(Ctxt), 4, false);
   } else {
     llvm_unreachable("Unhandled type");
   }

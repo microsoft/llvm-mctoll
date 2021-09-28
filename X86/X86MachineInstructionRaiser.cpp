@@ -4695,6 +4695,12 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
           ArgVal =
               getRaisedValues()->castValue(ArgVal, FuncArg.getType(), RaisedBB);
         }
+      } else {
+        // for varadic arguments, reinterpret vectors as doubles
+        if (ArgVal->getType()->isVectorTy()) {
+          ArgVal = getRaisedValues()->reinterpretSSERegValue(
+              ArgVal, Type::getDoubleTy(Ctx), RaisedBB);
+        }
       }
       assert(ArgVal != nullptr && "Unexpected null argument value");
       CallInstFuncArgs.push_back(ArgVal);
@@ -4795,6 +4801,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
   } break;
   case X86::CALL64m:
   case X86::CALL64r: {
+    LLVMContext &Ctxt(MF.getFunction().getContext());
+    BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
     const MachineBasicBlock *MBB = MI.getParent();
     int MBBNo = MBB->getNumber();
 
@@ -4818,6 +4826,9 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       if (RD == nullptr) {
         break;
       } else {
+        if (RD->getType()->isVectorTy()) {
+          RD = raisedValues->reinterpretSSERegValue(RD, Type::getDoubleTy(Ctxt), RaisedBB);
+        }
         ArgTypeVector.push_back(RD->getType());
         ArgValueVector.push_back(RD);
       }
@@ -4847,10 +4858,6 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
 
       unsigned LoadOpIndex = 0;
       // Get index of memory reference in the instruction.
-
-      // Get the BasicBlock corresponding to MachineBasicBlock of MI.
-      // Raised instruction is added to this BasicBlock.
-      BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
       // Load the value from memory location of memRefValue.
       // memRefVal is either an AllocaInst (stack access), GlobalValue (global

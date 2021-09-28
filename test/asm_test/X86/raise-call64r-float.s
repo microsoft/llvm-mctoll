@@ -4,6 +4,7 @@
 // RUN: clang -o %t-dis %t-dis.ll
 // RUN: %t-dis 2>&1 | FileCheck %s
 // CHECK: 1.5
+// CHECK-NEXT: 0.0
 // CHECK-EMPTY
 
 .text
@@ -26,6 +27,10 @@ func1:
 main:                                   # @main
     movsd xmm0, [.L.val]
     mov rax, OFFSET func1
+    call rax
+
+    xorps xmm0, xmm0
+    mov rax, offset func1
     call rax
 
     xor rax, rax

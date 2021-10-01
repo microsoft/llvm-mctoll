@@ -881,6 +881,11 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       RaisedBB->getInstList().push_back(NewCFInst);
 
       Value *OldCF = physRegDefsInMBB[FlagBit][MBBNo].second;
+      if (OldCF == nullptr) {
+        // if CF is undefined, assume CF = 0
+        LLVMContext &Ctx(MF.getFunction().getContext());
+        OldCF = ConstantInt::get(Type::getInt1Ty(Ctx), 0);
+      }
 
       // Select the value of CF based on Count value being > 0
       Instruction *SelectCF =
@@ -954,6 +959,11 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       RaisedBB->getInstList().push_back(NewCFInst);
 
       Value *OldCF = physRegDefsInMBB[FlagBit][MBBNo].second;
+      if (OldCF == nullptr) {
+        // if CF is undefined, assume CF = 0
+        LLVMContext &Ctx(MF.getFunction().getContext());
+        OldCF = ConstantInt::get(Type::getInt1Ty(Ctx), 0);
+      }
       // Select the value of CF based on Count value being > 0
       Instruction *SelectCF =
           SelectInst::Create(CountValTest, NewCFInst, OldCF, "shld_cf_update");

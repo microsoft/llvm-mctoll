@@ -2702,7 +2702,10 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     if (NonMemRefOp->isReg()) {
       NonMemRefOpTy = getPhysRegOperandType(MI, nonMemRefOpIndex);
     } else if (NonMemRefOp->isImm()) {
-      NonMemRefOpTy = getImmOperandType(MI, nonMemRefOpIndex);
+      LLVMContext &Ctx(MF.getFunction().getContext());
+      auto MemOpSize = getInstructionMemOpSize(MI.getOpcode());
+      assert(MemOpSize != 0 && "Expected mem op size to be > 0");
+      NonMemRefOpTy = Type::getIntNTy(Ctx, MemOpSize * 8);
     } else {
       LLVM_DEBUG(MI.dump());
       assert(false && "Unhandled second operand type in compare instruction");

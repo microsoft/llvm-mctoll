@@ -106,43 +106,31 @@ private:
 
     // Construct type string corresponding to the buitl-in type
     if (CurUnQTy->isBuiltinType()) {
-      std::string TypeStr;
       const clang::BuiltinType *BltInTy = CurUnQTy->getAs<clang::BuiltinType>();
-      switch (BltInTy->getKind()) {
-      case clang::BuiltinType::Kind::Char_S:
-      case clang::BuiltinType::Kind::Char_U:
-      case clang::BuiltinType::Kind::UChar:
-      case clang::BuiltinType::Kind::Bool:
-        UnQTyStr.append("i8");
-        break;
-      case clang::BuiltinType::Kind::Short:
-      case clang::BuiltinType::Kind::UShort:
-        UnQTyStr.append("i16");
-        break;
-      case clang::BuiltinType::Kind::Int:
-      case clang::BuiltinType::Kind::UInt:
-      case clang::BuiltinType::Kind::Long:
-      case clang::BuiltinType::Kind::ULong:
-        UnQTyStr.append("i32");
-        break;
-      case clang::BuiltinType::Kind::LongLong:
-      case clang::BuiltinType::Kind::ULongLong:
-        UnQTyStr.append("i64");
-        break;
-      case clang::BuiltinType::Kind::Float:
-        UnQTyStr.append("float");
-        break;
-      case clang::BuiltinType::Kind::Double:
-        UnQTyStr.append("double");
-        break;
-      case clang::BuiltinType::Kind::LongDouble:
-        UnQTyStr.append("ldouble");
-        break;
-      case clang::BuiltinType::Kind::Void:
-        UnQTyStr.append("void");
-        break;
-      default:
-        assert(false && "Unhandled builtin type found in include file");
+      if (BltInTy->isInteger()) {
+        auto FieldInfo = ASTCtx.getTypeInfo(CurUnQTy);
+        uint64_t TypeWidth = FieldInfo.Width;
+        assert((TypeWidth == 64 || TypeWidth == 32 || TypeWidth == 16 ||
+                TypeWidth == 8) &&
+               "Unexpected builtin type width encountered");
+        UnQTyStr.append("i" + to_string(TypeWidth));
+      } else {
+        switch (BltInTy->getKind()) {
+        case clang::BuiltinType::Kind::Float:
+          UnQTyStr.append("float");
+          break;
+        case clang::BuiltinType::Kind::Double:
+          UnQTyStr.append("double");
+          break;
+        case clang::BuiltinType::Kind::LongDouble:
+          UnQTyStr.append("ldouble");
+          break;
+        case clang::BuiltinType::Kind::Void:
+          UnQTyStr.append("void");
+          break;
+        default:
+          assert(false && "Unhandled builtin type found in include file");
+        }
       }
       // Append any pointer qualifiers
       UnQTyStr.append(PointerStr);

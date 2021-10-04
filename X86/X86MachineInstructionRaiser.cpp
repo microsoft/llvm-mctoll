@@ -3684,10 +3684,14 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     case X86::XOR8ri:
     case X86::XOR16ri:
     case X86::XOR32ri:
-    case X86::XOR32ri8:
     case X86::XOR8i8:
     case X86::XOR16i16:
     case X86::XOR32i32:
+    case X86::XOR8ri8:
+    case X86::XOR16ri8:
+    case X86::XOR32ri8:
+    case X86::XOR64ri8:
+    case X86::XOR64ri32:
       // Generate xor instruction
       BinOpInstr = BinaryOperator::CreateXor(SrcOp1Value, SrcOp2Value);
       // Clear OF and CF

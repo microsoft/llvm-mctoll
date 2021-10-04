@@ -1197,10 +1197,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
+  case X86::SAR8rCL:
+  case X86::SAR16rCL:
+  case X86::SAR32rCL:
+  case X86::SAR64rCL:
   case X86::SHL8rCL:
   case X86::SHL16rCL:
   case X86::SHL32rCL:
-  case X86::SHL64rCL: {
+  case X86::SHL64rCL:
+  case X86::SHR8rCL:
+  case X86::SHR16rCL:
+  case X86::SHR32rCL:
+  case X86::SHR64rCL: {
     // Verify source and dest are tied and are registers
     const MachineOperand &DestOp = MI.getOperand(DestOpIndex);
     assert(DestOp.isTied() &&
@@ -1230,10 +1238,21 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
                                  : ConstantInt::get(SrcOpValueTy, 0x3f);
       // Generate mask
       CountValue = BinaryOperator::CreateAnd(CountValue, CountMask,
-                                             "shl-cnt-msk", RaisedBB);
+                                             "shift-cnt-msk", RaisedBB);
 
-      Instruction *BinOpInst =
-          BinaryOperator::CreateShl(SrcOpValue, CountValue);
+      Instruction *BinOpInst;
+      if (instrNameStartsWith(MI, "SAR")) {
+        BinOpInst =
+            BinaryOperator::CreateAShr(SrcOpValue, CountValue);
+      } else if (instrNameStartsWith(MI, "SHL")) {
+        BinOpInst =
+            BinaryOperator::CreateShl(SrcOpValue, CountValue);
+      } else if (instrNameStartsWith(MI, "SHR")) {
+        BinOpInst =
+            BinaryOperator::CreateLShr(SrcOpValue, CountValue);
+      } else {
+        llvm_unreachable("unhandled shift instruction");
+      }
 
       // Copy any necessary rodata related metadata
       raisedValues->setInstMetadataRODataIndex(SrcOpValue, BinOpInst);
@@ -2055,6 +2074,19 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
                                                       Value *MemRefVal) {
   unsigned int SrcOpIndex = getMemoryRefOpIndex(MI) + X86::AddrNumOperands;
 
+  // If the source operand is neither an immediate or a register, check for an
+  // implicit register use
+  if (!MI.getOperand(SrcOpIndex).isImm() && !MI.getOperand(SrcOpIndex).isReg()) {
+    MCInstrDesc Desc = MI.getDesc();
+    assert(Desc.getNumImplicitUses() == 1 && "Expected one implicit use");
+    for (unsigned int i = SrcOpIndex + 1; i < MI.getNumOperands(); ++i) {
+      if (MI.getOperand(i).isUse() && MI.getOperand(i).isReg()) {
+        SrcOpIndex = i;
+        break;
+      }
+    }
+  }
+
   const MachineOperand &SrcOp = MI.getOperand(SrcOpIndex);
 
   // Is this a mov instruction?
@@ -2247,6 +2279,40 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
       BinOpInst = BinaryOperator::CreateSub(LdInst, SrcValue);
 
       AffectedEFlags.insert(EFLAGS::PF);
+    } break;
+    case X86::SAR8mCL:
+    case X86::SAR16mCL:
+    case X86::SAR32mCL:
+    case X86::SAR64mCL:
+    case X86::SHL8mCL:
+    case X86::SHL16mCL:
+    case X86::SHL32mCL:
+    case X86::SHL64mCL:
+    case X86::SHR8mCL:
+    case X86::SHR16mCL:
+    case X86::SHR32mCL:
+    case X86::SHR64mCL: {
+      Type *LdInstTy = LdInst->getType();
+      // SrcValue is masked to 5 bits (6 bits if 64-bit register)
+      bool Is64Bit = (LdInstTy->getPrimitiveSizeInBits() == 64);
+      Value *CountMask = Is64Bit ? ConstantInt::get(LdInstTy, 0x1f)
+                                 : ConstantInt::get(LdInstTy, 0x3f);
+      // Generate mask
+      auto CountValue = BinaryOperator::CreateAnd(SrcValue, CountMask,
+                                             "shift-cnt-msk", RaisedBB);
+
+      if (instrNameStartsWith(MI, "SAR")) {
+        BinOpInst =
+            BinaryOperator::CreateAShr(LdInst, CountValue);
+      } else if (instrNameStartsWith(MI, "SHL")) {
+        BinOpInst =
+            BinaryOperator::CreateShl(LdInst, CountValue);
+      } else if (instrNameStartsWith(MI, "SHR")) {
+        BinOpInst =
+            BinaryOperator::CreateLShr(LdInst, CountValue);
+      } else {
+        llvm_unreachable("unhandled shift instruction");
+      }
     } break;
     case X86::SAR8mi:
     case X86::SAR16mi:

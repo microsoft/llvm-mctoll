@@ -2127,15 +2127,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     MemRefVal = convIntToPtr;
   }
 
-  LoadInst *LdInst = nullptr;
-  if (!isMovInst) {
-    // Load the value from memory location
-    auto align =
-        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout());
-    LdInst = new LoadInst(MemRefVal->getType()->getPointerElementType(),
-                          MemRefVal, "", false, align, RaisedBB);
-  }
-
   // This instruction moves a source value to memory. So, if the types of
   // the source value and that of the memory pointer element are not the
   // same as that of the store size of the instruction, cast them as needed.
@@ -2157,9 +2148,15 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   SrcValue = getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB);
 
   if (!isMovInst) {
-    // If this is not an instruction that just moves SrcValue, generate the
-    // instruction that performs the appropriate operation and then store the
-    // result in MemRefVal.
+    // If this is not an instruction that just moves SrcValue, load from memory,
+    // generate the instruction that performs the appropriate operation.
+
+    // Load the value from memory location
+    auto align =
+        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout());
+    LoadInst *LdInst =
+        new LoadInst(MemRefVal->getType()->getPointerElementType(), MemRefVal,
+                     "", false, align, RaisedBB);
     assert((LdInst != nullptr) && "Memory value expected to be loaded while "
                                   "raising binary mem op instruction");
     assert((SrcValue != nullptr) && "Source value expected to be loaded while "
@@ -2169,6 +2166,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
     Instruction *BinOpInst = nullptr;
 
+    // Generate instruction to perform appropriate operation to produce the
+    // value be stored.
     switch (MI.getOpcode()) {
     case X86::ADD8mi:
     case X86::ADD8mi8:
@@ -2280,6 +2279,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
   assert((SrcValue != nullptr) && "Unexpected null value to be stored while "
                                   "raising binary mem op instruction");
+  // Store resultant value
   new StoreInst(SrcValue, MemRefVal, false, Align(), RaisedBB);
 
   return true;

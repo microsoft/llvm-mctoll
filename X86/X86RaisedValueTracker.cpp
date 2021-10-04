@@ -884,7 +884,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       RaisedBB->getInstList().push_back(SelectCF);
 
       NewCF = SelectCF;
-    } else if (x86MIRaiser->instrNameStartsWith(MI, "SHL")) {
+    } else if (x86MIRaiser->instrNameStartsWith(MI, "SHL") ||
+               x86MIRaiser->instrNameStartsWith(MI, "SHR") ||
+               x86MIRaiser->instrNameStartsWith(MI, "SAR")) {
       Value *DstArgVal = nullptr;
       Value *CountArgVal = nullptr;
       // If this is a funnel shift
@@ -897,7 +899,7 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
         DstArgVal = IntrinsicCall->getArgOperand(0);
         CountArgVal = IntrinsicCall->getArgOperand(2);
       } else {
-        // TestInst should have been shl instruction
+        // TestInst should have been shl/shr/sar instruction
         BinaryOperator *BinOp = dyn_cast<BinaryOperator>(TestResultVal);
         assert((BinOp != nullptr) && (BinOp->getNumOperands() == 2) &&
                "Expected a shl binary operator with 2 operands");

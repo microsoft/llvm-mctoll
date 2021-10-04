@@ -2184,10 +2184,11 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
       StoreTy = Type::getDoubleTy(Ctx);
   }
 
+  bool SignExtend = MI.getOpcode() == X86::MOV64mi32;
   // Cast SrcValue and MemRefVal as needed.
   MemRefVal = getRaisedValues()->castValue(MemRefVal, StoreTy->getPointerTo(),
                                            RaisedBB);
-  SrcValue = getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB);
+  SrcValue = getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB, SignExtend);
 
   if (!isMovInst) {
     // If this is not an instruction that just moves SrcValue, load from memory,

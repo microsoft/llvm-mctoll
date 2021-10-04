@@ -2125,15 +2125,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     MemRefVal = convIntToPtr;
   }
 
-  LoadInst *LdInst = nullptr;
-  if (!isMovInst) {
-    // Load the value from memory location
-    auto align =
-        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout());
-    LdInst = new LoadInst(MemRefVal->getType()->getPointerElementType(),
-                          MemRefVal, "", false, align, RaisedBB);
-  }
-
   // This instruction moves a source value to memory. So, if the types of
   // the source value and that of the memory pointer element are not the
   // same as that of the store size of the instruction, cast them as needed.
@@ -2155,6 +2146,12 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   SrcValue = getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB);
 
   if (!isMovInst) {
+    // Load the value from memory location
+    auto align =
+        MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout());
+    LoadInst *LdInst =
+        new LoadInst(MemRefVal->getType()->getPointerElementType(), MemRefVal,
+                     "", false, align, RaisedBB);
     // If this is not an instruction that just moves SrcValue, generate the
     // instruction that performs the appropriate operation and then store the
     // result in MemRefVal.

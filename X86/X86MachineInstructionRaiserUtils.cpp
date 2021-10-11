@@ -1721,6 +1721,11 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         if (SymbSize < GlobDataSymAlignment) {
           GlobDataSymAlignment = SymbSize;
         }
+        // if we are trying to access more bytes than the symbol contains, set
+        // MemAccessSizeInBytes to SymbSize
+        if (SymbSize < MemAccessSizeInBytes) {
+          MemAccessSizeInBytes = SymbSize;
+        }
         GlobalValue::LinkageTypes Lnkg;
         switch (Symb->getBinding()) {
         case ELF::STB_GLOBAL:

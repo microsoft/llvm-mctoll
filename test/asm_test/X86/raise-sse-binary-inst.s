@@ -6,12 +6,18 @@
 // CHECK: 1.0
 // CHECK-NEXT: 1.0
 // CHECK-NEXT: 1.0
+// CHECK-NEXT: -4.0
+// CHECK-NEXT: -4.0
+// CHECK-NEXT: -4.0
 // CHECK-NEXT: 1.5
 // CHECK-NEXT: 1.5
 // CHECK-NEXT: 1.5
 // CHECK-NEXT: 1.0
 // CHECK-NEXT: 1.0
 // CHECK-NEXT: 1.0
+// CHECK-NEXT: -4.0
+// CHECK-NEXT: -4.0
+// CHECK-NEXT: -4.0
 // CHECK-NEXT: 1.5
 // CHECK-NEXT: 1.5
 // CHECK-NEXT: 1.5
@@ -44,6 +50,34 @@ test_andps:
 .type    test_andpd,@function
 test_andpd:
     andpd xmm0, xmm1
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_pandn,@function
+test_pandn:
+    pandn xmm0, xmm1
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_andnps,@function
+test_andnps:
+    andnps xmm0, xmm1
+    cvtss2sd xmm0, xmm0
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_andnpd,@function
+test_andnpd:
+    andnpd xmm0, xmm1
     mov al, 1
     mov rdi, offset .L.str
     call printf
@@ -108,6 +142,34 @@ test_andps_mem:
     ret
 
 .p2align    4, 0x90
+.type    test_pandn_mem,@function
+test_pandn_mem:
+    pandn xmm0, [.L.val.8]
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_andnpd_mem,@function
+test_andnpd_mem:
+    andnpd xmm0, [.L.val.8]
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
+.type    test_andnps_mem,@function
+test_andnps_mem:
+    andnps xmm0, [.L.val.8]
+    cvtss2sd xmm0, xmm0
+    mov al, 1
+    mov rdi, offset .L.str
+    call printf
+    ret
+
+.p2align    4, 0x90
 .type    test_por_mem,@function
 test_por_mem:
     por xmm0, [.L.val.6]
@@ -152,6 +214,18 @@ main:                                   # @main
     call test_andps
 
     movsd xmm0, [.L.val]
+    movsd xmm1, [.L.val.4]
+    call test_pandn
+
+    movsd xmm0, [.L.val]
+    movsd xmm1, [.L.val.4]
+    call test_andnpd
+
+    movss xmm0, [.L.val.2]
+    movss xmm1, [.L.val.5]
+    call test_andnps
+
+    movsd xmm0, [.L.val]
     movsd xmm1, [.L.val.1]
     call test_por
 
@@ -172,6 +246,15 @@ main:                                   # @main
 
     movss xmm0, [.L.val.2]
     call test_andps_mem
+
+    movsd xmm0, [.L.val]
+    call test_pandn_mem
+
+    movsd xmm0, [.L.val]
+    call test_andnpd_mem
+
+    movss xmm0, [.L.val.2]
+    call test_andnps_mem
 
     movsd xmm0, [.L.val]
     call test_por_mem

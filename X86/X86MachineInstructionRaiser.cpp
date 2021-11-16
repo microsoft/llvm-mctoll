@@ -1373,8 +1373,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
   } break;
   case X86::PANDrr:
+  case X86::PANDNrr:
   case X86::ANDPDrr:
   case X86::ANDPSrr:
+  case X86::ANDNPDrr:
+  case X86::ANDNPSrr:
   case X86::PORrr:
   case X86::ORPDrr:
   case X86::ORPSrr:
@@ -1437,6 +1440,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         Result = BinaryOperator::CreateAnd(BitCastToInt1, BitCastToInt2,
                                            "and_result", RaisedBB);
         break;
+      case X86::PANDNrr:
+      case X86::ANDNPDrr:
+      case X86::ANDNPSrr: {
+        auto NotVal = BinaryOperator::CreateNot(BitCastToInt1, "", RaisedBB);
+        Result = BinaryOperator::CreateAnd(NotVal, BitCastToInt2,
+                                           "andn_result", RaisedBB);
+      } break;
       case X86::PORrr:
       case X86::ORPDrr:
       case X86::ORPSrr:
@@ -1674,6 +1684,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   } break;
   case X86::ANDPDrm:
   case X86::ANDPSrm:
+  case X86::ANDNPDrm:
+  case X86::ANDNPSrm:
   case X86::ORPDrm:
   case X86::ORPSrm:
   case X86::XORPDrm:
@@ -1690,6 +1702,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     case X86::ANDPSrm:
       Result = BinaryOperator::CreateAnd(DestValueInt, LoadValueInt, "", RaisedBB);
       break;
+    case X86::ANDNPDrm:
+    case X86::ANDNPSrm: {
+      auto NotVal = BinaryOperator::CreateNot(DestValueInt, "", RaisedBB);
+      Result = BinaryOperator::CreateAnd(NotVal, LoadValueInt, "", RaisedBB);
+    } break;
     case X86::ORPDrm:
     case X86::ORPSrm:
       Result = BinaryOperator::CreateOr(DestValueInt, LoadValueInt, "", RaisedBB);
@@ -1705,6 +1722,10 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     BinOpInst = new BitCastInst(Result, DestopTy);
   } break;
   case X86::PANDrm: {
+    BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
+  } break;
+  case X86::PANDNrm: {
+    DestValue = BinaryOperator::CreateNot(DestValue, "", RaisedBB);
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
   } break;
   case X86::PORrm: {

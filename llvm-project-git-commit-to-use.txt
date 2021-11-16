@@ -5,14 +5,11 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit ef976337f581dd8a80820a8b14b4bbd70670b7fc
-Author: River Riddle <riddleriver@gmail.com>
-Date:   Fri Sep 24 17:51:20 2021 +0000
+commit 0e50216f22adef2d69cc35ae0e246a42c9a7458c
+Author: Mark de Wever <koraq@xs4all.nl>
+Date:   Tue Nov 16 16:02:26 2021 +0100
 
-    [mlir:OpConversion] Remove the remaing usages of the deprecated matchAndRewrite methods
+    [libc++][format][nfc] Remove dead code.
     
-    This commits updates the remaining usages of the ArrayRef<Value> based
-    matchAndRewrite/rewrite methods in favor of the new OpAdaptor
-    overload.
-    
-    Differential Revision: https://reviews.llvm.org/D110360
+    This was an early part of the prototype. This has never been shipped
+    enabled and the final version of this code looks completely different.

@@ -1555,8 +1555,6 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   unsigned int MemAlignment = getInstructionMemOpSize(Opcode);
   Type *DestopTy = getPhysRegOperandType(MI, DestIndex);
   Value *DestValue = getRegOrArgValue(DestPReg, MI.getParent()->getNumber());
-  assert(DestValue != nullptr &&
-         "Encountered instruction with undefined register");
 
   // Verify sanity of the instruction.
   // SSE2 registers are always of a fixed size and might not be equal to
@@ -1569,13 +1567,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   unsigned int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
   Value *LoadValue =
       loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, DestopTy);
-  // Cast DestValue to the DestopTy, as for single-precision FP ops
-  // DestValue type and DestopTy might be different.
-  if (isSSE2Reg(DestPReg)) {
-    DestValue = getRaisedValues()->reinterpretSSERegValue(DestValue, DestopTy,
-                                                          RaisedBB);
-  } else {
-    DestValue = getRaisedValues()->castValue(DestValue, DestopTy, RaisedBB);
+  if (DestValue != nullptr) {
+    // Cast DestValue to the DestopTy, as for single-precision FP ops
+    // DestValue type and DestopTy might be different.
+    if (isSSE2Reg(DestPReg)) {
+      DestValue = getRaisedValues()->reinterpretSSERegValue(DestValue, DestopTy,
+                                                            RaisedBB);
+    } else {
+      DestValue = getRaisedValues()->castValue(DestValue, DestopTy, RaisedBB);
+    }
   }
   Instruction *BinOpInst = nullptr;
 
@@ -1584,6 +1584,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::ADD32rm:
   case X86::ADD16rm:
   case X86::ADD8rm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     // Create add instruction
     BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
     AffectedEFlags.insert(EFLAGS::PF);
@@ -1592,11 +1593,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::AND32rm:
   case X86::AND16rm:
   case X86::AND8rm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     // Create and instruction
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
     AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::OR32rm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     // Create or instruction
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
     AffectedEFlags.insert(EFLAGS::PF);
@@ -1604,6 +1607,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::IMUL16rm:
   case X86::IMUL32rm:
   case X86::IMUL64rm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     // One-operand form of IMUL
     // Create mul instruction
     BinOpInst = BinaryOperator::CreateMul(DestValue, LoadValue);
@@ -1614,6 +1618,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::IMUL32rmi8:
   case X86::IMUL64rmi8:
   case X86::IMUL64rmi32: {
+    // We don't read from DestValue, so we don't need to check if it is null
     // Two-operand form of IMUL
     // Get index of memory reference in the instruction.
     int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
@@ -1635,6 +1640,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::XOR16rm:
   case X86::XOR32rm:
   case X86::XOR64rm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     // Create xor instruction
     BinOpInst = BinaryOperator::CreateXor(DestValue, LoadValue);
     ClearedEFlags.insert(EFLAGS::OF);
@@ -1645,24 +1651,29 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   } break;
   case X86::ADDSSrm_Int:
   case X86::ADDSDrm_Int: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFAdd(DestValue, LoadValue);
   } break;
   case X86::SUBSSrm_Int:
   case X86::SUBSDrm_Int: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFSub(DestValue, LoadValue);
   } break;
   case X86::MULSDrm_Int:
   case X86::MULSSrm_Int: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFMul(DestValue, LoadValue);
   } break;
   case X86::DIVSDrm_Int:
   case X86::DIVSSrm_Int: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFDiv(DestValue, LoadValue);
   } break;
   case X86::MAXSDrm_Int:
   case X86::MAXSSrm_Int:
   case X86::MINSDrm_Int:
   case X86::MINSSrm_Int: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     bool isMax = instrNameStartsWith(MI, "MAX");
     std::string nameString = isMax ? "max" : "min";
 
@@ -1678,6 +1689,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::ORPSrm:
   case X86::XORPDrm:
   case X86::XORPSrm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     LLVMContext &Ctx(MF.getFunction().getContext());
     auto Int128Ty = Type::getInt128Ty(Ctx);
     // BitCast operands to integer types to perform and/or/xor operation
@@ -1705,18 +1717,22 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     BinOpInst = new BitCastInst(Result, DestopTy);
   } break;
   case X86::PANDrm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
   } break;
   case X86::PORrm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
   } break;
   case X86::PXORrm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateXor(DestValue, LoadValue);
   } break;
   case X86::SBB16rm:
   case X86::SBB32rm:
   case X86::SBB64rm:
   case X86::SBB8rm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     auto CFValue = getRegOrArgValue(EFLAGS::CF, MI.getParent()->getNumber());
     assert(CFValue && "Expected CF to be set for sbb instruction");
 
@@ -1735,6 +1751,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::SQRTSDm_Int:
   case X86::SQRTSSm:
   case X86::SQRTSSm_Int: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
     LLVMContext &Ctx(MF.getFunction().getContext());
 
     Type *InstrTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);

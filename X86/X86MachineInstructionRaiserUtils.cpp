@@ -1068,6 +1068,19 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
   return true;
 }
 
+// Insert an unreachable instruction at the end of every BB if it is not
+// terminated.
+// We assume that unterminated BBs will never exit
+bool X86MachineInstructionRaiser::handleUnterminatedBlocks() {
+  LLVMContext &Ctx(getRaisedFunction()->getContext());
+  for (auto &BB : *getRaisedFunction()) {
+    if (BB.getTerminator() == nullptr) {
+      new UnreachableInst(Ctx, &BB);
+    }
+  }
+  return true;
+}
+
 // Create a single stack frame based on stack allocations of the Function.
 // The single stack frame thus created is expected to preserve the frame layout
 // of the source binary - as represented by the various stack allocations. This

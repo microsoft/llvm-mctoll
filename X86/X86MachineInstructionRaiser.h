@@ -201,6 +201,7 @@ private:
   Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex);
 
   bool handleUnpromotedReachingDefs();
+  bool handleUnterminatedBlocks();
 
   const MachineInstr *
   getPhysRegDefiningInstInBlock(int PhysReg, const MachineInstr *StartMI,

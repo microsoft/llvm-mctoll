@@ -5173,7 +5173,7 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
     }
   }
   return createFunctionStackFrame() && raiseBranchMachineInstrs() &&
-         handleUnpromotedReachingDefs();
+         handleUnpromotedReachingDefs() && handleUnterminatedBlocks();
 }
 
 bool X86MachineInstructionRaiser::raise() {

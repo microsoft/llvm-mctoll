@@ -11,12 +11,12 @@ This may be done in a plain text file with `exclude-functions` and `include-func
 ```
 ; exclude `int bar(int)` defined in a.out
 exclude-functions {
-  a.out:i32 bar(i32)   
+a.out:i32 bar(i32)   
 }
 
 ; include `int foo(void)` defined in a.out
 include-functions {
-  a.out:i32 foo(void)   
+a.out:i32 foo(void)   
 }
 ```
 

@@ -1078,12 +1078,11 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     uint64_t Index;
 
     FunctionFilter *FuncFilter = moduleRaiser->getFunctionFilter();
-    if (cl::getRegisteredOptions()["filter-functions-file"]
-            ->getNumOccurrences() > 0) {
-      if (!FuncFilter->readFilterFunctionConfigFile(
-              FilterFunctionSet.getValue())) {
+    auto FilterConfigFileName = FilterFunctionSet.getValue();
+    if (!FilterConfigFileName.empty()) {
+      if (!FuncFilter->readFilterFunctionConfigFile(FilterConfigFileName)) {
         dbgs() << "Unable to read function filter configuration file "
-               << FilterFunctionSet.getValue() << ". Ignoring\n";
+               << FilterConfigFileName << ". Ignoring\n";
       }
     }
 
@@ -1144,27 +1143,39 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       if (isAFunctionSymbol(Obj, Symbols[si])) {
         auto &SymStr = Symbols[si].Name;
 
-        if ((FilterFunctionSet.getNumOccurrences() != 0)) {
+        bool raiseFuncSymbol = true;
+        if ((!FilterFunctionSet.getValue().empty())) {
           // Check the symbol name whether it should be excluded or not.
+          // Check in a non-empty exclude list
           if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_EXCLUDE)) {
             FunctionFilter::FuncInfo *FI = FuncFilter->findFuncInfoBySymbol(
                 SymStr, FunctionFilter::FILTER_EXCLUDE);
             if (FI != nullptr) {
               // Record the function start index.
               FI->StartIdx = Start;
-              continue;
+              // Skip raising this function symbol
+              raiseFuncSymbol = false;
             }
           }
 
-          // Check the symbol name whether it should be included or not.
-          if (FuncFilter->findFuncInfoBySymbol(
-                  SymStr, FunctionFilter::FILTER_INCLUDE) == nullptr)
-            continue;
+          if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_INCLUDE)) {
+            // Include list specified. Unless the current function symbol is
+            // specified in the include list, skip raising it.
+            raiseFuncSymbol = false;
+            // Check the symbol name whether it should be included or not.
+            if (FuncFilter->findFuncInfoBySymbol(
+                    SymStr, FunctionFilter::FILTER_INCLUDE) != nullptr)
+              raiseFuncSymbol = true;
+          }
         }
 
         // If Symbol is in the ELFCRTSymbol list return this is a symbol of a
         // function we are not interested in disassembling and raising.
         if (ELFCRTSymbols.find(SymStr) != ELFCRTSymbols.end())
+          raiseFuncSymbol = false;
+
+        // Check if raising function symbol should be skipped
+        if (!raiseFuncSymbol)
           continue;
 
         // Note that since LLVM infrastructure was built to be used to build a

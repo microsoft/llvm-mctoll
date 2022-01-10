@@ -276,9 +276,10 @@ bool FunctionFilter::readFilterFunctionConfigFile(
   char Buf[512];
   while (!f.eof()) {
     f.getline(Buf, 512);
-    StringRef Line(Buf);
-    // Line comment character
-    if (Line.ltrim().startswith(";"))
+    StringRef RawLine(Buf);
+    StringRef Line = RawLine.trim();
+    // Ignore comment line
+    if (Line.startswith(";"))
       continue;
     if (FFType != FunctionFilter::FILTER_NONE) {
       SmallVector<StringRef, 3> Grp;

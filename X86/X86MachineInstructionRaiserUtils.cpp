@@ -1068,14 +1068,27 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
   return true;
 }
 
-// Insert an unreachable instruction at the end of every BB if it is not
-// terminated.
-// We assume that unterminated BBs will never exit
+// Check for unterminated basic blocks.
 bool X86MachineInstructionRaiser::handleUnterminatedBlocks() {
-  LLVMContext &Ctx(getRaisedFunction()->getContext());
-  for (auto &BB : *getRaisedFunction()) {
-    if (BB.getTerminator() == nullptr) {
-      new UnreachableInst(Ctx, &BB);
+  auto raisedFunction = getRaisedFunction();
+  LLVMContext &Ctx(raisedFunction->getContext());
+  for (auto &BB : *raisedFunction) {
+    if (!BB.empty() && (BB.getTerminator() == nullptr)) {
+      // If the last instruction of a basic block is a call instruction
+      // convert it into a tail call and insert an unreachable instruction
+      // after the call instruction if
+      // a) this block is an exit block i.e., has no successors.
+      // b) the function has a void return
+      if (succ_empty(&BB) && raisedFunction->getReturnType()->isVoidTy()) {
+        Instruction *LastInst = &*(BB.rbegin());
+        CallInst *Call = dyn_cast<CallInst>(LastInst);
+        if (Call) {
+          Call->setTailCall(true);
+          new UnreachableInst(Ctx, &BB);
+        }
+      } else {
+        llvm_unreachable("Unterminated Basic Block encountered.");
+      }
     }
   }
   return true;

@@ -4936,6 +4936,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
           FT->getParamType(0)->isIntegerTy(32)) {
         Instruction *UR = new UnreachableInst(Ctx);
         RaisedBB->getInstList().push_back(UR);
+        // Mark callInst as tail call
+        dyn_cast<CallInst>(callInst)->setTailCall(true);
       }
     } else if (CalledFunc->getName().equals("__assert_fail")) {
       FunctionType *FT = CalledFunc->getFunctionType();
@@ -4946,6 +4948,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
           FT->getParamType(3)->isPointerTy()) {
         Instruction *UR = new UnreachableInst(Ctx);
         RaisedBB->getInstList().push_back(UR);
+        // Mark callInst as tail call
+        dyn_cast<CallInst>(callInst)->setTailCall(true);
       }
     }
     Success = true;

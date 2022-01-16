@@ -2412,7 +2412,7 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::SEH_SetFrame, {0, Unknown}},
     {X86::SEH_StackAlloc, {0, Unknown}},
     {X86::SETCCr, {0, SETCC}},
-    {X86::SETCCm, {0, SETCC}},
+    {X86::SETCCm, {1, SETCC}},
     {X86::SFENCE, {0, Unknown}},
     {X86::SGDT16m, {0, Unknown}},
     {X86::SGDT32m, {0, Unknown}},

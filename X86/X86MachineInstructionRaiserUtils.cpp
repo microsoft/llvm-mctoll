@@ -1076,10 +1076,9 @@ bool X86MachineInstructionRaiser::handleUnterminatedBlocks() {
     if (!BB.empty() && (BB.getTerminator() == nullptr)) {
       // If the last instruction of a basic block is a call instruction
       // convert it into a tail call and insert an unreachable instruction
-      // after the call instruction if
-      // a) this block is an exit block i.e., has no successors.
-      // b) the function has a void return
-      if (succ_empty(&BB) && raisedFunction->getReturnType()->isVoidTy()) {
+      // after the call instruction if this block is an exit block i.e., has no
+      // successors.
+      if (succ_empty(&BB)) {
         Instruction *LastInst = &*(BB.rbegin());
         CallInst *Call = dyn_cast<CallInst>(LastInst);
         if (Call) {

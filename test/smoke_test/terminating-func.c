@@ -16,8 +16,18 @@ void exit_with_msg(const char *msg) {
   exit(0);
 }
 
+__attribute__((noinline))
+int exit_conditionally(int exit) {
+  if (exit) {
+    exit_with_msg("Bye!");
+    return 0;
+  } else {
+    return printf("Not exiting");
+  }
+}
+
 int main() {
   printf("Hello from main!\n");
-  exit_with_msg("Bye!");
+  exit_conditionally(1);
   return 0;
 }

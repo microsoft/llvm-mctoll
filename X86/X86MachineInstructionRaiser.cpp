@@ -3160,6 +3160,8 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
     return raiseSSEConvertPrecisionFromMemMachineInstr(MI, MemoryRefValue);
   case InstructionKind::BIT_TEST_OP:
     return raiseBitTestMachineInstr(MI, MemoryRefValue, true);
+  case InstructionKind::SETCC:
+    return raiseSetCCMachineInstr(MI, MemoryRefValue);
   default:
     LLVM_DEBUG(MI.dump());
     assert(false && "Unhandled memory referencing instruction");
@@ -3168,16 +3170,16 @@ bool X86MachineInstructionRaiser::raiseMemRefMachineInstr(
 }
 
 bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
-    const MachineInstr &MI) {
+    const MachineInstr &MI, Value *MemoryRefValue = nullptr) {
   const MCInstrDesc &MIDesc = MI.getDesc();
   int MBBNo = MI.getParent()->getNumber();
   LLVMContext &Ctx(MF.getFunction().getContext());
   Value *FalseValue = ConstantInt::getFalse(Ctx);
   Value *TrueValue = ConstantInt::getTrue(Ctx);
-  bool Success = false;
 
-  assert(MIDesc.getNumDefs() == 1 &&
-         "Not found expected one destination operand of set instruction");
+  assert(((MIDesc.getNumDefs() == 1 && MemoryRefValue == nullptr) ||
+         (MIDesc.getNumDefs() == 0 && MemoryRefValue != nullptr)) &&
+             "Not found expected one destination operand of set instruction");
   assert(MIDesc.getNumImplicitUses() == 1 &&
          MIDesc.hasImplicitUseOfPhysReg(X86::EFLAGS) &&
          "Not found expected implicit use of eflags in set instruction.");
@@ -3185,7 +3187,7 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  const MachineOperand &DestOp = MI.getOperand(0);
+  Value *Result;
 
   CmpInst::Predicate Pred = CmpInst::Predicate::BAD_ICMP_PREDICATE;
   switch (X86::getCondFromSETCC(MI)) {
@@ -3193,21 +3195,13 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     // Check if ZF == 0
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, ZFValue, FalseValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, ZFValue, FalseValue);
   } break;
   case X86::COND_E: {
     // Check if ZF == 1
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *ZFValue = getRegOrArgValue(EFLAGS::ZF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, ZFValue, TrueValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, ZFValue, TrueValue);
   } break;
   case X86::COND_G: {
     // Check ZF == 0 and SF == OF
@@ -3226,42 +3220,26 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     // Test SF == OF
     CmpInst *SFOFCond = new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_CMOVG");
     RaisedBB->getInstList().push_back(SFOFCond);
-    Instruction *CMOVCond =
-        BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG");
-    RaisedBB->getInstList().push_back(CMOVCond);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMOVCond);
-    Success = true;
+    Result =
+        BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG", RaisedBB);
   } break;
   case X86::COND_O: {
     // Check if OF = 1
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, OFValue, TrueValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, OFValue, TrueValue);
   } break;
   case X86::COND_B: {
     // Check if CF = 1
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *CFValue = getRegOrArgValue(EFLAGS::CF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, CFValue, TrueValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, CFValue, TrueValue);
   } break;
   case X86::COND_AE: {
     // Check if CF = 0
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *CFValue = getRegOrArgValue(EFLAGS::CF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, CFValue, FalseValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, CFValue, FalseValue);
   } break;
   case X86::COND_A: {
     // Check CF == 0 and ZF == 0
@@ -3279,31 +3257,20 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_CMOVA");
     RaisedBB->getInstList().push_back(ZFCond);
 
-    Instruction *CMOVCond =
+    Result =
         BinaryOperator::CreateAnd(CFCond, ZFCond, "CFAndZF_CMOVA", RaisedBB);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMOVCond);
-    Success = true;
   } break;
   case X86::COND_NS: {
     // Check if SF == 0
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, SFValue, FalseValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, SFValue, FalseValue);
   } break;
   case X86::COND_S: {
     // Check if SF == 1
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, SFValue, TrueValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, SFValue, TrueValue);
   } break;
   case X86::COND_LE: {
     // Check ZF == 1 or SF != OF
@@ -3322,11 +3289,7 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
                                      OFValue, "SFOFCmp_SETLE");
     RaisedBB->getInstList().push_back(SFOFCond);
 
-    Instruction *SETCond =
-        BinaryOperator::CreateOr(ZFCond, SFOFCond, "Cond_SETLE", RaisedBB);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), SETCond);
-    Success = true;
+    Result = BinaryOperator::CreateOr(ZFCond, SFOFCond, "Cond_SETLE", RaisedBB);
   } break;
   case X86::COND_GE: {
     // SF == OF
@@ -3336,42 +3299,26 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
            "Failed to get EFLAGS value while raising SETGE");
     Pred = CmpInst::Predicate::ICMP_EQ;
     // Compare SF and OF
-    CmpInst *SETCond = new ICmpInst(Pred, SFValue, OFValue, "Cond_SETGE");
-    RaisedBB->getInstList().push_back(SETCond);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), SETCond);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, SFValue, OFValue, "Cond_SETGE");
   } break;
   case X86::COND_NP: {
     // Check if PF == 0
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *PFValue = getRegOrArgValue(EFLAGS::PF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, PFValue, FalseValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, PFValue, FalseValue);
   } break;
   case X86::COND_P: {
     // Check if PF == 1
     Pred = CmpInst::Predicate::ICMP_EQ;
     Value *PFValue = getRegOrArgValue(EFLAGS::PF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, PFValue, TrueValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, PFValue, TrueValue);
   } break;
   case X86::COND_L: {
     // Check if SF != OF
     Pred = CmpInst::Predicate::ICMP_NE;
     Value *SFValue = getRegOrArgValue(EFLAGS::SF, MBBNo);
     Value *OFValue = getRegOrArgValue(EFLAGS::OF, MBBNo);
-    CmpInst *CMP = new ICmpInst(Pred, SFValue, OFValue);
-    RaisedBB->getInstList().push_back(CMP);
-    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
-                                     MI.getParent()->getNumber(), CMP);
-    Success = true;
+    Result = new ICmpInst(*RaisedBB, Pred, SFValue, OFValue);
   } break;
   case X86::COND_INVALID:
     assert(false && "Set instruction with invalid condition found");
@@ -3381,11 +3328,27 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     break;
   }
 
-  if (Pred == CmpInst::Predicate::BAD_ICMP_PREDICATE) {
+  if (Pred == CmpInst::Predicate::BAD_ICMP_PREDICATE || Result == nullptr) {
     LLVM_DEBUG(MI.dump());
     assert(false && "Unhandled set instruction");
+    return false;
   }
-  return Success;
+
+  const MachineOperand &DestOp = MI.getOperand(0);
+  if (MemoryRefValue == nullptr) {
+    // store result in register
+    raisedValues->setPhysRegSSAValue(DestOp.getReg(),
+                                     MI.getParent()->getNumber(), Result);
+  } else {
+    // store result in memory
+    unsigned int memSzInBits = getInstructionMemOpSize(MI.getOpcode()) * 8;
+    Type *StoreTy = Type::getIntNTy(Ctx, memSzInBits);
+    auto StoreVal = new ZExtInst(Result, StoreTy, "", RaisedBB);
+
+    new StoreInst(StoreVal, MemoryRefValue, false, Align(), RaisedBB);
+  }
+
+  return true;
 }
 
 // Raise a binary operation instruction with operand encoding MRI or MRC

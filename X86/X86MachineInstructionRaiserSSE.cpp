@@ -34,7 +34,7 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
   int MBBNo = MI.getParent()->getNumber();
   MCInstrDesc MCIDesc = MI.getDesc();
   assert((MCIDesc.getNumDefs() == 0 || MCIDesc.getNumDefs() == 1) &&
-         (MCIDesc.getNumOperands() == 2 || MCIDesc.getNumOperands() == 4) &&
+         (MCIDesc.getNumOperands() == 2 || MCIDesc.getNumOperands() == 3 || MCIDesc.getNumOperands() == 4) &&
          "Unexpected operands found in SSE compare instruction");
 
   unsigned int Src1Idx, Src2Idx;
@@ -42,7 +42,7 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
   if (MCIDesc.getNumOperands() == 2) {
     Src1Idx = 0;
     Src2Idx = 1;
-  } else if (MCIDesc.getNumOperands() == 4) {
+  } else if (MCIDesc.getNumOperands() == 3 || MCIDesc.getNumOperands() == 4) {
     Src1Idx = 1;
     Src2Idx = 2;
   } else {
@@ -256,6 +256,70 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
                                                   "cmp_bitmask", RaisedBB);
     raisedValues->setPhysRegSSAValue(DstReg, MI.getParent()->getNumber(),
                                      SelectInstr);
+  } break;
+  case X86::PCMPEQBrm:
+  case X86::PCMPEQBrr:
+  case X86::PCMPEQWrm:
+  case X86::PCMPEQWrr:
+  case X86::PCMPEQDrm:
+  case X86::PCMPEQDrr:
+  case X86::PCMPEQQrm:
+  case X86::PCMPEQQrr: {
+    // Compare a comparison of packed bytes/words/dwords/qwords
+    // If a pair is equal, set the bits corresponding to 1, otherwise to 0
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    MachineOperand DstOp = MI.getOperand(0);
+    assert(DstOp.isReg() && "Expected destination operand to be a register");
+    Register DstReg = DstOp.getReg();
+    assert(CmpOpVal1->getType()->isVectorTy() &&
+           CmpOpVal2->getType()->isVectorTy() &&
+           CmpOpVal1->getType()->getPrimitiveSizeInBits() == 128 &&
+           CmpOpVal2->getType()->getPrimitiveSizeInBits() == 128 &&
+           "Expected operand types to be vector types of size 128");
+
+    unsigned int ElementSizeInBits;
+    switch (MI.getOpcode()) {
+    case X86::PCMPEQBrm:
+    case X86::PCMPEQBrr:
+      ElementSizeInBits = 8;
+      break;
+    case X86::PCMPEQWrm:
+    case X86::PCMPEQWrr:
+      ElementSizeInBits = 16;
+      break;
+    case X86::PCMPEQDrm:
+    case X86::PCMPEQDrr:
+      ElementSizeInBits = 32;
+      break;
+    case X86::PCMPEQQrm:
+    case X86::PCMPEQQrr:
+      ElementSizeInBits = 64;
+      break;
+    default:
+      llvm_unreachable("Unhandled pcmp instruction");
+    }
+
+    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, ElementSizeInBits), 128 / ElementSizeInBits);
+    CmpOpVal1 = new BitCastInst(CmpOpVal1, VecTy, "", RaisedBB);
+    CmpOpVal2 = new BitCastInst(CmpOpVal2, VecTy, "", RaisedBB);
+
+    auto IntNTy = IntegerType::getIntNTy(Ctx, VecTy->getElementType()->getPrimitiveSizeInBits());
+    Value *BitmaskVal = ConstantInt::get(IntNTy, IntNTy->getBitMask());
+    Value *ZeroVal = ConstantInt::get(IntNTy, 0);
+
+    // compare each pair and insert the result in the resulting vector
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
+      auto Index = ConstantInt::get(VecTy->getElementType(), i);
+      auto CmpSegment1 = ExtractElementInst::Create(CmpOpVal1, Index, "", RaisedBB);
+      auto CmpSegment2 = ExtractElementInst::Create(CmpOpVal2, Index, "", RaisedBB);
+      auto CmpInst = new ICmpInst(*RaisedBB, CmpInst::ICMP_EQ, CmpSegment1, CmpSegment2, "cmp_segment");
+      auto SelectInstr = SelectInst::Create(CmpInst, BitmaskVal, ZeroVal, "segment", RaisedBB);
+      Result = InsertElementInst::Create(Result, SelectInstr, Index, "", RaisedBB);
+    }
+
+    raisedValues->setPhysRegSSAValue(DstReg, MI.getParent()->getNumber(),
+                                     Result);
   } break;
   default:
     llvm_unreachable("Unhandled SSE compare instruction");
@@ -491,7 +555,9 @@ bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
 
   switch (MI.getOpcode()) {
   case X86::MOVAPSrr:
-  case X86::MOVAPDrr: {
+  case X86::MOVAPDrr:
+  case X86::MOVDQArr:
+  case X86::MOVDQUrr: {
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
   } break;
   case X86::MOV64toPQIrr:

@@ -491,7 +491,13 @@ bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
 
   switch (MI.getOpcode()) {
   case X86::MOVAPSrr:
-  case X86::MOVAPDrr: {
+  case X86::MOVAPDrr:
+  case X86::MOVDQAmr:
+  case X86::MOVDQArm:
+  case X86::MOVDQArr:
+  case X86::MOVDQUmr:
+  case X86::MOVDQUrm:
+  case X86::MOVDQUrr: {
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
   } break;
   case X86::MOV64toPQIrr:

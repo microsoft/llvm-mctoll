@@ -1179,6 +1179,17 @@ X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
 
 Type *X86RaisedValueTracker::getSSEInstructionType(const MachineInstr &MI,
                                                    LLVMContext &Ctx) {
+  // TODO: temp workaround, fix this
+  switch (MI.getOpcode()) {
+  case X86::MOVDQAmr:
+  case X86::MOVDQArm:
+  case X86::MOVDQArr:
+  case X86::MOVDQUmr:
+  case X86::MOVDQUrm:
+  case X86::MOVDQUrr:
+    return VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+  }
+
   uint64_t TSFlags = MI.getDesc().TSFlags;
 
   if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XS) {

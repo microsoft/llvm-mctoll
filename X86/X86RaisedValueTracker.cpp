@@ -1134,8 +1134,22 @@ X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
   }
 
   Instruction *Result;
-  if (SrcVal->getType()->getPrimitiveSizeInBits() >
-      DstTy->getPrimitiveSizeInBits()) {
+  if (SrcVal->getType()->isVectorTy() && DstTy->isVectorTy() &&
+      SrcVal->getType()->getPrimitiveSizeInBits() !=
+          DstTy->getPrimitiveSizeInBits()) {
+    Type *SrcIntTy = Type::getIntNTy(
+        DstTy->getContext(), SrcVal->getType()->getPrimitiveSizeInBits());
+    Type *DstIntTy =
+        Type::getIntNTy(DstTy->getContext(), DstTy->getPrimitiveSizeInBits());
+    auto IntCastInst = new BitCastInst(SrcVal, SrcIntTy);
+    INSERT_INSTRUCTION(IntCastInst);
+    auto CastInst = CastInst::Create(
+        CastInst::getCastOpcode(IntCastInst, false, DstIntTy, false),
+        IntCastInst, DstIntTy);
+    INSERT_INSTRUCTION(CastInst);
+    Result = new BitCastInst(CastInst, DstTy);
+  } else if (SrcVal->getType()->getPrimitiveSizeInBits() >
+             DstTy->getPrimitiveSizeInBits()) {
     Type *SrcTyVec =
         VectorType::get(DstTy,
                         SrcVal->getType()->getPrimitiveSizeInBits() /

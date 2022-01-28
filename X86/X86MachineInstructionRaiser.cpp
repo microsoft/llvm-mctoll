@@ -1553,6 +1553,76 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstReg = MI.getOperand(DestOpIndex).getReg();
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
   } break;
+  case X86::PADDBrr:
+  case X86::PADDDrr:
+  case X86::PADDQrr:
+  case X86::PADDWrr:
+  case X86::PSUBBrr:
+  case X86::PSUBDrr:
+  case X86::PSUBQrr:
+  case X86::PSUBWrr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+    // Verify the def operand is a register.
+    assert(MI.getOperand(DestOpIndex).isReg() &&
+           "Expecting destination of sse op instruction to be a register "
+           "operand");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected number of defines in sse op instruction");
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+           "Unhandled situation: register is used before initialization in "
+           "sse op");
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+
+    Type *SrcTy;
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    switch (MI.getOpcode()) {
+    case X86::PADDBrr:
+    case X86::PSUBBrr:
+      SrcTy = VectorType::get(Type::getInt8Ty(Ctx), 16, false);
+      break;
+    case X86::PADDWrr:
+    case X86::PSUBWrr:
+      SrcTy = VectorType::get(Type::getInt16Ty(Ctx), 8, false);
+      break;
+    case X86::PADDDrr:
+    case X86::PSUBDrr:
+      SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+      break;
+    case X86::PADDQrr:
+    case X86::PSUBQrr:
+      SrcTy = VectorType::get(Type::getInt64Ty(Ctx), 2, false);
+      break;
+    default:
+      MI.dump();
+      llvm_unreachable("Unhandled sse packed instruction");
+    }
+
+    Src1Value = new BitCastInst(Src1Value, SrcTy, "", RaisedBB);
+    Src2Value = new BitCastInst(Src2Value, SrcTy, "", RaisedBB);
+
+    bool isAdd = instrNameStartsWith(MI, "PADD");
+    bool isSub = instrNameStartsWith(MI, "PSUB");
+
+    Instruction *BinOpInst = nullptr;
+    if (isAdd) {
+      BinOpInst = BinaryOperator::CreateAdd(Src1Value, Src2Value);
+    } else if (isSub) {
+      BinOpInst = BinaryOperator::CreateSub(Src1Value, Src2Value);
+    } else {
+      MI.dump();
+      llvm_unreachable("Unhandled instruction");
+    }
+
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    // raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
+
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+  } break;
   default:
     MI.dump();
     assert(false && "Unhandled binary instruction");
@@ -1807,6 +1877,54 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     Value *IntrinsicCallArgs[] = {LoadValue};
     BinOpInst = CallInst::Create(
         IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+  } break;
+  case X86::PADDBrm:
+  case X86::PADDDrm:
+  case X86::PADDQrm:
+  case X86::PADDWrm:
+  case X86::PSUBBrm:
+  case X86::PSUBDrm:
+  case X86::PSUBQrm:
+  case X86::PSUBWrm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    Type *SrcTy;
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    switch (MI.getOpcode()) {
+    case X86::PADDBrm:
+    case X86::PSUBBrm:
+      SrcTy = VectorType::get(Type::getInt8Ty(Ctx), 16, false);
+      break;
+    case X86::PADDWrm:
+    case X86::PSUBWrm:
+      SrcTy = VectorType::get(Type::getInt16Ty(Ctx), 8, false);
+      break;
+    case X86::PADDDrm:
+    case X86::PSUBDrm:
+      SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+      break;
+    case X86::PADDQrm:
+    case X86::PSUBQrm:
+      SrcTy = VectorType::get(Type::getInt64Ty(Ctx), 2, false);
+      break;
+    default:
+      MI.dump();
+      llvm_unreachable("Unhandled sse packed instruction");
+    }
+
+    DestValue = new BitCastInst(DestValue, SrcTy, "", RaisedBB);
+    LoadValue = new BitCastInst(LoadValue, SrcTy, "", RaisedBB);
+
+    bool isAdd = instrNameStartsWith(MI, "PADD");
+    bool isSub = instrNameStartsWith(MI, "PSUB");
+
+    if (isAdd) {
+      BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
+    } else if (isSub) {
+      BinOpInst = BinaryOperator::CreateSub(DestValue, LoadValue);
+    } else {
+      MI.dump();
+      llvm_unreachable("Unhandled instruction");
+    }
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");

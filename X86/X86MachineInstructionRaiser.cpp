@@ -791,8 +791,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   bool Success = true;
   unsigned opc = MI.getOpcode();
 
-  // Check if this instruction is a xor reg1, reg1 instruction, and does not need
-  // to look up the value of the operand values
+  // Check if this instruction is a xor reg1, reg1 instruction, and does not
+  // need to look up the value of the operand values
   bool IsXorSetZeroInstruction =
       (opc == X86::XOR64rr || opc == X86::XOR32rr || opc == X86::XOR16rr ||
        opc == X86::XOR8rr || opc == X86::XORPSrr || opc == X86::XORPDrr ||
@@ -845,24 +845,24 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         assert(((Src1Value->getType()->isIntegerTy() &&
                  Src2Value->getType()->isIntegerTy()) ||
                 (Src1Value->getType()->isFloatingPointTy() &&
-               Src2Value->getType()->isFloatingPointTy()) ||
-              (Src1Value->getType()->isVectorTy() &&
-               Src2Value->getType()->isVectorTy())) &&
-             "Unhandled operand value types in reg-to-reg binary op "
-             "instruction");
-      if (Src1Value->getType() != Src2Value->getType()) {
-        // Cast the second operand to the type of second.
-        // NOTE : The choice of target cast type is rather arbitrary. May
-        // need a closer look.
-        Type *DestValueTy = Src1Value->getType();
-        Instruction *CInst = CastInst::Create(
-            CastInst::getCastOpcode(Src2Value, false, DestValueTy, false),
-            Src2Value, DestValueTy);
-        RaisedBB->getInstList().push_back(CInst);
-        Src2Value = CInst;
-      }
-      ExplicitSrcValues[0] = Src1Value;
-      ExplicitSrcValues[1] = Src2Value;
+                 Src2Value->getType()->isFloatingPointTy()) ||
+                (Src1Value->getType()->isVectorTy() &&
+                 Src2Value->getType()->isVectorTy())) &&
+               "Unhandled operand value types in reg-to-reg binary op "
+               "instruction");
+        if (Src1Value->getType() != Src2Value->getType()) {
+          // Cast the second operand to the type of second.
+          // NOTE : The choice of target cast type is rather arbitrary. May
+          // need a closer look.
+          Type *DestValueTy = Src1Value->getType();
+          Instruction *CInst = CastInst::Create(
+              CastInst::getCastOpcode(Src2Value, false, DestValueTy, false),
+              Src2Value, DestValueTy);
+          RaisedBB->getInstList().push_back(CInst);
+          Src2Value = CInst;
+        }
+        ExplicitSrcValues[0] = Src1Value;
+        ExplicitSrcValues[1] = Src2Value;
       }
     }
   }
@@ -1263,14 +1263,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
       Instruction *BinOpInst;
       if (instrNameStartsWith(MI, "SAR")) {
-        BinOpInst =
-            BinaryOperator::CreateAShr(SrcOpValue, CountValue);
+        BinOpInst = BinaryOperator::CreateAShr(SrcOpValue, CountValue);
       } else if (instrNameStartsWith(MI, "SHL")) {
-        BinOpInst =
-            BinaryOperator::CreateShl(SrcOpValue, CountValue);
+        BinOpInst = BinaryOperator::CreateShl(SrcOpValue, CountValue);
       } else if (instrNameStartsWith(MI, "SHR")) {
-        BinOpInst =
-            BinaryOperator::CreateLShr(SrcOpValue, CountValue);
+        BinOpInst = BinaryOperator::CreateLShr(SrcOpValue, CountValue);
       } else {
         llvm_unreachable("unhandled shift instruction");
       }
@@ -1457,8 +1454,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       case X86::ANDNPDrr:
       case X86::ANDNPSrr: {
         auto NotVal = BinaryOperator::CreateNot(BitCastToInt1, "", RaisedBB);
-        Result = BinaryOperator::CreateAnd(NotVal, BitCastToInt2,
-                                           "andn_result", RaisedBB);
+        Result = BinaryOperator::CreateAnd(NotVal, BitCastToInt2, "andn_result",
+                                           RaisedBB);
       } break;
       case X86::PORrr:
       case X86::ORPDrr:
@@ -1553,6 +1550,166 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     dstReg = MI.getOperand(DestOpIndex).getReg();
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
   } break;
+  case X86::PADDBrr:
+  case X86::PADDDrr:
+  case X86::PADDQrr:
+  case X86::PADDWrr:
+  case X86::PSUBBrr:
+  case X86::PSUBDrr:
+  case X86::PSUBQrr:
+  case X86::PSUBWrr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+    // Verify the def operand is a register.
+    assert(MI.getOperand(DestOpIndex).isReg() &&
+           isSSE2Reg(MI.getOperand(DestOpIndex).getReg()) &&
+           "Expecting destination of sse op instruction to be a register "
+           "operand");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected number of defines in sse op instruction");
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+           "Unhandled situation: register is used before initialization in "
+           "sse op");
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+
+    Type *SrcTy;
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    switch (MI.getOpcode()) {
+    case X86::PADDBrr:
+    case X86::PSUBBrr:
+      SrcTy = VectorType::get(Type::getInt8Ty(Ctx), 16, false);
+      break;
+    case X86::PADDWrr:
+    case X86::PSUBWrr:
+      SrcTy = VectorType::get(Type::getInt16Ty(Ctx), 8, false);
+      break;
+    case X86::PADDDrr:
+    case X86::PSUBDrr:
+      SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+      break;
+    case X86::PADDQrr:
+    case X86::PSUBQrr:
+      SrcTy = VectorType::get(Type::getInt64Ty(Ctx), 2, false);
+      break;
+    default:
+      MI.dump();
+      llvm_unreachable("Unhandled sse packed instruction");
+    }
+
+    Src1Value = new BitCastInst(Src1Value, SrcTy, "", RaisedBB);
+    Src2Value = new BitCastInst(Src2Value, SrcTy, "", RaisedBB);
+
+    bool isAdd = instrNameStartsWith(MI, "PADD");
+    bool isSub = instrNameStartsWith(MI, "PSUB");
+
+    Instruction *BinOpInst = nullptr;
+    if (isAdd) {
+      BinOpInst = BinaryOperator::CreateAdd(Src1Value, Src2Value);
+    } else if (isSub) {
+      BinOpInst = BinaryOperator::CreateSub(Src1Value, Src2Value);
+    } else {
+      MI.dump();
+      llvm_unreachable("Unhandled instruction");
+    }
+
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
+    // raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
+    RaisedBB->getInstList().push_back(BinOpInst);
+    dstValue = BinOpInst;
+
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, dstValue);
+  } break;
+  case X86::PMAXSBrr:
+  case X86::PMAXSDrr:
+  case X86::PMAXSWrr:
+  case X86::PMAXUBrr:
+  case X86::PMAXUDrr:
+  case X86::PMAXUWrr:
+  case X86::PMINSBrr:
+  case X86::PMINSDrr:
+  case X86::PMINSWrr:
+  case X86::PMINUBrr:
+  case X86::PMINUDrr:
+  case X86::PMINUWrr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+    // Verify the def operand is a register.
+    assert(MI.getOperand(DestOpIndex).isReg() &&
+           isSSE2Reg(MI.getOperand(DestOpIndex).getReg()) &&
+           "Expecting destination of sse op instruction to be a register "
+           "operand");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected number of defines in sse op instruction");
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+           "Unhandled situation: register is used before initialization in "
+           "sse op");
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+
+    bool isSigned =
+        instrNameStartsWith(MI, "PMAXS") || instrNameStartsWith(MI, "PMINS");
+    bool isMax = instrNameStartsWith(MI, "PMAX");
+    CmpInst::Predicate CmpPred;
+    if (isMax) {
+      CmpPred = isSigned ? CmpInst::Predicate::ICMP_SGT
+                         : CmpInst::Predicate::ICMP_UGT;
+    } else {
+      CmpPred = isSigned ? CmpInst::Predicate::ICMP_SLT
+                         : CmpInst::Predicate::ICMP_ULT;
+    }
+
+    unsigned int segmentSize;
+    switch (MI.getOpcode()) {
+    case X86::PMAXSBrr:
+    case X86::PMAXUBrr:
+    case X86::PMINSBrr:
+    case X86::PMINUBrr:
+      segmentSize = 8;
+      break;
+    case X86::PMAXSWrr:
+    case X86::PMAXUWrr:
+    case X86::PMINSWrr:
+    case X86::PMINUWrr:
+      segmentSize = 16;
+      break;
+    case X86::PMAXSDrr:
+    case X86::PMAXUDrr:
+    case X86::PMINSDrr:
+    case X86::PMINUDrr:
+      segmentSize = 32;
+      break;
+    default:
+      llvm_unreachable("Unhandled packed min/max instruction");
+    }
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(
+        Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+
+    Src1Value = new BitCastInst(Src1Value, VecTy, "", RaisedBB);
+    Src2Value = new BitCastInst(Src2Value, VecTy, "", RaisedBB);
+
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
+      auto Index = ConstantInt::get(VecTy->getElementType(), i);
+      auto CmpSegment1 =
+          ExtractElementInst::Create(Src1Value, Index, "", RaisedBB);
+      auto CmpSegment2 =
+          ExtractElementInst::Create(Src2Value, Index, "", RaisedBB);
+      auto CmpInst = new ICmpInst(*RaisedBB, CmpPred, CmpSegment1, CmpSegment2,
+                                  "cmp_segment");
+      auto SelectInst = SelectInst::Create(CmpInst, CmpSegment1, CmpSegment2,
+                                           "min_max_segment", RaisedBB);
+      Result =
+          InsertElementInst::Create(Result, SelectInst, Index, "", RaisedBB);
+    }
+
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, (Instruction *)Result);
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
+  } break;
   default:
     MI.dump();
     assert(false && "Unhandled binary instruction");
@@ -1612,7 +1769,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::ADD32rm:
   case X86::ADD16rm:
   case X86::ADD8rm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     // Create add instruction
     BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
     AffectedEFlags.insert(EFLAGS::PF);
@@ -1621,13 +1779,15 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::AND32rm:
   case X86::AND16rm:
   case X86::AND8rm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     // Create and instruction
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
     AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::OR32rm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     // Create or instruction
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
     AffectedEFlags.insert(EFLAGS::PF);
@@ -1635,7 +1795,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::IMUL16rm:
   case X86::IMUL32rm:
   case X86::IMUL64rm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     // One-operand form of IMUL
     // Create mul instruction
     BinOpInst = BinaryOperator::CreateMul(DestValue, LoadValue);
@@ -1668,7 +1829,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::XOR16rm:
   case X86::XOR32rm:
   case X86::XOR64rm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     // Create xor instruction
     BinOpInst = BinaryOperator::CreateXor(DestValue, LoadValue);
     ClearedEFlags.insert(EFLAGS::OF);
@@ -1679,29 +1841,34 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   } break;
   case X86::ADDSSrm_Int:
   case X86::ADDSDrm_Int: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFAdd(DestValue, LoadValue);
   } break;
   case X86::SUBSSrm_Int:
   case X86::SUBSDrm_Int: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFSub(DestValue, LoadValue);
   } break;
   case X86::MULSDrm_Int:
   case X86::MULSSrm_Int: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFMul(DestValue, LoadValue);
   } break;
   case X86::DIVSDrm_Int:
   case X86::DIVSSrm_Int: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFDiv(DestValue, LoadValue);
   } break;
   case X86::MAXSDrm_Int:
   case X86::MAXSSrm_Int:
   case X86::MINSDrm_Int:
   case X86::MINSSrm_Int: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     bool isMax = instrNameStartsWith(MI, "MAX");
     std::string nameString = isMax ? "max" : "min";
 
@@ -1719,7 +1886,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::ORPSrm:
   case X86::XORPDrm:
   case X86::XORPSrm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     LLVMContext &Ctx(MF.getFunction().getContext());
     auto Int128Ty = Type::getInt128Ty(Ctx);
     // BitCast operands to integer types to perform and/or/xor operation
@@ -1730,7 +1898,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     switch (Opcode) {
     case X86::ANDPDrm:
     case X86::ANDPSrm:
-      Result = BinaryOperator::CreateAnd(DestValueInt, LoadValueInt, "", RaisedBB);
+      Result =
+          BinaryOperator::CreateAnd(DestValueInt, LoadValueInt, "", RaisedBB);
       break;
     case X86::ANDNPDrm:
     case X86::ANDNPSrm: {
@@ -1739,11 +1908,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     } break;
     case X86::ORPDrm:
     case X86::ORPSrm:
-      Result = BinaryOperator::CreateOr(DestValueInt, LoadValueInt, "", RaisedBB);
+      Result =
+          BinaryOperator::CreateOr(DestValueInt, LoadValueInt, "", RaisedBB);
       break;
     case X86::XORPDrm:
     case X86::XORPSrm:
-      Result = BinaryOperator::CreateXor(DestValueInt, LoadValueInt, "", RaisedBB);
+      Result =
+          BinaryOperator::CreateXor(DestValueInt, LoadValueInt, "", RaisedBB);
       break;
     default:
       llvm_unreachable("Unhandled opcode for packed bitwise instruction");
@@ -1752,7 +1923,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     BinOpInst = new BitCastInst(Result, DestopTy);
   } break;
   case X86::PANDrm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
   } break;
   case X86::PANDNrm: {
@@ -1760,18 +1932,21 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     BinOpInst = BinaryOperator::CreateAnd(DestValue, LoadValue);
   } break;
   case X86::PORrm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateOr(DestValue, LoadValue);
   } break;
   case X86::PXORrm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateXor(DestValue, LoadValue);
   } break;
   case X86::SBB16rm:
   case X86::SBB32rm:
   case X86::SBB64rm:
   case X86::SBB8rm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     auto CFValue = getRegOrArgValue(EFLAGS::CF, MI.getParent()->getNumber());
     assert(CFValue && "Expected CF to be set for sbb instruction");
 
@@ -1790,7 +1965,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   case X86::SQRTSDm_Int:
   case X86::SQRTSSm:
   case X86::SQRTSSm_Int: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
     LLVMContext &Ctx(MF.getFunction().getContext());
 
     auto PReg = MI.getOperand(DestIndex).getReg();
@@ -1805,8 +1981,140 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     auto IntrinsicFunc = Intrinsic::getDeclaration(M, Intrinsic::sqrt, InstrTy);
 
     Value *IntrinsicCallArgs[] = {LoadValue};
-    BinOpInst = CallInst::Create(
-        IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+    BinOpInst =
+        CallInst::Create(IntrinsicFunc, ArrayRef<Value *>(IntrinsicCallArgs));
+  } break;
+  case X86::PADDBrm:
+  case X86::PADDDrm:
+  case X86::PADDQrm:
+  case X86::PADDWrm:
+  case X86::PSUBBrm:
+  case X86::PSUBDrm:
+  case X86::PSUBQrm:
+  case X86::PSUBWrm: {
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
+    Type *SrcTy;
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    switch (MI.getOpcode()) {
+    case X86::PADDBrm:
+    case X86::PSUBBrm:
+      SrcTy = VectorType::get(Type::getInt8Ty(Ctx), 16, false);
+      break;
+    case X86::PADDWrm:
+    case X86::PSUBWrm:
+      SrcTy = VectorType::get(Type::getInt16Ty(Ctx), 8, false);
+      break;
+    case X86::PADDDrm:
+    case X86::PSUBDrm:
+      SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+      break;
+    case X86::PADDQrm:
+    case X86::PSUBQrm:
+      SrcTy = VectorType::get(Type::getInt64Ty(Ctx), 2, false);
+      break;
+    default:
+      MI.dump();
+      llvm_unreachable("Unhandled sse packed instruction");
+    }
+
+    DestValue = new BitCastInst(DestValue, SrcTy, "", RaisedBB);
+    LoadValue = new BitCastInst(LoadValue, SrcTy, "", RaisedBB);
+
+    bool isAdd = instrNameStartsWith(MI, "PADD");
+    bool isSub = instrNameStartsWith(MI, "PSUB");
+
+    if (isAdd) {
+      BinOpInst = BinaryOperator::CreateAdd(DestValue, LoadValue);
+    } else if (isSub) {
+      BinOpInst = BinaryOperator::CreateSub(DestValue, LoadValue);
+    } else {
+      MI.dump();
+      llvm_unreachable("Unhandled instruction");
+    }
+  } break;
+  case X86::PMAXSBrm:
+  case X86::PMAXSDrm:
+  case X86::PMAXSWrm:
+  case X86::PMAXUBrm:
+  case X86::PMAXUDrm:
+  case X86::PMAXUWrm:
+  case X86::PMINSBrm:
+  case X86::PMINSDrm:
+  case X86::PMINSWrm:
+  case X86::PMINUBrm:
+  case X86::PMINUDrm:
+  case X86::PMINUWrm: {
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
+    Value *Src1Value = DestValue;
+    Value *Src2Value = LoadValue;
+
+    bool isSigned =
+        instrNameStartsWith(MI, "PMAXS") || instrNameStartsWith(MI, "PMINS");
+    bool isMax = instrNameStartsWith(MI, "PMAX");
+    CmpInst::Predicate CmpPred;
+    if (isMax) {
+      CmpPred = isSigned ? CmpInst::Predicate::ICMP_SGT
+                         : CmpInst::Predicate::ICMP_UGT;
+    } else {
+      CmpPred = isSigned ? CmpInst::Predicate::ICMP_SLT
+                         : CmpInst::Predicate::ICMP_ULT;
+    }
+
+    unsigned int segmentSize;
+    switch (MI.getOpcode()) {
+    case X86::PMAXSBrm:
+    case X86::PMAXUBrm:
+    case X86::PMINSBrm:
+    case X86::PMINUBrm:
+      segmentSize = 8;
+      break;
+    case X86::PMAXSWrm:
+    case X86::PMAXUWrm:
+    case X86::PMINSWrm:
+    case X86::PMINUWrm:
+      segmentSize = 16;
+      break;
+    case X86::PMAXSDrm:
+    case X86::PMAXUDrm:
+    case X86::PMINSDrm:
+    case X86::PMINUDrm:
+      segmentSize = 32;
+      break;
+    default:
+      llvm_unreachable("Unhandled packed min/max instruction");
+    }
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(
+        Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+
+    Src1Value = new BitCastInst(Src1Value, VecTy, "", RaisedBB);
+    Src2Value = new BitCastInst(Src2Value, VecTy, "", RaisedBB);
+
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
+      auto Index = ConstantInt::get(VecTy->getElementType(), i);
+      auto CmpSegment1 =
+          ExtractElementInst::Create(Src1Value, Index, "", RaisedBB);
+      auto CmpSegment2 =
+          ExtractElementInst::Create(Src2Value, Index, "", RaisedBB);
+      auto CmpInst = new ICmpInst(*RaisedBB, CmpPred, CmpSegment1, CmpSegment2,
+                                  "cmp_segment");
+      auto SelectInst = SelectInst::Create(CmpInst, CmpSegment1, CmpSegment2,
+                                           "min_max_segment", RaisedBB);
+      // don't insert last instruction as that will be done after the switch
+      // statement
+      if (i != VecTy->getNumElements() - 1) {
+        Result =
+            InsertElementInst::Create(Result, SelectInst, Index, "", RaisedBB);
+      } else {
+        Result = InsertElementInst::Create(Result, SelectInst, Index);
+      }
+    }
+
+    BinOpInst = (Instruction *)Result;
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");
@@ -2224,7 +2532,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
 
   // If the source operand is neither an immediate or a register, check for an
   // implicit register use
-  if (!MI.getOperand(SrcOpIndex).isImm() && !MI.getOperand(SrcOpIndex).isReg()) {
+  if (!MI.getOperand(SrcOpIndex).isImm() &&
+      !MI.getOperand(SrcOpIndex).isReg()) {
     MCInstrDesc Desc = MI.getDesc();
     assert(Desc.getNumImplicitUses() == 1 && "Expected one implicit use");
     for (unsigned int i = SrcOpIndex + 1; i < MI.getNumOperands(); ++i) {
@@ -2326,7 +2635,8 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   // Cast SrcValue and MemRefVal as needed.
   MemRefVal = getRaisedValues()->castValue(MemRefVal, StoreTy->getPointerTo(),
                                            RaisedBB);
-  SrcValue = getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB, SignExtend);
+  SrcValue =
+      getRaisedValues()->castValue(SrcValue, StoreTy, RaisedBB, SignExtend);
 
   if (!isMovInst) {
     // If this is not an instruction that just moves SrcValue, load from memory,
@@ -2446,17 +2756,14 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
                                  : ConstantInt::get(LdInstTy, 0x3f);
       // Generate mask
       auto CountValue = BinaryOperator::CreateAnd(SrcValue, CountMask,
-                                             "shift-cnt-msk", RaisedBB);
+                                                  "shift-cnt-msk", RaisedBB);
 
       if (instrNameStartsWith(MI, "SAR")) {
-        BinOpInst =
-            BinaryOperator::CreateAShr(LdInst, CountValue);
+        BinOpInst = BinaryOperator::CreateAShr(LdInst, CountValue);
       } else if (instrNameStartsWith(MI, "SHL")) {
-        BinOpInst =
-            BinaryOperator::CreateShl(LdInst, CountValue);
+        BinOpInst = BinaryOperator::CreateShl(LdInst, CountValue);
       } else if (instrNameStartsWith(MI, "SHR")) {
-        BinOpInst =
-            BinaryOperator::CreateLShr(LdInst, CountValue);
+        BinOpInst = BinaryOperator::CreateLShr(LdInst, CountValue);
       } else {
         llvm_unreachable("unhandled shift instruction");
       }
@@ -3193,8 +3500,8 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
   Value *TrueValue = ConstantInt::getTrue(Ctx);
 
   assert(((MIDesc.getNumDefs() == 1 && MemoryRefValue == nullptr) ||
-         (MIDesc.getNumDefs() == 0 && MemoryRefValue != nullptr)) &&
-             "Not found expected one destination operand of set instruction");
+          (MIDesc.getNumDefs() == 0 && MemoryRefValue != nullptr)) &&
+         "Not found expected one destination operand of set instruction");
   assert(MIDesc.getNumImplicitUses() == 1 &&
          MIDesc.hasImplicitUseOfPhysReg(X86::EFLAGS) &&
          "Not found expected implicit use of eflags in set instruction.");
@@ -4977,7 +5284,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         break;
       } else {
         if (RD->getType()->isVectorTy()) {
-          RD = raisedValues->reinterpretSSERegValue(RD, Type::getDoubleTy(Ctxt), RaisedBB);
+          RD = raisedValues->reinterpretSSERegValue(RD, Type::getDoubleTy(Ctxt),
+                                                    RaisedBB);
         }
         ArgTypeVector.push_back(RD->getType());
         ArgValueVector.push_back(RD);

@@ -1726,6 +1726,55 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
   } break;
+  case X86::UNPCKLPDrr:
+  case X86::UNPCKLPSrr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+    // Verify the def operand is a register.
+    assert(MI.getOperand(DestOpIndex).isReg() &&
+           "Expecting destination of sse op instruction to be a register "
+           "operand");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected number of defines in sse op instruction");
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+           "Unhandled situation: register is used before initialization in "
+           "sse op");
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+
+    unsigned int segmentSize;
+    if (MI.getOpcode() == X86::UNPCKLPDrr) {
+      segmentSize = 64;
+    } else {
+      segmentSize = 32;
+    }
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+
+    Src1Value = new BitCastInst(Src1Value, VecTy, "", RaisedBB);
+    Src2Value = new BitCastInst(Src2Value, VecTy, "", RaisedBB);
+
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
+      auto DstIndex = ConstantInt::get(VecTy->getElementType(), i);
+      auto SrcIndex = ConstantInt::get(VecTy->getElementType(), i >> 1);
+
+      Value *SrcVal;
+      if (i % 2 == 0) {
+        SrcVal = Src1Value;
+      } else {
+        SrcVal = Src2Value;
+      }
+
+      auto ExtractInst = ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
+      Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "", RaisedBB);
+    }
+
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, (Instruction *) Result);
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
+  } break;
   default:
     MI.dump();
     assert(false && "Unhandled binary instruction");
@@ -2139,6 +2188,82 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     }
 
     BinOpInst = (Instruction *)Result;
+  } break;
+  case X86::UNPCKLPDrm:
+  case X86::UNPCKLPSrm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+
+    unsigned int segmentSize;
+    if (MI.getOpcode() == X86::UNPCKLPDrm) {
+      segmentSize = 64;
+    } else {
+      segmentSize = 32;
+    }
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+
+    Value *Src1Value = new BitCastInst(DestValue, VecTy, "", RaisedBB);
+    Value *Src2Value = new BitCastInst(LoadValue, VecTy, "", RaisedBB);
+
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
+      auto DstIndex = ConstantInt::get(VecTy->getElementType(), i);
+      auto SrcIndex = ConstantInt::get(VecTy->getElementType(), i >> 1);
+
+      Value *SrcVal;
+      if (i % 2 == 0) {
+        SrcVal = Src1Value;
+      } else {
+        SrcVal = Src2Value;
+      }
+
+      auto ExtractInst = ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
+      // don't insert last instruction as that will be done after the switch statement
+      if (i != VecTy->getNumElements() - 1) {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "", RaisedBB);
+      } else {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex);
+      }
+    }
+
+    BinOpInst = (Instruction *) Result;
+  } break;
+  case X86::PSHUFDmi: {
+    // Get index of memory reference in the instruction.
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    // The index of the memory reference operand should be 1
+    assert(MemoryRefOpIndex == 1 &&
+           "Unexpected memory reference operand index in imul instruction");
+    const MachineOperand &SecondSourceOp =
+        MI.getOperand(MemoryRefOpIndex + X86::AddrNumOperands);
+    // Second source should be an immediate.
+    assert(SecondSourceOp.isImm() &&
+           "Expect immediate operand in imul instruction");
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(Type::getInt32Ty(Ctx), 4);
+    Value *SrcOpValue =
+        getRaisedValues()->reinterpretSSERegValue(LoadValue, VecTy, RaisedBB);
+
+    uint8_t ImmValue = (uint8_t)SecondSourceOp.getImm();
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned i = 0; i < VecTy->getNumElements(); ++i) {
+      auto DstIndex = ConstantInt::get(Type::getInt32Ty(Ctx), i);
+      auto SrcIndex =
+          ConstantInt::get(Type::getInt32Ty(Ctx), (ImmValue >> (2 * i) & 0b11));
+
+      auto ExtractInst =
+          ExtractElementInst::Create(SrcOpValue, SrcIndex, "", RaisedBB);
+      if (i != VecTy->getNumElements() - 1) {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "",
+                                           RaisedBB);
+      } else {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex);
+      }
+    }
+
+    BinOpInst = dyn_cast<Instruction>(Result);
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");
@@ -3915,21 +4040,19 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     Value *SrcOp2Value = nullptr;
     unsigned int DstPReg = X86::NoRegister;
 
-    // Ensure that the instruction defines EFLAGS as implicit define register.
-    assert(MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
-           "Expected implicit def operand EFLAGS not found");
-
     // A vector holding source operand values.
     SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
     unsigned NumImplicitDefs = MIDesc.getNumImplicitDefs();
-    assert(((NumImplicitDefs == 1) || (NumImplicitDefs == 2)) &&
+    assert((NumImplicitDefs == 0 || NumImplicitDefs == 1 ||
+            NumImplicitDefs == 2) &&
            "Encountered instruction unexpected number of implicit defs");
     // Index of the instruction operand being read.
     unsigned CurExplicitOpIndex = 0;
     // Keep a count of the number of instruction operands evaluated. A count of
     // NumOperands need to be evaluated. The value is 1 because we have already
     // checked that EFLAGS is an implicit def.
-    unsigned NumOperandsEval = 1;
+    unsigned NumOperandsEval =
+        MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) ? 1 : 0;
     // Find destination register of the instruction
     // If the instruction has an explicit dest operand, get the DstPreg from
     // dest operand.
@@ -4282,6 +4405,34 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::ZF);
       AffectedEFlags.insert(EFLAGS::PF);
       break;
+    case X86::PSHUFDri: {
+      ConstantInt *Imm = dyn_cast<ConstantInt>(SrcOp2Value);
+      assert(Imm && "Expected immediate for pshufd to be defined");
+
+      LLVMContext &Ctx(MF.getFunction().getContext());
+      FixedVectorType *VecTy = FixedVectorType::get(Type::getInt32Ty(Ctx), 4);
+      SrcOp1Value = getRaisedValues()->reinterpretSSERegValue(SrcOp1Value,
+                                                              VecTy, RaisedBB);
+
+      uint8_t ImmValue = (uint8_t)Imm->getZExtValue();
+      Value *Result = ConstantInt::get(VecTy, 0);
+      for (unsigned i = 0; i < VecTy->getNumElements(); ++i) {
+        auto DstIndex = ConstantInt::get(Type::getInt32Ty(Ctx), i);
+        auto SrcIndex = ConstantInt::get(Type::getInt32Ty(Ctx),
+                                         (ImmValue >> (2 * i) & 0b11));
+
+        auto ExtractInst =
+            ExtractElementInst::Create(SrcOp1Value, SrcIndex, "", RaisedBB);
+        if (i != VecTy->getNumElements() - 1) {
+          Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "",
+                                             RaisedBB);
+        } else {
+          Result = InsertElementInst::Create(Result, ExtractInst, DstIndex);
+        }
+      }
+
+      BinOpInstr = dyn_cast<Instruction>(Result);
+    } break;
     default:
       LLVM_DEBUG(MI.dump());
       assert(false && "Unhandled reg to imm binary operator instruction");

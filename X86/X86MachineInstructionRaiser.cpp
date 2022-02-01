@@ -1710,6 +1710,55 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
   } break;
+  case X86::UNPCKLPDrr:
+  case X86::UNPCKLPSrr: {
+    Value *Src1Value = ExplicitSrcValues.at(0);
+    Value *Src2Value = ExplicitSrcValues.at(1);
+    // Verify the def operand is a register.
+    assert(MI.getOperand(DestOpIndex).isReg() &&
+           "Expecting destination of sse op instruction to be a register "
+           "operand");
+    assert((MCID.getNumDefs() == 1) &&
+           "Unexpected number of defines in sse op instruction");
+    assert((Src1Value != nullptr) && (Src2Value != nullptr) &&
+           "Unhandled situation: register is used before initialization in "
+           "sse op");
+    dstReg = MI.getOperand(DestOpIndex).getReg();
+
+    unsigned int segmentSize;
+    if (MI.getOpcode() == X86::UNPCKLPDrr) {
+      segmentSize = 64;
+    } else {
+      segmentSize = 32;
+    }
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+
+    Src1Value = new BitCastInst(Src1Value, VecTy, "", RaisedBB);
+    Src2Value = new BitCastInst(Src2Value, VecTy, "", RaisedBB);
+
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
+      auto DstIndex = ConstantInt::get(VecTy->getElementType(), i);
+      auto SrcIndex = ConstantInt::get(VecTy->getElementType(), i >> 1);
+
+      Value *SrcVal;
+      if (i % 2 == 0) {
+        SrcVal = Src1Value;
+      } else {
+        SrcVal = Src2Value;
+      }
+
+      auto ExtractInst = ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
+      Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "", RaisedBB);
+    }
+
+    // Copy any necessary rodata related metadata
+    raisedValues->setInstMetadataRODataIndex(Src1Value, (Instruction *) Result);
+    // Update the value of dstReg
+    raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
+  } break;
   default:
     MI.dump();
     assert(false && "Unhandled binary instruction");
@@ -2115,6 +2164,46 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     }
 
     BinOpInst = (Instruction *)Result;
+  } break;
+  case X86::UNPCKLPDrm:
+  case X86::UNPCKLPSrm: {
+    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+
+    unsigned int segmentSize;
+    if (MI.getOpcode() == X86::UNPCKLPDrm) {
+      segmentSize = 64;
+    } else {
+      segmentSize = 32;
+    }
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+
+    Value *Src1Value = new BitCastInst(DestValue, VecTy, "", RaisedBB);
+    Value *Src2Value = new BitCastInst(LoadValue, VecTy, "", RaisedBB);
+
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
+      auto DstIndex = ConstantInt::get(VecTy->getElementType(), i);
+      auto SrcIndex = ConstantInt::get(VecTy->getElementType(), i >> 1);
+
+      Value *SrcVal;
+      if (i % 2 == 0) {
+        SrcVal = Src1Value;
+      } else {
+        SrcVal = Src2Value;
+      }
+
+      auto ExtractInst = ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
+      // don't insert last instruction as that will be done after the switch statement
+      if (i != VecTy->getNumElements() - 1) {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "", RaisedBB);
+      } else {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex);
+      }
+    }
+
+    BinOpInst = (Instruction *) Result;
   } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");

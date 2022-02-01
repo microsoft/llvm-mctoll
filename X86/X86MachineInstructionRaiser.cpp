@@ -1337,10 +1337,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::SUBSDrr_Int:
   case X86::ADDSSrr_Int:
   case X86::ADDSDrr_Int:
-  case X86::MULSDrr_Int:
   case X86::MULSSrr_Int:
+  case X86::MULSDrr_Int:
+  case X86::DIVSSrr_Int:
   case X86::DIVSDrr_Int:
-  case X86::DIVSSrr_Int: {
+  case X86::SUBPSrr:
+  case X86::SUBPDrr:
+  case X86::ADDPSrr:
+  case X86::ADDPDrr:
+  case X86::MULPSrr:
+  case X86::MULPDrr:
+  case X86::DIVPSrr:
+  case X86::DIVPDrr: {
     Value *Src1Value = ExplicitSrcValues.at(0);
     Value *Src2Value = ExplicitSrcValues.at(1);
     // Verify the def operand is a register.
@@ -1358,18 +1366,26 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     switch (opc) {
     case X86::ADDSSrr_Int:
     case X86::ADDSDrr_Int:
+    case X86::ADDPSrr:
+    case X86::ADDPDrr:
       BinOpInst = BinaryOperator::CreateFAdd(Src1Value, Src2Value);
       break;
     case X86::SUBSSrr_Int:
     case X86::SUBSDrr_Int:
+    case X86::SUBPSrr:
+    case X86::SUBPDrr:
       BinOpInst = BinaryOperator::CreateFSub(Src1Value, Src2Value);
       break;
-    case X86::MULSDrr_Int:
     case X86::MULSSrr_Int:
+    case X86::MULSDrr_Int:
+    case X86::MULPSrr:
+    case X86::MULPDrr:
       BinOpInst = BinaryOperator::CreateFMul(Src1Value, Src2Value);
       break;
-    case X86::DIVSDrr_Int:
     case X86::DIVSSrr_Int:
+    case X86::DIVSDrr_Int:
+    case X86::DIVPSrr:
+    case X86::DIVPDrr:
       BinOpInst = BinaryOperator::CreateFDiv(Src1Value, Src2Value);
       break;
     default:
@@ -1840,25 +1856,33 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     AffectedEFlags.insert(EFLAGS::PF);
   } break;
   case X86::ADDSSrm_Int:
-  case X86::ADDSDrm_Int: {
+  case X86::ADDSDrm_Int:
+  case X86::ADDPSrm:
+  case X86::ADDPDrm: {
     assert(DestValue != nullptr &&
            "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFAdd(DestValue, LoadValue);
   } break;
   case X86::SUBSSrm_Int:
-  case X86::SUBSDrm_Int: {
+  case X86::SUBSDrm_Int:
+  case X86::SUBPSrm:
+  case X86::SUBPDrm: {
     assert(DestValue != nullptr &&
            "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFSub(DestValue, LoadValue);
   } break;
+  case X86::MULSSrm_Int:
   case X86::MULSDrm_Int:
-  case X86::MULSSrm_Int: {
+  case X86::MULPSrm:
+  case X86::MULPDrm: {
     assert(DestValue != nullptr &&
            "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFMul(DestValue, LoadValue);
   } break;
+  case X86::DIVSSrm_Int:
   case X86::DIVSDrm_Int:
-  case X86::DIVSSrm_Int: {
+  case X86::DIVPSrm:
+  case X86::DIVPDrm: {
     assert(DestValue != nullptr &&
            "Encountered instruction with undefined register");
     BinOpInst = BinaryOperator::CreateFDiv(DestValue, LoadValue);

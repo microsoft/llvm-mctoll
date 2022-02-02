@@ -874,6 +874,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   // Construct the appropriate binary operation instruction
   switch (opc) {
   case X86::ADD8rr:
+  case X86::ADD16rr:
   case X86::ADD32rr:
   case X86::ADD64rr: {
     Value *Src1Value = ExplicitSrcValues.at(0);

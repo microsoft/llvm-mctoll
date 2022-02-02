@@ -2205,6 +2205,42 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
 
     BinOpInst = (Instruction *) Result;
   } break;
+  case X86::PSHUFDmi: {
+    // Get index of memory reference in the instruction.
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    // The index of the memory reference operand should be 1
+    assert(MemoryRefOpIndex == 1 &&
+           "Unexpected memory reference operand index in imul instruction");
+    const MachineOperand &SecondSourceOp =
+        MI.getOperand(MemoryRefOpIndex + X86::AddrNumOperands);
+    // Second source should be an immediate.
+    assert(SecondSourceOp.isImm() &&
+           "Expect immediate operand in imul instruction");
+
+    LLVMContext &Ctx(MF.getFunction().getContext());
+    FixedVectorType *VecTy = FixedVectorType::get(Type::getInt32Ty(Ctx), 4);
+    Value *SrcOpValue =
+        getRaisedValues()->reinterpretSSERegValue(LoadValue, VecTy, RaisedBB);
+
+    uint8_t ImmValue = (uint8_t)SecondSourceOp.getImm();
+    Value *Result = ConstantInt::get(VecTy, 0);
+    for (unsigned i = 0; i < VecTy->getNumElements(); ++i) {
+      auto DstIndex = ConstantInt::get(Type::getInt32Ty(Ctx), i);
+      auto SrcIndex =
+          ConstantInt::get(Type::getInt32Ty(Ctx), (ImmValue >> (2 * i) & 0b11));
+
+      auto ExtractInst =
+          ExtractElementInst::Create(SrcOpValue, SrcIndex, "", RaisedBB);
+      if (i != VecTy->getNumElements() - 1) {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "",
+                                           RaisedBB);
+      } else {
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex);
+      }
+    }
+
+    BinOpInst = dyn_cast<Instruction>(Result);
+  } break;
   default:
     assert(false && "Unhandled binary op mem to reg instruction ");
   }
@@ -3979,21 +4015,19 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     Value *SrcOp2Value = nullptr;
     unsigned int DstPReg = X86::NoRegister;
 
-    // Ensure that the instruction defines EFLAGS as implicit define register.
-    assert(MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
-           "Expected implicit def operand EFLAGS not found");
-
     // A vector holding source operand values.
     SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
     unsigned NumImplicitDefs = MIDesc.getNumImplicitDefs();
-    assert(((NumImplicitDefs == 1) || (NumImplicitDefs == 2)) &&
+    assert((NumImplicitDefs == 0 || NumImplicitDefs == 1 ||
+            NumImplicitDefs == 2) &&
            "Encountered instruction unexpected number of implicit defs");
     // Index of the instruction operand being read.
     unsigned CurExplicitOpIndex = 0;
     // Keep a count of the number of instruction operands evaluated. A count of
     // NumOperands need to be evaluated. The value is 1 because we have already
     // checked that EFLAGS is an implicit def.
-    unsigned NumOperandsEval = 1;
+    unsigned NumOperandsEval =
+        MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) ? 1 : 0;
     // Find destination register of the instruction
     // If the instruction has an explicit dest operand, get the DstPreg from
     // dest operand.
@@ -4346,6 +4380,34 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::ZF);
       AffectedEFlags.insert(EFLAGS::PF);
       break;
+    case X86::PSHUFDri: {
+      ConstantInt *Imm = dyn_cast<ConstantInt>(SrcOp2Value);
+      assert(Imm && "Expected immediate for pshufd to be defined");
+
+      LLVMContext &Ctx(MF.getFunction().getContext());
+      FixedVectorType *VecTy = FixedVectorType::get(Type::getInt32Ty(Ctx), 4);
+      SrcOp1Value = getRaisedValues()->reinterpretSSERegValue(SrcOp1Value,
+                                                              VecTy, RaisedBB);
+
+      uint8_t ImmValue = (uint8_t)Imm->getZExtValue();
+      Value *Result = ConstantInt::get(VecTy, 0);
+      for (unsigned i = 0; i < VecTy->getNumElements(); ++i) {
+        auto DstIndex = ConstantInt::get(Type::getInt32Ty(Ctx), i);
+        auto SrcIndex = ConstantInt::get(Type::getInt32Ty(Ctx),
+                                         (ImmValue >> (2 * i) & 0b11));
+
+        auto ExtractInst =
+            ExtractElementInst::Create(SrcOp1Value, SrcIndex, "", RaisedBB);
+        if (i != VecTy->getNumElements() - 1) {
+          Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "",
+                                             RaisedBB);
+        } else {
+          Result = InsertElementInst::Create(Result, ExtractInst, DstIndex);
+        }
+      }
+
+      BinOpInstr = dyn_cast<Instruction>(Result);
+    } break;
     default:
       LLVM_DEBUG(MI.dump());
       assert(false && "Unhandled reg to imm binary operator instruction");

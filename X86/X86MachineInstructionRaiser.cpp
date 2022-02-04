@@ -2670,6 +2670,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     case X86::ADD32mi8:
     case X86::ADD32mr:
     case X86::ADD64mi8:
+    case X86::ADD64mi32:
     case X86::ADD64i32:
     case X86::ADD64mr:
     case X86::INC8m:

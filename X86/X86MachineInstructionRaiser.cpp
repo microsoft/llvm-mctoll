@@ -1533,7 +1533,12 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::SQRTSSr_Int: {
     LLVMContext &Ctx(MF.getFunction().getContext());
 
-    Type *InstrTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+    // Destination operand is an SSE register
+    auto PReg = MI.getOperand(DestOpIndex).getReg();
+    auto SSERegSzInBits =
+        getRegisterInfo()->getRegSizeInBits(PReg, machineRegInfo);
+    Type *InstrTy =
+        getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
     Value *SrcValue = getRaisedValues()->reinterpretSSERegValue(
         ExplicitSrcValues.at(0), InstrTy, RaisedBB);
 
@@ -1788,7 +1793,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     assert(DestValue != nullptr && "Encountered instruction with undefined register");
     LLVMContext &Ctx(MF.getFunction().getContext());
 
-    Type *InstrTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+    auto PReg = MI.getOperand(DestIndex).getReg();
+    auto SSERegSzInBits =
+        getRegisterInfo()->getRegSizeInBits(PReg, machineRegInfo);
+    Type *InstrTy =
+        getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
     assert(LoadValue->getType() == InstrTy &&
            "Unexpected value type for sqrtsd/sqrtss instruction");
 
@@ -2277,16 +2286,22 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   // If memory reference is not a pointer type, cast it to a pointer
   Type *DstMemTy = MemRefVal->getType();
   LLVMContext &Ctx(MF.getFunction().getContext());
+  auto Opc = MI.getOpcode();
+  unsigned int memSzInBits = getInstructionMemOpSize(Opc) * 8;
   if (!DstMemTy->isPointerTy()) {
     // Cast it as pointer to SrcOpTy
     PointerType *PtrTy = nullptr;
-    auto Opc = MI.getOpcode();
-    auto MemSzInBits = getInstructionMemOpSize(Opc) * 8;
     if (isSSE2Instruction(Opc)) {
-      PtrTy = getRaisedValues()->getSSEInstructionType(MI, Ctx)->getPointerTo();
+      assert(MI.getOperand(SrcOpIndex).isReg() &&
+             "Unexpected non-SSE register operand");
+      auto SSERegSzInBits = getRegisterInfo()->getRegSizeInBits(
+          MI.getOperand(SrcOpIndex).getReg(), machineRegInfo);
+      PtrTy = getRaisedValues()
+                  ->getSSEInstructionType(MI, SSERegSzInBits, Ctx)
+                  ->getPointerTo();
     } else {
-      assert(MemSzInBits > 0 && "Unexpected memory access size of instruction");
-      PtrTy = Type::getIntNPtrTy(Ctx, MemSzInBits);
+      assert(memSzInBits > 0 && "Unexpected memory access size of instruction");
+      PtrTy = Type::getIntNPtrTy(Ctx, memSzInBits);
     }
     IntToPtrInst *convIntToPtr = new IntToPtrInst(MemRefVal, PtrTy);
     RaisedBB->getInstList().push_back(convIntToPtr);
@@ -2296,7 +2311,6 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   // This instruction moves a source value to memory. So, if the types of
   // the source value and that of the memory pointer element are not the
   // same as that of the store size of the instruction, cast them as needed.
-  unsigned int memSzInBits = getInstructionMemOpSize(MI.getOpcode()) * 8;
   // Consider store value type to be the same as source value type, by default.
   Type *StoreTy = SrcValue->getType();
   if (SrcValue->getType()->isIntegerTy())

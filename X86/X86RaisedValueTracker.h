@@ -86,7 +86,8 @@ public:
                                 BasicBlock *InsertBlock = nullptr,
                                 Instruction *InsertBefore = nullptr);
   // Returns the type of an SSE instruction
-  Type *getSSEInstructionType(const MachineInstr &, LLVMContext &);
+  Type *getSSEInstructionType(const MachineInstr &MI,
+                              unsigned int SSERegSzInBits, LLVMContext &Ctx);
 
   // If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of
   // Inst; if SrcValue is an instruction with rodata index metadata, copy it to

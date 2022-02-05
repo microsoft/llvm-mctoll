@@ -71,7 +71,10 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
 
   LLVMContext &Ctx(MF.getFunction().getContext());
 
-  Type *OpType = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+  auto SSERegSzInBits = TRI->getRegSizeInBits(CmpOpReg1, machineRegInfo);
+
+  Type *OpType =
+      getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
 
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
   CmpOpVal1 = getRaisedValues()->reinterpretSSERegValue(CmpOpVal1, OpType, RaisedBB);
@@ -109,7 +112,11 @@ bool X86MachineInstructionRaiser::raiseSSECompareFromMemMachineInstr(
 
   unsigned int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
 
-  Type *OpType = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+  auto SSERegSzInBits =
+      getRegisterInfo()->getRegSizeInBits(CmpOpReg1, machineRegInfo);
+
+  Type *OpType =
+      getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
 
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
   Value *CmpOpVal1 = getRaisedValues()->reinterpretSSERegValue(
@@ -395,11 +402,15 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
     llvm_unreachable("Unhandled sse convert instruction");
   }
 
-  Value *SrcVal = getRegOrArgValue(SrcOp.getReg(), MBBNo);
+  auto PReg = SrcOp.getReg();
+  Value *SrcVal = getRegOrArgValue(PReg, MBBNo);
 
-  if (isSSE2Reg(SrcOp.getReg())) {
+  if (isSSE2Reg(PReg)) {
+    auto SSERegSzInBits =
+        getRegisterInfo()->getRegSizeInBits(PReg, machineRegInfo);
     // re-interpret value as expected source value
-    Type *SrcTy = getRaisedValues()->getSSEInstructionType(MI, Ctx);
+    Type *SrcTy =
+        getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
     SrcVal = getRaisedValues()->reinterpretSSERegValue(SrcVal, SrcTy, RaisedBB);
   }
 

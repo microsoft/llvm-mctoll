@@ -1178,44 +1178,61 @@ X86RaisedValueTracker::reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
 }
 
 Type *X86RaisedValueTracker::getSSEInstructionType(const MachineInstr &MI,
+                                                   unsigned int SSERegSzInBits,
                                                    LLVMContext &Ctx) {
-  // TODO: temp workaround, fix this
-  switch (MI.getOpcode()) {
-  case X86::MOVDQAmr:
-  case X86::MOVDQArm:
-  case X86::MOVDQArr:
-  case X86::MOVDQUmr:
-  case X86::MOVDQUrm:
-  case X86::MOVDQUrr:
-    return VectorType::get(Type::getInt32Ty(Ctx), 4, false);
-  }
+  Type *RegTy = nullptr;
+  assert(SSERegSzInBits > 0 && "Non-zero size of SSE register expected");
 
+  uint16_t Domain = (MI.getDesc().TSFlags >> X86II::SSEDomainShift) & 3;
+  // X64BaseInfo.h does not define enums. X86InstrFormats.td specified
+  // GenericDomain = 0 (non-SSE instruction)
+  // SSEPackedSingle = 1
+  // SSEPackedDouble = 2
+  // SSEPackedInt = 3
+  assert(Domain && "Unexpected non-SSE Instruction");
   uint64_t TSFlags = MI.getDesc().TSFlags;
-
-  if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XS) {
-    return Type::getFloatTy(Ctx);
-  } else if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XD) {
-    return Type::getDoubleTy(Ctx);
-  } else {
-    auto Domain = (TSFlags >> llvm::X86II::SSEDomainShift) & 3;
-
-    // X64BaseInfo.h does not define enums. X86InstrFormats.td specified
-    // GenericDomain = 0 (non-SSE instruction)
-    // SSEPackedSingle = 1
-    // SSEPackedDouble = 2
-    // SSEPackedInt = 3
-    switch (Domain) {
-    case 1:
-      return VectorType::get(Type::getFloatTy(Ctx), 4, false);
-    case 2:
-      return VectorType::get(Type::getDoubleTy(Ctx), 2, false);
-    case 3:
-      return VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+  uint64_t Prefix = TSFlags & llvm::X86II::OpPrefixMask;
+  switch (Domain) {
+  case 1: {
+    switch (Prefix) {
+    // XS indicates single precision scalar floating point operation.
+    case llvm::X86II::XS:
+      RegTy = Type::getFloatTy(Ctx);
+      break;
+    // Packed single precision operation
+    case 0: {
+      RegTy = Type::getFloatTy(Ctx);
+      auto Count = SSERegSzInBits / RegTy->getScalarSizeInBits();
+      RegTy = VectorType::get(RegTy, Count, false);
+    } break;
+    default:
+      llvm_unreachable("Unhandled SSE Packed Single Prefix encountered");
     }
+  } break;
+  case 2: {
+    // XD indicates double precision scalar floating point operation.
+    RegTy = Type::getDoubleTy(Ctx);
+    switch (Prefix) {
+    case (X86II::XD):
+      break;
+    // Packed double precision operation
+    case llvm::X86II::PD: {
+      auto Count = SSERegSzInBits / RegTy->getScalarSizeInBits();
+      RegTy = VectorType::get(RegTy, Count, false);
+    } break;
+    default:
+      llvm_unreachable("Unhandled SSE Packed Double Prefix encountered");
+    }
+  } break;
+  case 3: {
+    RegTy = Type::getInt32Ty(Ctx);
+    auto Count = SSERegSzInBits / RegTy->getScalarSizeInBits();
+    RegTy = VectorType::get(RegTy, Count, false);
+  } break;
   }
-  llvm_unreachable("Unhandled SSE type");
+  assert(RegTy != nullptr);
+  return RegTy;
 }
-
 // If SrcValue is a ConstantExpr abstraction of rodata index, set metadata of
 // Inst; if SrcValue is an instruction with rodata index metadata, copy it to
 // Inst.

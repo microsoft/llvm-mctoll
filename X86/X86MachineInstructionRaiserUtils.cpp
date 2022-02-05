@@ -381,12 +381,13 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
 
   LLVMContext &Ctx(MI.getMF()->getFunction().getContext());
   auto PReg = Op.getReg();
-  if (isGPReg(PReg))
-    return Type::getIntNTy(Ctx, getPhysRegSizeInBits(Op.getReg()));
-  else if (isSSE2Reg(PReg)) {
-    return getRaisedValues()->getSSEInstructionType(MI, Ctx);
+  auto RegSzInBits = getRegisterInfo()->getRegSizeInBits(PReg, machineRegInfo);
+  assert(RegSzInBits > 0 && "Non-zero register size expected");
+  if (isGPReg(PReg)) {
+    return Type::getIntNTy(Ctx, RegSzInBits);
+  } else if (isSSE2Reg(PReg)) {
+    return getRaisedValues()->getSSEInstructionType(MI, RegSzInBits, Ctx);
   }
-
   llvm_unreachable("Unhandled register type encountered");
 }
 
@@ -1281,7 +1282,9 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   bool SSE2MemOp = ((InstrKind == InstructionKind::SSE_MOV_FROM_MEM) ||
                     (InstrKind == InstructionKind::SSE_MOV_TO_MEM));
   if (SSE2MemOp) {
-    MemOpTy = getRaisedValues()->getSSEInstructionType(MI, llvmContext);
+    auto SSERegSzInBits = stackObjectSize * 8;
+    MemOpTy = getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits,
+                                                       llvmContext);
   } else {
     switch (stackObjectSize) {
     case 8:

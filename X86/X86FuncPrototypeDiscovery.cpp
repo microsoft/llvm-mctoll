@@ -658,7 +658,8 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
         }
         if (DefReg == X86::NoRegister && PReg == X86::XMM0) {
           DefReg = X86::XMM0;
-          ReturnType = getRaisedValues()->getSSEInstructionType(*I, Ctx);
+          ReturnType = getRaisedValues()->getSSEInstructionType(
+              *I, 128 /* Size of XMM0 */, Ctx);
         }
       }
     }
@@ -677,7 +678,8 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     if (DefReg == X86::NoRegister &&
         hasExactImplicitDefOfPhysReg(*I, X86::XMM0, TRI)) {
       DefReg = X86::XMM0;
-      ReturnType = getRaisedValues()->getSSEInstructionType(*I, Ctx);
+      ReturnType = getRaisedValues()->getSSEInstructionType(
+          *I, 128 /* Size of XMM0 */, Ctx);
     }
 
     // If the defined register is a return register

@@ -107,11 +107,12 @@ static inline uint8_t getInstructionBitPrecision(uint64_t TSFlags) {
       return 32;
     case 2:
       return 64;
+    case 0:
+      return 0;
     default:
-      break;
+      llvm_unreachable("Unknown precision in instruction encoding");
     }
   }
-  llvm_unreachable("Unknown precision in instruction encoding");
 }
 
 static inline bool isNoop(unsigned int Opcode) {

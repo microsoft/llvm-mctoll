@@ -364,6 +364,7 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   LLVMContext &Ctx(MF.getFunction().getContext());
 
   Type *CastTy;
+  Type *SrcTy = nullptr;
   switch (MI.getOpcode()) {
   case X86::CVTSD2SIrr_Int:
   case X86::CVTSS2SIrr_Int:
@@ -397,6 +398,30 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   case X86::CVTSS2SDrr_Int:
     CastTy = Type::getDoubleTy(Ctx);
     break;
+  case X86::CVTDQ2PDrr:
+    SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 2, false);
+    CastTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    break;
+  case X86::CVTDQ2PSrr:
+    SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+    CastTy = VectorType::get(Type::getFloatTy(Ctx), 4, false);
+    break;
+  case X86::CVTPD2DQrr:
+    SrcTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    CastTy = VectorType::get(Type::getInt32Ty(Ctx), 2, false);
+    break;
+  case X86::CVTPD2PSrr:
+    SrcTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    CastTy = VectorType::get(Type::getFloatTy(Ctx), 2, false);
+    break;
+  case X86::CVTPS2DQrr:
+    SrcTy = VectorType::get(Type::getFloatTy(Ctx), 4, false);
+    CastTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+    break;
+  case X86::CVTPS2PDrr:
+    SrcTy = VectorType::get(Type::getFloatTy(Ctx), 2, false);
+    CastTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    break;
   default:
     MI.dump();
     llvm_unreachable("Unhandled sse convert instruction");
@@ -408,9 +433,11 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
   if (isSSE2Reg(PReg)) {
     auto SSERegSzInBits =
         getRegisterInfo()->getRegSizeInBits(PReg, machineRegInfo);
-    // re-interpret value as expected source value
-    Type *SrcTy =
+    if (SrcTy == nullptr) {
+      // re-interpret value as expected source value
+      SrcTy =
         getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
+    }
     SrcVal = getRaisedValues()->reinterpretSSERegValue(SrcVal, SrcTy, RaisedBB);
   }
 
@@ -464,6 +491,24 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionFromMemMachineInstr(
   case X86::CVTSS2SDrm_Int:
     CastTy = Type::getDoubleTy(Ctx);
     break;
+  case X86::CVTDQ2PDrm:
+    CastTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    break;
+  case X86::CVTDQ2PSrm:
+    CastTy = VectorType::get(Type::getFloatTy(Ctx), 4, false);
+    break;
+  case X86::CVTPD2DQrm:
+    CastTy = VectorType::get(Type::getInt32Ty(Ctx), 2, false);
+    break;
+  case X86::CVTPD2PSrm:
+    CastTy = VectorType::get(Type::getFloatTy(Ctx), 2, false);
+    break;
+  case X86::CVTPS2DQrm:
+    CastTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+    break;
+  case X86::CVTPS2PDrm:
+    CastTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    break;
   }
   // Need to figure out the source type, since we don't know that
   // just from the MemoryRefValue
@@ -499,6 +544,24 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionFromMemMachineInstr(
   case X86::CVTSI2SDrm:
   case X86::CVTSI2SDrm_Int:
     SrcTy = Type::getInt32Ty(Ctx);
+    break;
+  case X86::CVTDQ2PDrm:
+    SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 2, false);
+    break;
+  case X86::CVTDQ2PSrm:
+    SrcTy = VectorType::get(Type::getInt32Ty(Ctx), 4, false);
+    break;
+  case X86::CVTPD2DQrm:
+    SrcTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    break;
+  case X86::CVTPD2PSrm:
+    SrcTy = VectorType::get(Type::getDoubleTy(Ctx), 2, false);
+    break;
+  case X86::CVTPS2DQrm:
+    SrcTy = VectorType::get(Type::getFloatTy(Ctx), 4, false);
+    break;
+  case X86::CVTPS2PDrm:
+    SrcTy = VectorType::get(Type::getFloatTy(Ctx), 2, false);
     break;
   }
   assert(SrcTy != nullptr && CastTy != nullptr &&

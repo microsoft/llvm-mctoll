@@ -40,8 +40,7 @@ bool PeepholeOptimizationPass::runOnFunction(Function &F) {
                       BinOp->getOpcode() == Instruction::Or)) {
             auto *Ptr = P2I->getOperand(0);
 
-            auto *PtrElemTy =
-                dyn_cast<PointerType>(Ptr->getType())->getElementType();
+            auto *PtrElemTy = Ptr->getType()->getNonOpaquePointerElementType();
             if (isa<IntegerType>(PtrElemTy)) {
               Value *Idx = BinOp->getOperand(1);
               std::vector<Value *> GEPIdx;

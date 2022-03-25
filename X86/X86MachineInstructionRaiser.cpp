@@ -1749,7 +1749,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     }
 
     LLVMContext &Ctx(MF.getFunction().getContext());
-    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+    FixedVectorType *VecTy = FixedVectorType::get(
+        Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
 
     Src1Value = new BitCastInst(Src1Value, VecTy, "", RaisedBB);
     Src2Value = new BitCastInst(Src2Value, VecTy, "", RaisedBB);
@@ -1766,12 +1767,14 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         SrcVal = Src2Value;
       }
 
-      auto ExtractInst = ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
-      Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "", RaisedBB);
+      auto ExtractInst =
+          ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
+      Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "",
+                                         RaisedBB);
     }
 
     // Copy any necessary rodata related metadata
-    raisedValues->setInstMetadataRODataIndex(Src1Value, (Instruction *) Result);
+    raisedValues->setInstMetadataRODataIndex(Src1Value, (Instruction *)Result);
     // Update the value of dstReg
     raisedValues->setPhysRegSSAValue(dstReg, MBBNo, Result);
   } break;
@@ -2191,7 +2194,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   } break;
   case X86::UNPCKLPDrm:
   case X86::UNPCKLPSrm: {
-    assert(DestValue != nullptr && "Encountered instruction with undefined register");
+    assert(DestValue != nullptr &&
+           "Encountered instruction with undefined register");
 
     unsigned int segmentSize;
     if (MI.getOpcode() == X86::UNPCKLPDrm) {
@@ -2201,7 +2205,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
     }
 
     LLVMContext &Ctx(MF.getFunction().getContext());
-    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
+    FixedVectorType *VecTy = FixedVectorType::get(
+        Type::getIntNTy(Ctx, segmentSize), 128 / segmentSize);
 
     Value *Src1Value = new BitCastInst(DestValue, VecTy, "", RaisedBB);
     Value *Src2Value = new BitCastInst(LoadValue, VecTy, "", RaisedBB);
@@ -2218,16 +2223,19 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
         SrcVal = Src2Value;
       }
 
-      auto ExtractInst = ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
-      // don't insert last instruction as that will be done after the switch statement
+      auto ExtractInst =
+          ExtractElementInst::Create(SrcVal, SrcIndex, "", RaisedBB);
+      // don't insert last instruction as that will be done after the switch
+      // statement
       if (i != VecTy->getNumElements() - 1) {
-        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "", RaisedBB);
+        Result = InsertElementInst::Create(Result, ExtractInst, DstIndex, "",
+                                           RaisedBB);
       } else {
         Result = InsertElementInst::Create(Result, ExtractInst, DstIndex);
       }
     }
 
-    BinOpInst = (Instruction *) Result;
+    BinOpInst = (Instruction *)Result;
   } break;
   case X86::PSHUFDmi: {
     // Get index of memory reference in the instruction.
@@ -5542,8 +5550,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
 
     // Construct call instruction.
     CallInst *CallInst = CallInst::Create(
-        cast<FunctionType>(
-            cast<PointerType>(Func->getType())->getElementType()),
+        cast<FunctionType>(Func->getType()->getNonOpaquePointerElementType()),
         Func, ArrayRef<Value *>(ArgValueVector));
     RaisedBB->getInstList().push_back(CallInst);
 

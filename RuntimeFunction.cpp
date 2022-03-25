@@ -14,6 +14,7 @@
 
 #include "RuntimeFunction.h"
 
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 
 Function *RuntimeFunction::getOrCreateSecOffsetCalcFunction(Module &M) {

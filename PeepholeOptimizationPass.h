@@ -21,6 +21,7 @@
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -29,8 +30,7 @@ using namespace llvm;
 class PeepholeOptimizationPass : public FunctionPass {
 public:
   static char ID;
-  PeepholeOptimizationPass()
-      : FunctionPass(ID) {}
+  PeepholeOptimizationPass() : FunctionPass(ID) {}
 
   bool runOnFunction(Function &F) override;
 

@@ -5,11 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 9e9c86fd6769a737d32b5f7a7513264d3cfc4f31
-Author: Fangrui Song <i@maskray.me>
-Date:   Mon Feb 28 11:19:00 2022 -0800
+commit d9756fa723be7907afdceb933644a2dc00d6e5af
+Author: Philip Reames <listmail@philipreames.com>
+Date:   Fri Mar 25 09:02:23 2022 -0700
 
-    [ELF] Change some non-null pointer parameters to references. NFC
-    
-    To decrease difference for D120650. Also, rename some `OutputSection *sec` (and
-    `cmd`) to the more common `osec`.
+    [slp] Factor out a lambda to avoid uplicating code a third time in upcoming patch [nfc]

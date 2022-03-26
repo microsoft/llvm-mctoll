@@ -93,10 +93,14 @@ static cl::OptionCategory LLVMMCToLLCategory("llvm-mctoll options");
 static cl::list<std::string> InputFileNames(cl::Positional,
                                             cl::desc("<input object files>"),
                                             cl::OneOrMore);
-static cl::opt<std::string> OutputFilename("o", cl::desc("Output filename"),
+static cl::opt<std::string> OutputFilename("outfile",
+                                           cl::desc("Output filename"),
                                            cl::value_desc("filename"),
                                            cl::cat(LLVMMCToLLCategory),
                                            cl::NotHidden);
+cl::alias OutputFilenameshort("o", cl::desc("Alias for --outfile"),
+                              cl::aliasopt(OutputFilename),
+                              cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::opt<std::string>
     MCPU("mcpu",
@@ -1444,7 +1448,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   // Keep the file created.
   Out->keep();
 
-  raw_pwrite_stream *OS = &Out->os();
+  auto OS = &Out->os();
 
   legacy::PassManager PM;
 
@@ -1608,7 +1612,7 @@ int main(int argc, char **argv) {
   }
 
   // Create a string vector with copy of input file as positional arguments
-  // would be erased as part of include file parsing done by
+  // that would be erased as part of include file parsing done by
   // clang::tooling::CommonOptionsParser invoked in
   // getExternalFunctionPrototype().
   std::vector<string> InputFNames;
@@ -1616,12 +1620,19 @@ int main(int argc, char **argv) {
     InputFNames.emplace_back(fname);
   }
 
+  // Stash output file name as well since it would also be reset during parsing
+  // done by clang::tooling::CommonOptionsParser invoked in
+  // getExternalFunctionPrototype().
+  auto OF = OutputFilename.getValue();
+
   if (!IncludeFNames.empty()) {
     if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFNames,
                                                         CompilationDBDir)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }
+  // Restore stashed Outputfilename
+  OutputFilename.setValue(OF);
   // Disassemble contents of .text section.
   Disassemble = true;
   FilterSections.addValue(".text");

@@ -14,6 +14,7 @@
 #include "ARMArgumentRaiser.h"
 #include "ARMSubtarget.h"
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include <vector>
 
 #define DEBUG_TYPE "mctoll"
@@ -106,7 +107,7 @@ void ARMArgumentRaiser::updateParameterFrame(MachineFunction &mf) {
                                        // value. From 1 to 4 are the register
                                        // argument indices. Plus 5 to the index.
             mi.getOperand(1).ChangeToFrameIndex(idx);
-            mi.RemoveOperand(2);
+            mi.removeOperand(2);
           }
         }
       }

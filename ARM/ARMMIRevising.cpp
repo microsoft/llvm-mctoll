@@ -505,7 +505,7 @@ void ARMMIRevising::addressPCRelativeData(MachineInstr &MInst) {
   MInst.getOperand(1).ChangeToES(GlobVal->getName().data());
 
   if (MInst.getNumOperands() > 2) {
-    MInst.RemoveOperand(2);
+    MInst.removeOperand(2);
   }
 }
 

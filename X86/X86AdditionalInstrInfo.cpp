@@ -1308,7 +1308,6 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::MMX_EMMS, {0, Unknown}},
     {X86::MMX_MASKMOVQ, {0, Unknown}},
     {X86::MMX_MASKMOVQ64, {0, Unknown}},
-    {X86::MMX_MOVD64from64rm, {8, Unknown}},
     {X86::MMX_MOVD64from64rr, {0, Unknown}},
     {X86::MMX_MOVD64grr, {0, Unknown}},
     {X86::MMX_MOVD64mr, {8, Unknown}},

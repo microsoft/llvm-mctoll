@@ -14,6 +14,7 @@
 #include "DAGBuilder.h"
 #include "ARMSubtarget.h"
 #include "SelectionCommon.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include <vector>
 

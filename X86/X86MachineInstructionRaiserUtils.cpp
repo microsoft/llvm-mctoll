@@ -251,7 +251,8 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
 bool X86MachineInstructionRaiser::deleteNOOPInstrMI(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI) {
   MachineInstr &MI = *MBBI;
-  if (isNoop(MI.getOpcode())) {
+  auto Opcode = MI.getOpcode();
+  if (isNoop(Opcode) || Opcode == X86::INT3) {
     MBB.remove(&MI);
     return true;
   }
@@ -939,8 +940,9 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
     StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
   } else if (ReachingValue->getType()->isFloatingPointTy() ||
              ReachingValue->getType()->isVectorTy()) {
-    assert(StackLocSzInBits == 128 &&
-           "Expected FP types and vectors to be stored in 128 bit stack location");
+    assert(
+        StackLocSzInBits == 128 &&
+        "Expected FP types and vectors to be stored in 128 bit stack location");
     StackLocTy = VectorType::get(Type::getInt32Ty(Ctxt), 4, false);
   } else {
     llvm_unreachable("Unhandled type");

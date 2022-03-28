@@ -166,17 +166,6 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
     returnType = getReachingReturnType(*MBB);
   }
 
-  // If we are unable to discover the return type, check if return register is
-  // defined.
-  if (returnType == nullptr) {
-    for (MachineBasicBlock &MBB : MF) {
-      auto DiscoveredReturnType = getReachingReturnType(MBB);
-      if (DiscoveredReturnType != nullptr) {
-        returnType = DiscoveredReturnType;
-      }
-    }
-  }
-
   // If return type is still not discovered, assume it to be void
   if (returnType == nullptr)
     returnType = Type::getVoidTy(MF.getFunction().getContext());
@@ -561,12 +550,16 @@ Type *X86MachineInstructionRaiser::getReachingReturnType(
           BlockVisited.set(CurPredMBBNo);
           // Get function return type from MBB
           ReturnTypeOnPath = getReturnTypeFromMBB(*PredMBB, HasCall);
-          // Check out whether the ReturnType get from called instruction.
-          // Only keep the first find called function return type, continue
-          // to find other reach tree which has not call instruction.
-          // If the MBB has no call instruction and return type is not found,
-          // continue traversal up its predecessors.
+          // If PredMBB has no call and has no return  register definition,
+          // continue traversal.
           if (!HasCall && ReturnTypeOnPath == nullptr) {
+            // If PredMBB is the entry block and return type is not found, it
+            // implies that there is at least one path that doesn't set return
+            // register. Hence, there is no further need for further traversal.
+            if (PredMBB->isEntryBlock()) {
+              ReturnType = nullptr;
+              break;
+            }
             // Continue traversal
             for (auto Pred : PredMBB->predecessors()) {
               if (!BlockVisited[Pred->getNumber()])
@@ -631,11 +624,11 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     if (I->isReturn())
       continue;
 
-    // No need to inspect padding instructions. ld uses nop and lld uses int3 for
-    // alignment padding in text section.
+    // No need to inspect padding instructions. ld uses nop and lld uses int3
+    // for alignment padding in text section.
     auto Opcode = I->getOpcode();
     if (isNoop(Opcode) || (Opcode == X86::INT3))
-    	continue;
+      continue;
 
     unsigned DefReg = X86::NoRegister;
     const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();

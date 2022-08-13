@@ -1344,7 +1344,7 @@ X86RaisedValueTracker::setInstMetadataRODataContent(LoadInst *LdInst) {
         // function is expected to do so.
         NewLdInst = new LoadInst(LdPtrTy->getPointerElementType(), ModSrcValue,
                                  "rodata-reloc", LdInst->isVolatile(),
-                                 Align(LdInst->getAlign()));
+                                 Align(LdInst->getAlignment()));
         // Copy metadata of the new load instruction to indicate that the loaded
         // value is content of rodata by propagating the metadata from
         // SrcValueAsInst.

@@ -29,19 +29,14 @@ class RelocationRef;
 
 namespace mctoll {
 
-extern cl::opt<std::string> TripleName;
-extern cl::opt<std::string> ArchName;
-extern cl::opt<std::string> FilterFunctionSet;
-extern cl::list<std::string> FilterSections;
-extern cl::opt<bool> Disassemble;
-extern cl::opt<std::string> DisSymName;
-extern cl::opt<bool> NonVerbose;
-extern cl::opt<bool> SymbolTable;
-extern cl::opt<bool> UnwindInfo;
-extern cl::opt<bool> PrintImmHex;
-extern cl::opt<DIDumpType> DwarfDumpType;
-extern cl::list<std::string> IncludeFileNames;
-extern cl::opt<std::string> CompilationDBDir;
+extern std::string TargetName;
+extern std::string TripleName;
+extern std::string SysRoot;
+extern std::string ArchName;
+extern std::vector<std::string> FilterSections;
+extern bool Disassemble;
+extern std::vector<std::string> IncludeFileNames;
+extern std::string CompilationDBDir;
 
 // Various helper functions.
 bool isRelocAddressLess(object::RelocationRef A, object::RelocationRef B);

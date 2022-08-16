@@ -20,10 +20,16 @@
 #define RODATA_SEC_INFO_MD_STR "ROData_SecInfo"
 
 #include "llvm/IR/Instruction.h"
+
+namespace llvm {
 namespace mctoll {
+
 static bool hasRODataAccess(Instruction *I) {
   return (I->hasMetadata(RODATA_INDEX_MD_STR) ||
           I->hasMetadata(RODATA_CONTENT_MD_STR));
 }
-} // namespace mctoll
+
+} // end namespace mctoll
+} // end namespace llvm
+
 #endif /* TOOLS_LLVM_MCTOLL_INSTMETADATA_H_ */

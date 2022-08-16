@@ -17,6 +17,7 @@
 #include "SelectionCommon.h"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 /// Replace all uses of F with T, then remove F from the DAG.
 void InstSelector::replaceNode(SDNode *F, SDNode *T) {

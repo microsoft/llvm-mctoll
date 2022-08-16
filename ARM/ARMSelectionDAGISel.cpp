@@ -14,6 +14,7 @@
 #include "ARMSelectionDAGISel.h"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 char ARMSelectionDAGISel::ID = 0;
 

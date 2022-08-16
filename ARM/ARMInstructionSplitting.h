@@ -19,7 +19,8 @@
 #include "ARMSubtarget.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// Some instructions which their patterns include more than one operations,
 /// like 'add r0, r1, r0, asr r1' or 'ldr r0, [r1, #4]', are splitted into
@@ -63,5 +64,8 @@ private:
   const ARMBaseInstrInfo *TII;
   LLVMContext *CTX;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMINSTRUCTIONSPLITTING_H

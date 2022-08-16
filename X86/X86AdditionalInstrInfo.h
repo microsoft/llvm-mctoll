@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <llvm/ADT/DenseMap.h>
 
+namespace llvm {
 namespace mctoll {
 
 // Instruction Kinds
@@ -124,6 +125,8 @@ static inline bool isSSE2Instruction(unsigned int Opcode) {
   return ((Kind > InstructionKind::SSE_KIND_BEGIN) &&
           (Kind < InstructionKind::SSE_KIND_END));
 }
-} // namespace mctoll
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86ADDITIONALINSTRINFO_H

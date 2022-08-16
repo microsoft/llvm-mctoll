@@ -17,7 +17,8 @@
 #include "ARMBaseInstrInfo.h"
 #include "ARMRaiserBase.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// Each function argument is remarked as stack slot at here, it is used to
 /// identify the function arguments in emitting DAG. Using stack 0 represent
@@ -52,5 +53,8 @@ private:
   MachineFrameInfo *MFI;
   const ARMBaseInstrInfo *TII;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMARGUMENTRAISER_H

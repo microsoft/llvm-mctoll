@@ -14,6 +14,7 @@
 #include "DAGRaisingInfo.h"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 DAGRaisingInfo::DAGRaisingInfo(SelectionDAG &dag) : DAG(dag) {}
 

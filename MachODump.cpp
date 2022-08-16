@@ -48,6 +48,7 @@
 #include <algorithm>
 #include <cstring>
 #include <system_error>
+#include "Raiser/ModuleRaiser.h"
 
 #ifdef HAVE_LIBXAR
 extern "C" {
@@ -56,6 +57,7 @@ extern "C" {
 #endif
 
 using namespace llvm;
+using namespace llvm::mctoll;
 using namespace object;
 
 extern cl::opt<std::string> MCPU;
@@ -80,11 +82,11 @@ cl::opt<bool>
                                   "-archive-headers)"));
 
 cl::opt<bool>
-    llvm::NonVerbose("non-verbose",
+    mctoll::NonVerbose("non-verbose",
                      cl::desc("Print the info for Mach-O objects in "
                               "non-verbose or numeric form (requires -macho)"));
 
-cl::opt<std::string> llvm::DisSymName(
+cl::opt<std::string> mctoll::DisSymName(
     "dis-symname",
     cl::desc("disassemble just this symbol's instructions (requires -macho)"));
 
@@ -908,7 +910,7 @@ static void ProcessMachO(StringRef Name, MachOObjectFile *MachOOF,
 // -arch flags selecting just those slices as specified by them and also parses
 // archive files.  Then for each individual Mach-O file ProcessMachO() is
 // called to process the file based on the command line options.
-void llvm::parseInputMachO(StringRef Filename) {
+void mctoll::parseInputMachO(StringRef Filename) {
   // Check for -arch all and verifiy the -arch flags are valid.
   for (unsigned i = 0; i < ArchFlags.size(); ++i) {
     if (ArchFlags[i] == "all") {
@@ -6103,12 +6105,12 @@ static void PrintMachHeader(const MachOObjectFile *Obj, bool verbose) {
   }
 }
 
-void llvm::printMachOFileHeader(const object::ObjectFile *Obj) {
+void mctoll::printMachOFileHeader(const object::ObjectFile *Obj) {
   const MachOObjectFile *file = dyn_cast<const MachOObjectFile>(Obj);
   PrintMachHeader(file, !NonVerbose);
 }
 
-void llvm::printMachOLoadCommands(const object::ObjectFile *Obj) {
+void mctoll::printMachOLoadCommands(const object::ObjectFile *Obj) {
   const MachOObjectFile *file = dyn_cast<const MachOObjectFile>(Obj);
   uint32_t filetype = 0;
   uint32_t cputype = 0;

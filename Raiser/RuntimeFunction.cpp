@@ -17,6 +17,9 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 
+using namespace llvm;
+using namespace llvm::mctoll;
+
 Function *RuntimeFunction::getOrCreateSecOffsetCalcFunction(Module &M) {
   std::string FuncName = "getRuntimeSectionOffset";
   Function *Func = M.getFunction(FuncName);

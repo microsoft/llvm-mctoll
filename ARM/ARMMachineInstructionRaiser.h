@@ -14,7 +14,10 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMACHINEINSTRUCTIONRAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMACHINEINSTRUCTIONRAISER_H
 
-#include "MachineInstructionRaiser.h"
+#include "Raiser/MachineInstructionRaiser.h"
+
+namespace llvm {
+namespace mctoll {
 
 class ARMMachineInstructionRaiser : public MachineInstructionRaiser {
 public:
@@ -35,4 +38,8 @@ private:
   // Commonly used LLVM data structures during this phase
   MachineRegisterInfo &machRegInfo;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
+
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMACHINEINSTRUCTIONRAISER_H

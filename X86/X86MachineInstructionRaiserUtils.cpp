@@ -27,9 +27,8 @@
 
 #define DEBUG_TYPE "mctoll"
 
-using namespace llvm;
-using namespace mctoll;
-using namespace X86RegisterUtils;
+using namespace llvm::mctoll;
+using namespace llvm::mctoll::X86RegisterUtils;
 
 Value *X86MachineInstructionRaiser::getMemoryRefValue(const MachineInstr &MI) {
   const MCInstrDesc &MIDesc = MI.getDesc();
@@ -1402,7 +1401,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   // Create alloca instruction to allocate stack slot
   AllocaInst *alloca =
       new AllocaInst(MemOpTy, allocaAddrSpace, 0, ByteAlign,
-                     SPStr + std::to_string(abs(MIStackOffset)));
+                     SPStr + std::to_string(std::abs(MIStackOffset)));
 
   // Create a stack slot associated with the alloca instruction
   stackFrameIndex = MF.getFrameInfo().CreateStackObject(

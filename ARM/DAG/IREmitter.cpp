@@ -18,6 +18,7 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 IREmitter::IREmitter(BasicBlock *bb, DAGRaisingInfo *dagInfo,
                      FunctionRaisingInfo *funcInfo)

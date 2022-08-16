@@ -2,13 +2,14 @@ include_directories(
   ${LLVM_MAIN_SRC_DIR}/lib/Target/X86
   ${LLVM_BINARY_DIR}/lib/Target/X86
   ${CMAKE_CURRENT_SOURCE_DIR}/..
+  ${CMAKE_CURRENT_SOURCE_DIR}/../Raiser
 )
 
 if(NOT LLVM_MCTOLL_BUILT_STANDALONE)
   set(LLVM_MCTOLL_DEPS intrinsics_gen X86CommonTableGen)
 endif()
 
-llvm_add_library(X86Raiser STATIC
+add_llvm_library(mctollX86Raiser
   X86AdditionalInstrInfo.cpp
   X86ModuleRaiser.cpp
   X86MachineInstructionRaiser.cpp
@@ -19,6 +20,21 @@ llvm_add_library(X86Raiser STATIC
   X86RegisterUtils.cpp
   X86FuncPrototypeDiscovery.cpp
 
-  DEPENDS
-    ${LLVM_MCTOLL_DEPS}
+  LINK_COMPONENTS
+  Analysis
+  Core
+  BitWriter
+  X86CodeGen
+  DebugInfoDWARF
+  DebugInfoPDB
+  Demangle
+  MC
+  MCDisassembler
+  Object
+  SelectionDAG
+  Symbolize
+  Support
+  TransformUtils
   )
+
+target_link_libraries(mctollX86Raiser PRIVATE mctollRaiser)

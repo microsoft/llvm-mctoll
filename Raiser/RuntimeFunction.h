@@ -18,7 +18,8 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 class RuntimeFunction {
 
@@ -41,4 +42,8 @@ public:
 
   static Function *getOrCreateSecOffsetCalcFunction(Module &M);
 };
+
+} // end namespace mctoll
+} // end namespace llvm
+
 #endif /* TOOLS_LLVM_MCTOLL_RUNTIMEFUNCTION_H_ */

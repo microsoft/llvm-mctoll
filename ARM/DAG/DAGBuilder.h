@@ -17,7 +17,8 @@
 #include "DAGRaisingInfo.h"
 #include "FunctionRaisingInfo.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// This is to build DAG for each Function by analyzing MachineInstructions.
 class DAGBuilder {
@@ -36,5 +37,8 @@ private:
   /// properties.
   void visitCC(const MachineInstr &mi, MachineSDNode *mnode);
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_DAGBUILDER_H

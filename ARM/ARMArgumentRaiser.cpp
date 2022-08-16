@@ -20,6 +20,7 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 char ARMArgumentRaiser::ID = 0;
 

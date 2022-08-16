@@ -20,8 +20,11 @@
 #include "FunctionRaisingInfo.h"
 #include "IREmitter.h"
 #include "InstSelector.h"
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
+
+namespace llvm {
+namespace mctoll {
 
 /// This is responsible for constructing DAG, and does instruction selection on
 /// the DAG, eventually emits SDNodes of the DAG to LLVM IRs.
@@ -53,5 +56,8 @@ private:
   BasicBlock *BB;
   std::vector<JumpTableInfo> jtList;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMSELECTIONDAGISEL_H

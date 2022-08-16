@@ -15,8 +15,8 @@
 #include "ARMModuleRaiser.h"
 #include "ARMSubtarget.h"
 #include "IncludedFileInfo.h"
-#include "MCInstRaiser.h"
-#include "MachineFunctionRaiser.h"
+#include "Raiser/MCInstRaiser.h"
+#include "Raiser/MachineFunctionRaiser.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -25,6 +25,7 @@
 
 using namespace llvm;
 using namespace llvm::object;
+using namespace llvm::mctoll;
 
 char ARMMIRevising::ID = 0;
 

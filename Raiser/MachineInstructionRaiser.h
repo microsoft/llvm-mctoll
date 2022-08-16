@@ -15,11 +15,12 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_MACHINEINSTRUCTIONRAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_MACHINEINSTRUCTIONRAISER_H
 
-#include "MCInstRaiser.h"
-#include "ModuleRaiser.h"
+#include "Raiser/MCInstRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/CodeGen/MachineFunction.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 // Structure holding all necessary information to raise control
 // transfer (i.e., branch) instructions during a post-processing
@@ -78,4 +79,8 @@ protected:
   // (i.e., Call and Terminator) instructions.
   std::vector<ControlTransferInfo *> CTInfo;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
+
 #endif // LLVM_TOOLS_LLVM_MCTOLL_MACHINEINSTRUCTIONRAISER_H

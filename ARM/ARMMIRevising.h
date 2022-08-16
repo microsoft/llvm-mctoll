@@ -15,11 +15,11 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMIREVISING_H
 
 #include "ARMRaiserBase.h"
-#include "MCInstRaiser.h"
+#include "Raiser/MCInstRaiser.h"
 #include "llvm/CodeGen/MachineInstr.h"
 
-using namespace llvm;
-using namespace object;
+namespace llvm {
+namespace mctoll {
 
 /// This class is use to revise information of each MachineInstr. Something
 /// like size of operands, immediate data value and so on. Currently, the
@@ -55,5 +55,8 @@ private:
 
   MCInstRaiser *MCIR;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMIREVISING_H

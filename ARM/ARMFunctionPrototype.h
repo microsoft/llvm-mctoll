@@ -14,11 +14,12 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMFUNCTIONPROTOTYPE_H
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMFUNCTIONPROTOTYPE_H
 
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// This is used to discover function prototypes by analyzing code of functions.
 class ARMFunctionPrototype : public MachineFunctionPass {
@@ -47,5 +48,8 @@ private:
   MachineFunction *MF;
   LLVMContext *CTX;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMFUNCTIONPROTOTYPE_H

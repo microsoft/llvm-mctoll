@@ -1,6 +1,6 @@
 #include "IncludedFileInfo.h"
-#include "MachineFunctionRaiser.h"
 #include "RISCV32ModuleRaiser.h"
+#include "Raiser/MachineFunctionRaiser.h"
 #include "llvm-mctoll.h"
 
 // NOTE : The following RISCV32ModuleRaiser class function is defined here as

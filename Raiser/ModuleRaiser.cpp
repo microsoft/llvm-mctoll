@@ -12,8 +12,114 @@
 #include "MachineInstructionRaiser.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/WithColor.h"
+
 
 #define DEBUG_TYPE "mctoll"
+
+using namespace llvm;
+using namespace llvm::object;
+using namespace llvm::mctoll;
+
+StringRef mctoll::ToolName;
+
+void mctoll::error(std::error_code EC) {
+  if (!EC)
+    return;
+
+  errs() << ToolName << ": error reading file: " << EC.message() << ".\n";
+  errs().flush();
+  exit(1);
+}
+
+void mctoll::error(Error E) {
+  if (!E)
+    return;
+  WithColor::error(errs(), ToolName) << toString(std::move(E));
+  exit(1);
+}
+
+[[noreturn]] void mctoll::error(Twine Message) {
+  errs() << ToolName << ": " << Message << ".\n";
+  errs().flush();
+  exit(1);
+}
+
+[[noreturn]] void mctoll::report_error(StringRef File, Twine Message) {
+  WithColor::error(errs(), ToolName)
+      << "'" << File << "': " << Message << ".\n";
+  exit(1);
+}
+
+[[noreturn]] void mctoll::report_error(Error E, StringRef File) {
+  assert(E);
+  std::string Buf;
+  raw_string_ostream OS(Buf);
+  logAllUnhandledErrors(std::move(E), OS);
+  OS.flush();
+  WithColor::error(errs(), ToolName) << "'" << File << "': " << Buf;
+  exit(1);
+}
+
+[[noreturn]] void mctoll::report_error(Error E, StringRef ArchiveName,
+                                       StringRef FileName,
+                                       StringRef ArchitectureName) {
+  assert(E);
+  WithColor::error(errs(), ToolName);
+  if (ArchiveName != "")
+    errs() << ArchiveName << "(" << FileName << ")";
+  else
+    errs() << "'" << FileName << "'";
+  if (!ArchitectureName.empty())
+    errs() << " (for architecture " << ArchitectureName << ")";
+  std::string Buf;
+  raw_string_ostream OS(Buf);
+  logAllUnhandledErrors(std::move(E), OS);
+  OS.flush();
+  errs() << ": " << Buf;
+  exit(1);
+}
+
+[[noreturn]] void mctoll::report_error(Error E, StringRef ArchiveName,
+                                       const object::Archive::Child &C,
+                                       StringRef ArchitectureName) {
+  Expected<StringRef> NameOrErr = C.getName();
+  // TODO: if we have a error getting the name then it would be nice to print
+  // the index of which archive member this is and or its offset in the
+  // archive instead of "???" as the name.
+  if (!NameOrErr) {
+    consumeError(NameOrErr.takeError());
+    report_error(std::move(E), ArchiveName, "???", ArchitectureName);
+  } else
+    report_error(std::move(E), ArchiveName, NameOrErr.get(), ArchitectureName);
+}
+
+// raiser registry context
+static SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
+
+bool mctoll::isSupportedArch(Triple::ArchType arch) {
+  for (auto m : ModuleRaiserRegistry)
+    if (m->getArchType() == arch)
+      return true;
+
+  return false;
+}
+
+ModuleRaiser *mctoll::getModuleRaiser(const TargetMachine *tm) {
+  ModuleRaiser *mr = nullptr;
+  auto arch = tm->getTargetTriple().getArch();
+  for (auto m : ModuleRaiserRegistry)
+    if (m->getArchType() == arch) {
+      mr = m;
+      break;
+    }
+  assert(nullptr != mr && "This arch has not yet supported for raising!\n");
+  return mr;
+}
+
+void mctoll::registerModuleRaiser(ModuleRaiser *m) {
+  ModuleRaiserRegistry.push_back(m);
+}
 
 Function *ModuleRaiser::getRaisedFunctionAt(uint64_t Index) const {
   int64_t TextSecAddr = getTextSectionAddress();

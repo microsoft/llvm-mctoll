@@ -14,17 +14,20 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCInstrAnalysis.h"
+#include "llvm/Object/Archive.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include <vector>
 
 using namespace llvm;
 using namespace std;
+using namespace object;
+
+namespace llvm {
+namespace mctoll {
 
 class MachineFunctionRaiser;
 class MachineInstructionRaiser;
-
-using namespace object;
 
 using JumpTableBlock = std::pair<ConstantInt *, MachineBasicBlock *>;
 
@@ -48,8 +51,6 @@ public:
         Obj(nullptr), DisAsm(nullptr), TextSectionIndex(-1),
         Arch(Triple::ArchType::UnknownArch), FFT(nullptr), InfoSet(false) {}
 
-  static void InitializeAllModuleRaisers();
-
   void setModuleRaiserInfo(Module *M, const TargetMachine *TM,
                            MachineModuleInfo *MMI, const MCInstrAnalysis *MIA,
                            const MCInstrInfo *MII, const ObjectFile *Obj,
@@ -68,7 +69,7 @@ public:
   }
 
   // Function to create a MachineFunctionRaiser corresponding to Function f.
-  // As noted elsewhere (llvm-mctoll.cpp), f is a place holder to allow for
+  // As noted elsewhere (llvm-mctoll.cpp), f is a placeholder to allow for
   // creation of MachineFunction. The Function object representing raising
   // of MachineFunction is accessible by calling getRaisedFunction()
   // on the MachineFunctionRaiser object.
@@ -166,5 +167,34 @@ protected:
   // Flag to indicate that fields are set. Resetting is not allowed/expected.
   bool InfoSet;
 };
+
+bool isSupportedArch(Triple::ArchType arch);
+ModuleRaiser *getModuleRaiser(const TargetMachine *tm);
+void registerModuleRaiser(ModuleRaiser *m);
+
+// error functions used from main and from raisers libs
+extern StringRef ToolName;
+
+void error(std::error_code ec);
+void error(Error E);
+[[noreturn]] void error(Twine Message);
+[[noreturn]] void report_error(StringRef File, Twine Message);
+[[noreturn]] void report_error(Error E, StringRef File);
+[[noreturn]] void report_error(Error E, StringRef FileName,
+                               StringRef ArchiveName,
+                               StringRef ArchitectureName = StringRef());
+[[noreturn]] void report_error(Error E, StringRef ArchiveName,
+                               const object::Archive::Child &C,
+                               StringRef ArchitectureName = StringRef());
+
+template <typename T, typename... Ts>
+T unwrapOrError(Expected<T> EO, Ts &&...Args) {
+  if (EO)
+    return std::move(*EO);
+  report_error(EO.takeError(), std::forward<Ts>(Args)...);
+}
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_MODULERAISER_H

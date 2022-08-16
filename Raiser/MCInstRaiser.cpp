@@ -15,6 +15,9 @@
 
 #define DEBUG_TYPE "mctoll"
 
+using namespace llvm;
+using namespace llvm::mctoll;
+
 void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
                             const MCInstrInfo *MII) {
   // Set the first instruction index as the entry of current MBB

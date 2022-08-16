@@ -16,7 +16,8 @@
 
 #include "ARMRaiserBase.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 class ARMEliminatePrologEpilog : public ARMRaiserBase {
 public:
@@ -37,5 +38,8 @@ private:
   /// Analyze frame adjustment base on the offset between fp and base sp.
   void analyzeFrameAdjustment(MachineFunction &mf);
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMELIMINATEPROLOGEPILOG_H

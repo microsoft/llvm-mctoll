@@ -14,9 +14,10 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H
 
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 
-using namespace llvm;
+namespace llvm {
+namespace  mctoll {
 
 class ARMModuleRaiser : public ModuleRaiser {
 public:
@@ -78,5 +79,10 @@ private:
   // updated throughout the raising process.
   mutable std::map<uint64_t, Value *> GlobalRODataValues;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
+
+extern "C" void registerARMModuleRaiser();
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H

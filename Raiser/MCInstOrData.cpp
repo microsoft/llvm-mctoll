@@ -13,6 +13,8 @@
 
 #define DEBUG_TYPE "mctoll"
 
+using namespace llvm::mctoll;
+
 MCInstOrData::MCInstOrData(const MCInstOrData &V) {
   Type = V.Type;
   switch (Type) {

@@ -19,6 +19,7 @@
 #include <vector>
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 /// Collects the information of each MI to create SDNodes.
 void DAGBuilder::visit(const MachineInstr &mi) {

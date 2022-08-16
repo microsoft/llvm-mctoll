@@ -15,8 +15,11 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMCREATEJUMPTABLE_H
 
 #include "ARMRaiserBase.h"
-#include "MCInstRaiser.h"
-#include "MachineFunctionRaiser.h"
+#include "Raiser/MCInstRaiser.h"
+#include "Raiser/MachineFunctionRaiser.h"
+
+namespace llvm {
+namespace mctoll {
 
 class ARMCreateJumpTable : public ARMRaiserBase {
 public:
@@ -40,4 +43,8 @@ private:
   std::vector<JumpTableInfo> jtList;
   MCInstRaiser *MCIR;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
+
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMCREATEJUMPTABLE_H

@@ -15,10 +15,7 @@
 #include "llvm/Object/ELFObjectFile.h"
 
 using namespace llvm;
-
-namespace RaiserContext {
-extern SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
-}
+using namespace llvm::mctoll;
 
 bool ARMModuleRaiser::collectDynamicRelocations() {
   if (!Obj->isELF()) {
@@ -76,16 +73,6 @@ void ARMModuleRaiser::addRODataValueAt(Value *V, uint64_t Offset) const {
   GlobalRODataValues.emplace(Offset, V);
 }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void InitializeARMModuleRaiser() {
-  ModuleRaiser *m = new ARMModuleRaiser();
-  RaiserContext::ModuleRaiserRegistry.push_back(m);
-  return;
+void registerARMModuleRaiser() {
+  registerModuleRaiser(new ARMModuleRaiser());
 }
-
-#ifdef __cplusplus
-}
-#endif

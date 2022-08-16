@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the implementaion of FunctionRaisingInfo class for use
+// This file contains the implementation of FunctionRaisingInfo class for use
 // by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
@@ -15,6 +15,7 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 /// Initialize this FunctionRaisingInfo with the given Function and its
 /// associated MachineFunction.

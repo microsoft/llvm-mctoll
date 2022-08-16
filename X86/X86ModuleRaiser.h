@@ -14,9 +14,10 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULERAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULERAISER_H
 
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 class X86ModuleRaiser : public ModuleRaiser {
 public:
@@ -27,5 +28,10 @@ public:
                                     uint64_t Start, uint64_t End) override;
   bool collectDynamicRelocations() override;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
+
+extern "C" void registerX86ModuleRaiser();
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULERAISER_H

@@ -20,7 +20,8 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 class ARMRaiserBase : public FunctionPass {
 protected:
@@ -52,5 +53,8 @@ protected:
   MachineFunction *MF;
   Module *M;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMRAISERBASE_H

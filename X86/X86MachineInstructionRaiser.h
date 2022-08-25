@@ -14,9 +14,22 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86MACHINEINSTRUCTIONRAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_X86_X86MACHINEINSTRUCTIONRAISER_H
 
-#include "MachineInstructionRaiser.h"
+#include "Raiser/MachineInstructionRaiser.h"
 #include "X86AdditionalInstrInfo.h"
 #include "llvm/IR/Instructions.h"
+
+namespace llvm {
+
+// Forward declaration
+class X86Subtarget;
+class X86InstrInfo;
+class X86RegisterInfo;
+struct X86AddressMode;
+
+namespace mctoll {
+
+// Forward declaration of X86RaisedValueTracker
+class X86RaisedValueTracker;
 
 // Type alias for Map of MBBNo -> BasicBlock * used to keep track of
 // MachineBasicBlock and corresponding raised BasicBlock
@@ -35,16 +48,6 @@ using MCPhysRegSet = std::set<MCPhysReg>;
 
 // Map of 64-bit super register -> size of register access
 using MCPhysRegSizeMap = std::map<MCPhysReg, uint16_t>;
-
-// Forward declaration of X86RaisedValueTracker
-class X86RaisedValueTracker;
-
-namespace llvm {
-class X86Subtarget;
-class X86InstrInfo;
-class X86RegisterInfo;
-struct X86AddressMode;
-} // namespace llvm
 
 class X86MachineInstructionRaiser : public MachineInstructionRaiser {
 public:
@@ -221,5 +224,8 @@ private:
 
   std::vector<JumpTableInfo> jtList;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MACHINEINSTRUCTIONRAISER_H

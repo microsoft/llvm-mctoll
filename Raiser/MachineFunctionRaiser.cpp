@@ -9,6 +9,8 @@
 #include "MachineFunctionRaiser.h"
 #include "llvm/Target/TargetMachine.h"
 
+using namespace llvm::mctoll;
+
 bool MachineFunctionRaiser::runRaiserPasses() {
   bool Success = false;
   // Raise MCInst to MachineInstr and Build CFG
@@ -41,19 +43,4 @@ Function *MachineFunctionRaiser::getRaisedFunction() {
 
 void MachineFunctionRaiser::setRaisedFunction(Function *F) {
   return machineInstRaiser->setRaisedFunction(F);
-}
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#define MODULE_RAISER(TargetName) void Initialize##TargetName##ModuleRaiser();
-#include "Raisers.def"
-#ifdef __cplusplus
-}
-#endif
-
-void ModuleRaiser::InitializeAllModuleRaisers() {
-#define MODULE_RAISER(TargetName) Initialize##TargetName##ModuleRaiser();
-#include "Raisers.def"
 }

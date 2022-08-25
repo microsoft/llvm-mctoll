@@ -20,6 +20,7 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 char ARMInstructionSplitting::ID = 0;
 

@@ -14,9 +14,12 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_DAGRAISERINGINFO_H
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_DAGRAISERINGINFO_H
 
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "SelectionCommon.h"
 #include "llvm/ADT/DenseMap.h"
+
+namespace llvm {
+namespace mctoll {
 
 /// This is a extention of SelectionDAG. It contains additional information
 /// of DAG which is used by llvm-mctoll.
@@ -36,5 +39,8 @@ public:
   /// The map for each SDNode with its additional preperty.
   DenseMap<SDNode *, NodePropertyInfo *> NPMap;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_DAGRAISERINGINFO_H

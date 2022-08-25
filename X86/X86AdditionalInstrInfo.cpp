@@ -17,8 +17,7 @@
 #include <X86Subtarget.h>
 
 using namespace llvm;
-
-namespace mctoll {
+using namespace llvm::mctoll;
 
 static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::AAA, {0, Unknown}},
@@ -13936,7 +13935,5 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::XSTORE, {0, Unknown}},
     {X86::XTEST, {0, Unknown}}};
 
-const const_addl_instr_info X86AddlInstrInfo(std::begin(mapdata),
+const const_addl_instr_info mctoll::X86AddlInstrInfo(std::begin(mapdata),
                                              std::end(mapdata));
-
-} // namespace mctoll

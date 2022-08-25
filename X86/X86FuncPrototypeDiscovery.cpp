@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "IncludedFileInfo.h"
-#include "MachineFunctionRaiser.h"
+#include "Raiser/MachineFunctionRaiser.h"
 #include "X86InstrBuilder.h"
 #include "X86MachineInstructionRaiser.h"
 #include "X86ModuleRaiser.h"
@@ -37,9 +37,10 @@
 #include <X86Subtarget.h>
 #include <set>
 #include <vector>
+
 using namespace llvm;
-using namespace mctoll;
-using namespace X86RegisterUtils;
+using namespace llvm::mctoll;
+using namespace llvm::mctoll::X86RegisterUtils;
 
 // A convenience function that is slightly different from the LLVM API viz.,
 // MCInstrDesc::hasImplicitDefOfPhysReg() which returns true if Reg or its

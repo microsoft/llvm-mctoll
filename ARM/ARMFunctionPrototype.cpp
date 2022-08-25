@@ -22,6 +22,7 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 char ARMFunctionPrototype::ID = 0;
 

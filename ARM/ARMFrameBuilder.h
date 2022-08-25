@@ -19,7 +19,8 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/IR/DataLayout.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// This class is use to build ARM abstract stack frame by analyzing ARM SP
 /// register operations. Simultaneously, converts MI SP operands to
@@ -59,5 +60,8 @@ private:
   /// Records of assigned common registers by sp.
   SmallVector<unsigned, 16> RegAssignedBySP;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMFRAMEBUILDER_H

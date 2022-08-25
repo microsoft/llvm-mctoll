@@ -13,11 +13,13 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_INCLUDEDFILEINFO_H
 #define LLVM_TOOLS_LLVM_MCTOLL_INCLUDEDFILEINFO_H
 
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 
-using namespace llvm;
+
+namespace llvm {
+namespace mctoll {
 
 class IncludedFileInfo {
   IncludedFileInfo(){};
@@ -42,5 +44,8 @@ public:
 
   static bool IsExternalVariable(std::string Name);
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_INCLUDEDFILEINFO_H

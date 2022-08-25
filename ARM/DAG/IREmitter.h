@@ -16,9 +16,12 @@
 
 #include "DAGRaisingInfo.h"
 #include "FunctionRaisingInfo.h"
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/IR/IRBuilder.h"
+
+namespace llvm {
+namespace mctoll {
 
 /// Construct an emitter and set it to start inserting IR Value into
 /// the given block.
@@ -89,5 +92,8 @@ private:
                                  ValPtr, Align, "");
   }
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_IREMITTER_H

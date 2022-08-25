@@ -14,8 +14,12 @@
 
 #include "FunctionFilter.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/Regex.h"
 #include <fstream>
+
+using namespace llvm;
+using namespace llvm::mctoll;
 
 FunctionFilter::~FunctionFilter() {
   if (!ExcludedFunctionVector.empty())
@@ -289,7 +293,7 @@ bool FunctionFilter::readFilterFunctionConfigFile(
       if (RgxEI.match(Line, &Grp)) {
         assert(Grp.size() < 4 && "Only can match two elements in a line!!!");
 
-        if (Grp[1].equals(M.getSourceFileName())) {
+        if (Grp[1].equals(sys::path::filename(M.getSourceFileName()))) {
           if (FFType == FunctionFilter::FILTER_EXCLUDE) {
             addExcludedFunction(Grp[2]);
             continue;

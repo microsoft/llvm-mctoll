@@ -19,7 +19,8 @@
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// This contains information that is global to a function that is used when
 /// raising a region of the function.
@@ -85,5 +86,8 @@ public:
   const DataLayout *DLT;
   Type *DefaultType;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_FUNCTIONRAISERINGINFO_H

@@ -5,43 +5,48 @@ endif()
 set(LLVM_MCTOLL_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLVM_MCTOLL_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
-llvm_map_components_to_libnames(llvm_libs
-  ${LLVM_TARGETS_TO_BUILD}
-  Core
+set(LLVM_LINK_COMPONENTS
   BitWriter
   CodeGen
+  Core
+  BinaryFormat
   DebugInfoDWARF
   DebugInfoPDB
   Demangle
   MC
   MCDisassembler
   Object
-  Symbolize
+  Option
   Support
-)
+  Symbolize
+  ARM
+  X86
+  )
 
-set(LLVM_MCTOLL_LIB_DEPS ${llvm_libs})
+add_subdirectory(Raiser)
+
+set(LLVM_MCTOLL_LIB_DEPS ${llvm_libs} mctollRaiser)
 set(LLVM_MCTOLL_SUPPORTED_ARCHS "")
 
 if(LLVM_TARGETS_TO_BUILD MATCHES "X86")
   set(LLVM_MCTOLL_SUPPORTED_ARCHS
     "${LLVM_MCTOLL_SUPPORTED_ARCHS}MODULE_RAISER(X86)\n")
   add_subdirectory(X86)
-  list(APPEND LLVM_MCTOLL_LIB_DEPS X86Raiser)
+  list(APPEND LLVM_MCTOLL_LIB_DEPS mctollX86Raiser)
 endif()
 
 if(LLVM_TARGETS_TO_BUILD MATCHES "RISCV")
   set(LLVM_MCTOLL_SUPPORTED_ARCHS
     "${LLVM_MCTOLL_SUPPORTED_ARCHS}MODULE_RAISER(RISCV)\n")
   add_subdirectory(RISCV)
-  list(APPEND LLVM_MCTOLL_LIB_DEPS RISCVRaiser)
+  list(APPEND LLVM_MCTOLL_LIB_DEPS mctollRISCVRaiser)
 endif()
 
 if(LLVM_TARGETS_TO_BUILD MATCHES "ARM")
   set(LLVM_MCTOLL_SUPPORTED_ARCHS
     "${LLVM_MCTOLL_SUPPORTED_ARCHS}MODULE_RAISER(ARM)\n")
   add_subdirectory(ARM)
-  list(APPEND LLVM_MCTOLL_LIB_DEPS ARMRaiser)
+  list(APPEND LLVM_MCTOLL_LIB_DEPS mctollARMRaiser)
 endif()
 
 configure_file(
@@ -54,22 +59,13 @@ add_subdirectory(test)
 add_llvm_tool(llvm-mctoll
   llvm-mctoll.cpp
   COFFDump.cpp
-  IncludedFileInfo.cpp
-  FunctionFilter.cpp
   MachODump.cpp
-  ModuleRaiser.cpp
-  MachineFunctionRaiser.cpp
-  MCInstOrData.cpp
-  MCInstRaiser.cpp
   EmitRaisedOutputPass.cpp
   PeepholeOptimizationPass.cpp
-  RuntimeFunction.cpp
 )
 
-include_directories(${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/include ${LLVM_BINARY_DIR}/tools/clang/include)
-
 # Link against LLVM libraries and target-specific Raiser libraries
-target_link_libraries(llvm-mctoll PRIVATE ${LLVM_MCTOLL_LIB_DEPS} clangTooling clangBasic clangASTMatchers)
+target_link_libraries(llvm-mctoll PRIVATE ${LLVM_MCTOLL_LIB_DEPS})
 
 if(HAVE_LIBXAR)
   message(STATUS "Linking xar")

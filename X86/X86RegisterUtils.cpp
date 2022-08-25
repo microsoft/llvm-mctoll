@@ -14,23 +14,26 @@
 
 #include "X86RegisterUtils.h"
 
-namespace X86RegisterUtils {
+using namespace llvm;
+using namespace llvm::mctoll;
+using namespace llvm::mctoll::X86RegisterUtils;
+
 // Unfortunately, tablegen does not have an interface to query
 // information about argument registers used for calling
 // convention used.
-const vector<MCPhysReg> GPR64ArgRegs64Bit({X86::RDI, X86::RSI, X86::RDX,
+const vector<MCPhysReg> X86RegisterUtils::GPR64ArgRegs64Bit({X86::RDI, X86::RSI, X86::RDX,
                                            X86::RCX, X86::R8, X86::R9});
 
-const vector<MCPhysReg> GPR64ArgRegs32Bit({X86::EDI, X86::ESI, X86::EDX,
+const vector<MCPhysReg> X86RegisterUtils::GPR64ArgRegs32Bit({X86::EDI, X86::ESI, X86::EDX,
                                            X86::ECX, X86::R8D, X86::R9D});
 
-const vector<MCPhysReg> GPR64ArgRegs16Bit({X86::DI, X86::SI, X86::DX, X86::CX,
+const vector<MCPhysReg> X86RegisterUtils::GPR64ArgRegs16Bit({X86::DI, X86::SI, X86::DX, X86::CX,
                                            X86::R8W, X86::R9W});
 
-const vector<MCPhysReg> GPR64ArgRegs8Bit({X86::DIL, X86::SIL, X86::DL, X86::CL,
+const vector<MCPhysReg> X86RegisterUtils::GPR64ArgRegs8Bit({X86::DIL, X86::SIL, X86::DL, X86::CL,
                                           X86::R8B, X86::R9B});
 
-const vector<MCPhysReg> SSEArgRegs64Bit({X86::XMM0, X86::XMM1,
+const vector<MCPhysReg> X86RegisterUtils::SSEArgRegs64Bit({X86::XMM0, X86::XMM1,
                                           X86::XMM2, X86::XMM3,
                                           X86::XMM4, X86::XMM5,
                                           X86::XMM6, X86::XMM7});
@@ -38,17 +41,17 @@ const vector<MCPhysReg> SSEArgRegs64Bit({X86::XMM0, X86::XMM1,
 // static const ArrayRef<MCPhysReg> GPR64ArgRegsWin64({X86::RCX, X86::RDX,
 // X86::R8,
 //                                                    X86::R9});
-const vector<EFLAGBit> EFlagBits({EFLAGS::CF, EFLAGS::PF, EFLAGS::AF,
+const vector<EFLAGBit> X86RegisterUtils::EFlagBits({EFLAGS::CF, EFLAGS::PF, EFLAGS::AF,
                                   EFLAGS::ZF, EFLAGS::SF, EFLAGS::OF});
 
-bool isEflagBit(unsigned RegNo) {
+bool X86RegisterUtils::isEflagBit(unsigned RegNo) {
   return ((RegNo >= EFLAGS::CF) && (RegNo < EFLAGS::UNDEFINED));
 }
 
-int getEflagBitIndex(unsigned EFBit) {
+int X86RegisterUtils::getEflagBitIndex(unsigned EFBit) {
   assert(isEflagBit(EFBit) && "Undefined EFLAGS bit");
   int index = 0;
-  for (auto v : EFlagBits) {
+  for (auto v : X86RegisterUtils::EFlagBits) {
     if (v == EFBit)
       return index;
     else
@@ -58,7 +61,7 @@ int getEflagBitIndex(unsigned EFBit) {
   return -1;
 }
 
-string getEflagName(unsigned EFBit) {
+string X86RegisterUtils::getEflagName(unsigned EFBit) {
   switch (EFBit) {
   case EFLAGS::CF:
     return "CF";
@@ -84,38 +87,38 @@ string getEflagName(unsigned EFBit) {
   return "";
 }
 
-bool is32BitSSE2Reg(unsigned int PReg) {
+bool X86RegisterUtils::is32BitSSE2Reg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::FR32RegClassID].contains(PReg);
 }
 
-bool is64BitSSE2Reg(unsigned int PReg) {
+bool X86RegisterUtils::is64BitSSE2Reg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::FR64RegClassID].contains(PReg);
 }
 
-bool is64BitPhysReg(unsigned int PReg) {
+bool X86RegisterUtils::is64BitPhysReg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::GR64RegClassID].contains(PReg);
 }
 
-bool is32BitPhysReg(unsigned int PReg) {
+bool X86RegisterUtils::is32BitPhysReg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::GR32RegClassID].contains(PReg);
 }
 
-bool is16BitPhysReg(unsigned int PReg) {
+bool X86RegisterUtils::is16BitPhysReg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::GR16RegClassID].contains(PReg);
 }
 
-bool is8BitPhysReg(unsigned int PReg) {
+bool X86RegisterUtils::is8BitPhysReg(unsigned int PReg) {
   return X86MCRegisterClasses[X86::GR8RegClassID].contains(PReg);
 }
 
-unsigned int getPhysRegSizeInBits(unsigned int PReg) {
-  if (is64BitPhysReg(PReg) || is64BitSSE2Reg(PReg))
+unsigned int X86RegisterUtils::getPhysRegSizeInBits(unsigned int PReg) {
+  if (X86RegisterUtils::is64BitPhysReg(PReg) || X86RegisterUtils::is64BitSSE2Reg(PReg))
     return 64;
-  else if (is32BitPhysReg(PReg) || is32BitSSE2Reg(PReg))
+  else if (X86RegisterUtils::is32BitPhysReg(PReg) || X86RegisterUtils::is32BitSSE2Reg(PReg))
     return 32;
-  else if (is16BitPhysReg(PReg))
+  else if (X86RegisterUtils::is16BitPhysReg(PReg))
     return 16;
-  else if (is8BitPhysReg(PReg))
+  else if (X86RegisterUtils::is8BitPhysReg(PReg))
     return 8;
   else if (isEflagBit(PReg))
     return 1;
@@ -123,28 +126,29 @@ unsigned int getPhysRegSizeInBits(unsigned int PReg) {
   llvm_unreachable("Unhandled physical register specified");
 }
 
-bool isSSE2Reg(unsigned int PReg) {
-  return (is32BitSSE2Reg(PReg) || is64BitSSE2Reg(PReg));
+bool X86RegisterUtils::isSSE2Reg(unsigned int PReg) {
+  return (X86RegisterUtils::is32BitSSE2Reg(PReg) || X86RegisterUtils::is64BitSSE2Reg(PReg));
 }
 
-bool isGPReg(unsigned int PReg) {
-  return (is8BitPhysReg(PReg) || is16BitPhysReg(PReg) || is32BitPhysReg(PReg) ||
-          is64BitPhysReg(PReg));
+bool X86RegisterUtils::isGPReg(unsigned int PReg) {
+  return (X86RegisterUtils::is8BitPhysReg(PReg) || X86RegisterUtils::is16BitPhysReg(PReg) || X86RegisterUtils::is32BitPhysReg(PReg) ||
+          X86RegisterUtils::is64BitPhysReg(PReg));
 }
 
-unsigned getArgumentReg(int Index, Type *Ty) {
+unsigned X86RegisterUtils::getArgumentReg(int Index, Type *Ty) {
   llvm::LLVMContext &Ctx(Ty->getContext());
 
   // Note: any pointer is an address and hence uses a 64-bit register
   if ((Ty == Type::getInt64Ty(Ctx)) || (Ty->isPointerTy())) {
-    return GPR64ArgRegs64Bit[Index];
+    return X86RegisterUtils::GPR64ArgRegs64Bit[Index];
   } else if (Ty == Type::getInt32Ty(Ctx)) {
-    return GPR64ArgRegs32Bit[Index];
+    return X86RegisterUtils::GPR64ArgRegs32Bit[Index];
   } else if (Ty == Type::getInt16Ty(Ctx)) {
-    return GPR64ArgRegs16Bit[Index];
+    return X86RegisterUtils::GPR64ArgRegs16Bit[Index];
   } else if (Ty == Type::getInt8Ty(Ctx)) {
-    return GPR64ArgRegs8Bit[Index];
+    return X86RegisterUtils::GPR64ArgRegs8Bit[Index];
   }
   return 0;
 }
-} // namespace X86RegisterUtils
+
+//} // end namespace X86RegisterUtils

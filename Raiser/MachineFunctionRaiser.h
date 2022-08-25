@@ -16,13 +16,15 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_FUNCTIONRAISER_H
 
 #include "MachineInstructionRaiser.h"
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
+
 using IndexedData32 = std::pair<uint64_t, uint32_t>;
 
 class MachineFunctionRaiser {
@@ -76,5 +78,8 @@ private:
   std::vector<IndexedData32> dataBlobVector;
   const ModuleRaiser *MR;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_FUNCTIONRAISER_H

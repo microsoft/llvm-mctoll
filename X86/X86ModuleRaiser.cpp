@@ -15,10 +15,7 @@
 #include "llvm/Object/ELFObjectFile.h"
 
 using namespace llvm;
-
-namespace RaiserContext {
-extern SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
-}
+using namespace llvm::mctoll;
 
 bool X86ModuleRaiser::collectDynamicRelocations() {
   if (!Obj->isELF())
@@ -37,15 +34,6 @@ bool X86ModuleRaiser::collectDynamicRelocations() {
   return true;
 }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void InitializeX86ModuleRaiser() {
-  ModuleRaiser *m = new X86ModuleRaiser();
-  RaiserContext::ModuleRaiserRegistry.push_back(m);
+void registerX86ModuleRaiser() {
+  registerModuleRaiser(new X86ModuleRaiser());
 }
-
-#ifdef __cplusplus
-}
-#endif

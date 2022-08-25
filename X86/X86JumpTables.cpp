@@ -24,7 +24,7 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
-using namespace mctoll;
+using namespace llvm::mctoll;
 
 bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
   // A vector to record MBBS that need be erased upon jump table creation.

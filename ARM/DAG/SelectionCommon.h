@@ -25,6 +25,7 @@
 #define EXTARMISD_OP_BEGIN (ARMISD::MEMCPY + 40)
 
 namespace llvm {
+namespace mctoll {
 namespace EXT_ARMISD {
 
 enum NodeType {
@@ -47,9 +48,6 @@ enum NodeType {
 };
 
 } // namespace EXT_ARMISD
-} // namespace llvm
-
-using namespace llvm;
 
 /// This structure is to extend SDNode properties, some additional SDNode
 /// properties which are used by llvm-mctoll will be kept at here.
@@ -62,5 +60,8 @@ typedef struct NodeProperty {
   Value *Val;
   const MachineInstr *MI;
 } NodePropertyInfo;
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_SELECTIONCOMMON_H

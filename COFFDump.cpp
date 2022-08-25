@@ -25,8 +25,10 @@
 #include <algorithm>
 #include <cstring>
 #include <system_error>
+#include "Raiser/ModuleRaiser.h"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 using namespace object;
 using namespace llvm::Win64EH;
 
@@ -610,7 +612,7 @@ static void printRuntimeFunctionRels(const COFFObjectFile *Obj,
   printWin64EHUnwindInfo(UI);
 }
 
-void llvm::printCOFFUnwindInfo(const COFFObjectFile *Obj) {
+void mctoll::printCOFFUnwindInfo(const COFFObjectFile *Obj) {
   if (Obj->getMachine() != COFF::IMAGE_FILE_MACHINE_AMD64) {
     errs() << "Unsupported image machine type "
               "(currently only AMD64 is supported).\n";
@@ -638,7 +640,7 @@ void llvm::printCOFFUnwindInfo(const COFFObjectFile *Obj) {
   }
 }
 
-void llvm::printCOFFFileHeader(const object::ObjectFile *Obj) {
+void mctoll::printCOFFFileHeader(const object::ObjectFile *Obj) {
   const COFFObjectFile *file = dyn_cast<const COFFObjectFile>(Obj);
   printTLSDirectory(file);
   printLoadConfiguration(file);
@@ -646,7 +648,7 @@ void llvm::printCOFFFileHeader(const object::ObjectFile *Obj) {
   printExportTable(file);
 }
 
-void llvm::printCOFFSymbolTable(const object::COFFImportFile *i) {
+void mctoll::printCOFFSymbolTable(const object::COFFImportFile *i) {
   unsigned Index = 0;
   bool IsCode = i->getCOFFImportHeader()->getType() == COFF::IMPORT_CODE;
 
@@ -669,7 +671,7 @@ void llvm::printCOFFSymbolTable(const object::COFFImportFile *i) {
   }
 }
 
-void llvm::printCOFFSymbolTable(const COFFObjectFile *coff) {
+void mctoll::printCOFFSymbolTable(const COFFObjectFile *coff) {
   for (unsigned SI = 0, SE = coff->getNumberOfSymbols(); SI != SE; ++SI) {
     auto Symbol = coff->getSymbol(SI);
     if (!Symbol)

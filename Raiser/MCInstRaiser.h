@@ -18,7 +18,8 @@
 #include <utility>
 #include <vector>
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 // Class that encapsulates raising for MCInst vector to MachineInstrs
 class MCInstRaiser {
@@ -112,5 +113,8 @@ private:
   // and are considered data
   bool dataInCode;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_MCINSTRAISER_H

@@ -13,7 +13,7 @@
 
 #include "X86MachineInstructionRaiser.h"
 #include "IncludedFileInfo.h"
-#include "MachineFunctionRaiser.h"
+#include "Raiser/MachineFunctionRaiser.h"
 #include "X86InstrBuilder.h"
 #include "X86ModuleRaiser.h"
 #include "X86RaisedValueTracker.h"
@@ -43,8 +43,8 @@
 #define DEBUG_TYPE "mctoll"
 
 using namespace llvm;
-using namespace mctoll;
-using namespace X86RegisterUtils;
+using namespace llvm::mctoll;
+using namespace llvm::mctoll::X86RegisterUtils;
 
 // Constructor
 

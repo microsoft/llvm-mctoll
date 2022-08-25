@@ -8,7 +8,7 @@ if(NOT LLVM_MCTOLL_BUILT_STANDALONE)
   set(LLVM_MCTOLL_DEPS intrinsics_gen RISCVCommonTableGen)
 endif()
 
-llvm_add_library(RISCVRaiser STATIC
+add_llvm_component_library(mctollRISCVRaiser
   RISCVModuleRaiser.cpp
   RISCV32ModuleRaiser.cpp
   RISCV32MachineInstructionRaiser.cpp

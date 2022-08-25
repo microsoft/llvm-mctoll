@@ -11,7 +11,8 @@
 
 #include "llvm/MC/MCInst.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 class MCInstOrData {
 private:
@@ -38,5 +39,8 @@ public:
 
   void dump() const;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_MCINSTRAISER_H

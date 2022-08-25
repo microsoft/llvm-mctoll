@@ -23,6 +23,7 @@
 #include "ARMSelectionDAGISel.h"
 
 using namespace llvm;
+using namespace llvm::mctoll;
 
 ARMMachineInstructionRaiser::ARMMachineInstructionRaiser(
     MachineFunction &machFunc, const ModuleRaiser *mr, MCInstRaiser *mcir)

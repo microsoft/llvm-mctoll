@@ -27,6 +27,8 @@ class Archive;
 class RelocationRef;
 } // namespace object
 
+namespace mctoll {
+
 extern cl::opt<std::string> TripleName;
 extern cl::opt<std::string> ArchName;
 extern cl::opt<std::string> FilterFunctionSet;
@@ -42,8 +44,6 @@ extern cl::list<std::string> IncludeFileNames;
 extern cl::opt<std::string> CompilationDBDir;
 
 // Various helper functions.
-void error(std::error_code ec);
-void error(Error E);
 bool isRelocAddressLess(object::RelocationRef A, object::RelocationRef B);
 bool RelocAddressLess(object::RelocationRef a, object::RelocationRef b);
 void parseInputMachO(StringRef Filename);
@@ -58,23 +58,8 @@ void printMachOLoadCommands(const object::ObjectFile *o);
 void printWasmFileHeader(const object::ObjectFile *o);
 void PrintSymbolTable(const object::ObjectFile *o, StringRef ArchiveName,
                       StringRef ArchitectureName = StringRef());
-[[noreturn]] void error(Twine Message);
-[[noreturn]] void report_error(StringRef File, Twine Message);
-[[noreturn]] void report_error(Error E, StringRef File);
-[[noreturn]] void
-report_error(Error E, StringRef FileName, StringRef ArchiveName,
-             StringRef ArchitectureName = StringRef());
-[[noreturn]] void
-report_error(Error E, StringRef ArchiveName, const object::Archive::Child &C,
-             StringRef ArchitectureName = StringRef());
 
-template <typename T, typename... Ts>
-T unwrapOrError(Expected<T> EO, Ts &&... Args) {
-  if (EO)
-    return std::move(*EO);
-  report_error(EO.takeError(), std::forward<Ts>(Args)...);
-}
-
+} // end namespace mctoll
 } // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_LLVM_MCTOLL_H

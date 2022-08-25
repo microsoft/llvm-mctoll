@@ -16,6 +16,9 @@
 
 #include "X86MachineInstructionRaiser.h"
 
+namespace llvm {
+namespace mctoll {
+
 // This class encapsulates all the necessary bookkeeping and look up of SSA
 // values constructed while a MachineFunction is raised.
 
@@ -108,5 +111,9 @@ private:
   // register definitions.
   PhysRegMBBValueDefMap physRegDefsInMBB;
 };
+
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LVM_TOOLS_LLVM_MCTOLL_X86_X86RAISEDVALUETRACKER_H

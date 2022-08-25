@@ -17,7 +17,8 @@
 #include "DAGRaisingInfo.h"
 #include "FunctionRaisingInfo.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// Does some selections on the DAG. So far, it just does the instruction
 /// selection.
@@ -59,5 +60,8 @@ private:
   SelectionDAG *CurDAG;
   FunctionRaisingInfo *FuncInfo;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_DAG_INSTSELECTOR_H

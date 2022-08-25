@@ -28,6 +28,8 @@
 
 #define DEBUG_TYPE "prototypes"
 
+using namespace llvm::mctoll;
+
 // NOTE: Not using namespace clang to highlight the fact that certain types such
 // as Type being used in this file are from clang namespace and not from llvm
 // namespace.
@@ -243,7 +245,7 @@ bool IncludedFileInfo::getExternalFunctionPrototype(
   if (CompDBDir.empty())
     ArgPtrVec.push_back("--");
 
-  auto ToolArgv = ArgPtrVec.data();
+  auto *ToolArgv = ArgPtrVec.data();
   int ArgSz = ArgPtrVec.size();
 
   // Construct a CommonOptionsParser object for the Compilations.

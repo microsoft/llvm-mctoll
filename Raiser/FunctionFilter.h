@@ -19,7 +19,8 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 
-using namespace llvm;
+namespace llvm {
+namespace mctoll {
 
 /// Class encapsulating lists of function specifications to be included and
 /// excluded along with methods to maintain and query the lists.
@@ -94,4 +95,8 @@ private:
   // Module associated with this class
   Module &M;
 };
+
+} // end namespace mctoll
+} // end namespace llvm
+
 #endif // LLVM_TOOLS_LLVM_MCTOLL_FUNCTIONFILTER_H

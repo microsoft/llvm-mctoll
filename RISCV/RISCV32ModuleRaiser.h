@@ -14,7 +14,7 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV32_RISCV32MODULERAISER_H
 #define LLVM_TOOLS_LLVM_MCTOLL_RISCV32_RISCV32MODULERAISER_H
 
-#include "ModuleRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 
 using namespace llvm;
 

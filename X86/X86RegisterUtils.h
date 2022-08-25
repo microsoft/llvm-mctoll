@@ -20,9 +20,11 @@
 #include <vector>
 
 using namespace std;
-using namespace llvm;
 
+namespace llvm {
+namespace mctoll {
 namespace X86RegisterUtils {
+
 // Separate flags - EFLAGS
 // Note : only those that are currently used are represented here.
 // EFLAGS are considered no different from GPRs
@@ -35,9 +37,9 @@ enum {
   SF = X86::NUM_TARGET_REGS + 5,
   OF = X86::NUM_TARGET_REGS + 6,
   UNDEFINED = X86::NUM_TARGET_REGS + 7
-
 };
-} // namespace EFLAGS
+} // end namespace EFLAGS
+
 using EFLAGBit = uint16_t;
 
 extern const vector<MCPhysReg> GPR64ArgRegs64Bit;
@@ -68,5 +70,9 @@ bool isGPReg(unsigned int PReg);
 bool isSSE2Reg(unsigned int PReg);
 unsigned getPhysRegSizeInBits(unsigned int PReg);
 unsigned getArgumentReg(int Index, Type *Ty);
-} // namespace X86RegisterUtils
+
+} // end namespace X86RegisterUtils
+} // end namespace mctoll
+} // end namespace llvm
+
 #endif /* TOOLS_LLVM_MCTOLL_X86_X86RAISERUTILS_H_ */

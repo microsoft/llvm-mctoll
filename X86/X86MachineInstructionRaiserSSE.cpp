@@ -24,8 +24,8 @@
 #include <iterator>
 
 using namespace llvm;
-using namespace mctoll;
-using namespace X86RegisterUtils;
+using namespace llvm::mctoll;
+using namespace llvm::mctoll::X86RegisterUtils;
 
 bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
     const MachineInstr &MI) {

@@ -21,8 +21,9 @@
 
 #define DEBUG_TYPE "mctoll"
 
-using namespace X86RegisterUtils;
-using namespace mctoll;
+using namespace llvm;
+using namespace llvm::mctoll;
+using namespace llvm::mctoll::X86RegisterUtils;
 
 X86RaisedValueTracker::X86RaisedValueTracker(
     X86MachineInstructionRaiser *MIRaiser)

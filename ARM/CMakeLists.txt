@@ -4,13 +4,14 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/..
   ${CMAKE_CURRENT_SOURCE_DIR}/.
   ${CMAKE_CURRENT_SOURCE_DIR}/DAG
+  ${CMAKE_CURRENT_SOURCE_DIR}/../Raiser
 )
 
 if(NOT LLVM_MCTOLL_BUILT_STANDALONE)
   set(LLVM_MCTOLL_DEPS intrinsics_gen ARMCommonTableGen)
 endif()
 
-add_llvm_library(ARMRaiser
+add_llvm_library(mctollARMRaiser
   ARMModuleRaiser.cpp
   ARMFunctionPrototype.cpp
   ARMMIRevising.cpp
@@ -27,6 +28,22 @@ add_llvm_library(ARMRaiser
   ARMSelectionDAGISel.cpp
   ARMMachineInstructionRaiser.cpp
 
-  DEPENDS
-    ${LLVM_MCTOLL_DEPS}
+  LINK_COMPONENTS
+  Analysis
+  Core
+  BitWriter
+  ARMCodeGen
+  DebugInfoDWARF
+  DebugInfoPDB
+  Demangle
+  MC
+  MCDisassembler
+  Object
+  SelectionDAG
+  Symbolize
+  Support
+  SelectionDAG
+  Target
   )
+
+target_link_libraries(mctollARMRaiser PRIVATE mctollRaiser)

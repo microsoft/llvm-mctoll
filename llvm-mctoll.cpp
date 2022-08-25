@@ -12,11 +12,11 @@
 
 #include "llvm-mctoll.h"
 #include "EmitRaisedOutputPass.h"
-#include "IncludedFileInfo.h"
-#include "MCInstOrData.h"
-#include "MachineFunctionRaiser.h"
-#include "ModuleRaiser.h"
 #include "PeepholeOptimizationPass.h"
+#include "Raiser/IncludedFileInfo.h"
+#include "Raiser/MCInstOrData.h"
+#include "Raiser/MachineFunctionRaiser.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -71,7 +71,6 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -86,6 +85,7 @@
 #include <vector>
 
 using namespace llvm;
+using namespace llvm::mctoll;
 using namespace object;
 
 static cl::OptionCategory LLVMMCToLLCategory("llvm-mctoll options");
@@ -124,7 +124,7 @@ cl::opt<CodeGenFileType> OutputFormat(
                           "Emit nothing, for performance testing")),
     cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
-cl::opt<bool> llvm::Disassemble("raise", cl::desc("Raise machine instruction"),
+cl::opt<bool> mctoll::Disassemble("raise", cl::desc("Raise machine instruction"),
                                 cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::alias Disassembled("d", cl::desc("Alias for -raise"),
@@ -140,33 +140,33 @@ static cl::opt<bool> NoVerify("disable-verify", cl::Hidden,
                               cl::desc("Do not verify input module"));
 
 cl::opt<std::string>
-    llvm::TripleName("triple", cl::desc("Target triple to disassemble for, "
+    mctoll::TripleName("triple", cl::desc("Target triple to disassemble for, "
                                         "see -version for available targets"));
 
 cl::opt<std::string>
-    llvm::ArchName("arch-name", cl::desc("Target arch to disassemble for, "
+    mctoll::ArchName("arch-name", cl::desc("Target arch to disassemble for, "
                                          "see -version for available targets"));
 
-cl::opt<std::string> llvm::FilterFunctionSet(
+cl::opt<std::string> mctoll::FilterFunctionSet(
     "filter-functions-file",
     cl::desc("Specify which functions to raise via a configuration file."),
     cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::alias static FilterFunctionSetF(
     "f", cl::desc("Alias for --filter-functions-file"),
-    cl::aliasopt(llvm::FilterFunctionSet), cl::cat(LLVMMCToLLCategory),
+    cl::aliasopt(FilterFunctionSet), cl::cat(LLVMMCToLLCategory),
     cl::NotHidden);
 
 cl::list<std::string>
-    llvm::FilterSections("section",
+    mctoll::FilterSections("section",
                          cl::desc("Operate on the specified sections only. "
                                   "With -macho dump segment,section"));
 
 cl::alias static FilterSectionsj("j", cl::desc("Alias for --section"),
-                                 cl::aliasopt(llvm::FilterSections));
+                                 cl::aliasopt(FilterSections));
 
 cl::opt<bool>
-    llvm::PrintImmHex("print-imm-hex",
+    mctoll::PrintImmHex("print-imm-hex",
                       cl::desc("Use hex format for immediate values"));
 
 cl::opt<bool> PrintFaultMaps("fault-map-section",
@@ -179,7 +179,7 @@ cl::opt<unsigned long long> StopAddress("stop-address",
                                         cl::desc("Stop disassembly at address"),
                                         cl::value_desc("address"),
                                         cl::init(UINT64_MAX));
-cl::list<std::string> llvm::IncludeFileNames(
+cl::list<std::string> mctoll::IncludeFileNames(
     "include-files", cl::CommaSeparated,
     cl::desc("List of comma-seperated header files with function prototypes "
              "using standard C syntax."),
@@ -187,10 +187,10 @@ cl::list<std::string> llvm::IncludeFileNames(
 
 cl::alias static IncludeFileNamesShort(
     "I", cl::desc("Alias for --include-files=<single-header-file>"),
-    cl::aliasopt(llvm::IncludeFileNames), cl::cat(LLVMMCToLLCategory),
+    cl::aliasopt(IncludeFileNames), cl::cat(LLVMMCToLLCategory),
     cl::NotHidden);
 
-cl::opt<std::string> llvm::CompilationDBDir(
+cl::opt<std::string> mctoll::CompilationDBDir(
     "compilation-db-path",
     cl::desc("Absolute directory path to either compile_commands.json or "
              "compile_flags.txt with any additional details needed to parse "
@@ -222,8 +222,6 @@ static cl::opt<RunPassOption, true, cl::parser<std::string>> RunPass(
     "run-pass",
     cl::desc("Run compiler only for specified passes (comma separated list)"),
     cl::value_desc("pass-name"), cl::ZeroOrMore, cl::location(RunPassOpt));
-
-static StringRef ToolName;
 
 namespace {
 typedef std::function<bool(llvm::object::SectionRef const &)> FilterPredicate;
@@ -293,81 +291,10 @@ SectionFilter ToolSectionFilter(llvm::object::ObjectFile const &O) {
 }
 } // namespace
 
-void llvm::error(std::error_code EC) {
-  if (!EC)
-    return;
-
-  errs() << ToolName << ": error reading file: " << EC.message() << ".\n";
-  errs().flush();
-  exit(1);
-}
-
-void llvm::error(Error E) {
-  if (!E)
-    return;
-  WithColor::error(errs(), ToolName) << toString(std::move(E));
-  exit(1);
-}
-
-[[noreturn]] void llvm::error(Twine Message) {
-  errs() << ToolName << ": " << Message << ".\n";
-  errs().flush();
-  exit(1);
-}
-
-[[noreturn]] void llvm::report_error(StringRef File, Twine Message) {
-  WithColor::error(errs(), ToolName)
-      << "'" << File << "': " << Message << ".\n";
-  exit(1);
-}
-
-[[noreturn]] void llvm::report_error(Error E, StringRef File) {
-  assert(E);
-  std::string Buf;
-  raw_string_ostream OS(Buf);
-  logAllUnhandledErrors(std::move(E), OS);
-  OS.flush();
-  WithColor::error(errs(), ToolName) << "'" << File << "': " << Buf;
-  exit(1);
-}
-
-[[noreturn]] void llvm::report_error(Error E, StringRef ArchiveName,
-                                     StringRef FileName,
-                                     StringRef ArchitectureName) {
-  assert(E);
-  WithColor::error(errs(), ToolName);
-  if (ArchiveName != "")
-    errs() << ArchiveName << "(" << FileName << ")";
-  else
-    errs() << "'" << FileName << "'";
-  if (!ArchitectureName.empty())
-    errs() << " (for architecture " << ArchitectureName << ")";
-  std::string Buf;
-  raw_string_ostream OS(Buf);
-  logAllUnhandledErrors(std::move(E), OS);
-  OS.flush();
-  errs() << ": " << Buf;
-  exit(1);
-}
-
-[[noreturn]] void llvm::report_error(Error E, StringRef ArchiveName,
-                                     const object::Archive::Child &C,
-                                     StringRef ArchitectureName) {
-  Expected<StringRef> NameOrErr = C.getName();
-  // TODO: if we have a error getting the name then it would be nice to print
-  // the index of which archive member this is and or its offset in the
-  // archive instead of "???" as the name.
-  if (!NameOrErr) {
-    consumeError(NameOrErr.takeError());
-    report_error(std::move(E), ArchiveName, "???", ArchitectureName);
-  } else
-    report_error(std::move(E), ArchiveName, NameOrErr.get(), ArchitectureName);
-}
-
 static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   // Figure out the target triple.
   llvm::Triple TheTriple("unknown-unknown-unknown");
-  if (TripleName.empty()) {
+  if (mctoll::TripleName.empty()) {
     if (Obj) {
       auto Arch = Obj->getArch();
       TheTriple.setArch(Triple::ArchType(Arch));
@@ -404,7 +331,7 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   // Get the target specific parser.
   std::string Error;
   const Target *TheTarget =
-      TargetRegistry::lookupTarget(ArchName, TheTriple, Error);
+      TargetRegistry::lookupTarget(mctoll::ArchName, TheTriple, Error);
   if (!TheTarget) {
     if (Obj)
       report_error(Obj->getFileName(), "Support for raising " +
@@ -504,7 +431,7 @@ static bool addPass(PassManagerBase &PM, StringRef toolname, StringRef PassName,
   return false;
 }
 
-bool llvm::RelocAddressLess(RelocationRef a, RelocationRef b) {
+bool mctoll::RelocAddressLess(RelocationRef a, RelocationRef b) {
   return a.getOffset() < b.getOffset();
 }
 
@@ -541,7 +468,7 @@ PrettyPrinter &selectPrettyPrinter(Triple const &Triple) {
 }
 } // namespace
 
-bool llvm::isRelocAddressLess(RelocationRef A, RelocationRef B) {
+bool mctoll::isRelocAddressLess(RelocationRef A, RelocationRef B) {
   return A.getOffset() < B.getOffset();
 }
 
@@ -805,30 +732,21 @@ static bool isAFunctionSymbol(const ObjectFile *Obj, SymbolInfoTy &Symbol) {
   return false;
 }
 
-namespace RaiserContext {
-SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
 
-bool isSupportedArch(Triple::ArchType arch) {
-  for (auto m : ModuleRaiserRegistry)
-    if (m->getArchType() == arch)
-      return true;
+//#ifdef __cplusplus
+//extern "C" {
+//#endif
 
-  return false;
+#define MODULE_RAISER(TargetName) extern "C" void register##TargetName##ModuleRaiser();
+#include "Raisers.def"
+//#ifdef __cplusplus
+//}
+//#endif
+
+static void InitializeAllModuleRaisers() {
+#define MODULE_RAISER(TargetName) register##TargetName##ModuleRaiser();
+#include "Raisers.def"
 }
-
-ModuleRaiser *getModuleRaiser(const TargetMachine *tm) {
-  ModuleRaiser *mr = nullptr;
-  auto arch = tm->getTargetTriple().getArch();
-  for (auto m : ModuleRaiserRegistry)
-    if (m->getArchType() == arch) {
-      mr = m;
-      break;
-    }
-  assert(nullptr != mr && "This arch has not yet supported for raising!\n");
-  return mr;
-}
-
-} // namespace RaiserContext
 
 static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (StartAddress > StopAddress)
@@ -904,9 +822,9 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   machineModuleInfo->doInitialization(module);
   // Initialize all module raisers that are supported and are part of current
   // LLVM build.
-  ModuleRaiser::InitializeAllModuleRaisers();
+  InitializeAllModuleRaisers();
   // Get the module raiser for Target of the binary being raised
-  ModuleRaiser *moduleRaiser = RaiserContext::getModuleRaiser(Target.get());
+  ModuleRaiser *moduleRaiser = mctoll::getModuleRaiser(Target.get());
   assert((moduleRaiser != nullptr) && "Failed to build module raiser");
   // Set data of module raiser
   moduleRaiser->setModuleRaiserInfo(&module, Target.get(),
@@ -1627,7 +1545,7 @@ int main(int argc, char **argv) {
 
   if (!IncludeFNames.empty()) {
     if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFNames,
-                                                        CompilationDBDir)) {
+                                                        mctoll::CompilationDBDir)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }

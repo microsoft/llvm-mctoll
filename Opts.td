@@ -23,6 +23,9 @@ def : Separate<["--"], "include-file">, Alias<include_file_EQ>;
 def : Separate<["-"], "I">, Alias<include_file_EQ>,
   HelpText<"Alias for --include-file">;
 
+def include_files_EQ : Joined<["--"], "include-files=">,
+  HelpText<"List of comma-seperated header files with function prototypes using standard C syntax.">;
+
 def filter_functions_file_EQ : Joined<["--"], "filter-functions-file=">,
   HelpText<"Specify which functions to raise via a configuration file.">;
 def : Separate<["--"], "filter-functions-file">, Alias<filter_functions_file_EQ>;

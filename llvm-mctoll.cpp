@@ -1514,6 +1514,13 @@ static void parseOptions(const llvm::opt::InputArgList &InputArgs) {
     reportCmdLineError("no input file");
 
   IncludeFileNames = InputArgs.getAllArgValues(OPT_include_file_EQ);
+  std::string IncludeFileNames2 = InputArgs.getLastArgValue(OPT_include_files_EQ).str();
+  if (!IncludeFileNames2.empty()) {
+    SmallVector<StringRef, 8> FNames;
+    StringRef(IncludeFileNames2).split(FNames, ',', -1, false);
+    for (auto N : FNames)
+      IncludeFileNames.push_back(std::string(N));
+  }
 
   if (const opt::Arg *A = InputArgs.getLastArg(OPT_output_format_EQ)) {
     OutputFormat = StringSwitch<OutputFormatTy>(A->getValue())

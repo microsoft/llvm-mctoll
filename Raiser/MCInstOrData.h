@@ -43,4 +43,4 @@ public:
 } // end namespace mctoll
 } // end namespace llvm
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_MCINSTRAISER_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_MCINSTORDATA_H

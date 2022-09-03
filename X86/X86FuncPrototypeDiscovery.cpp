@@ -179,8 +179,8 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // Raise the jumptable
   raiseMachineJumpTable();
 
-  if (raisedFunction != nullptr)
-    return raisedFunction->getFunctionType();
+  if (RaisedFunction != nullptr)
+    return RaisedFunction->getFunctionType();
 
   // Cleanup NOOP instructions from all MachineBasicBlocks
   deleteNOOPInstrMF();
@@ -492,21 +492,21 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
       FunctionType::get(returnType, argTypeVector, false /* isVarArg*/);
 
   // 4. Create the real Function now that we have discovered the arguments.
-  raisedFunction =
+  RaisedFunction =
       Function::Create(FT, GlobalValue::ExternalLinkage, functionName, module);
 
   // Set global linkage
-  raisedFunction->setLinkage(GlobalValue::ExternalLinkage);
+  RaisedFunction->setLinkage(GlobalValue::ExternalLinkage);
   // Set C calling convention
-  raisedFunction->setCallingConv(CallingConv::C);
+  RaisedFunction->setCallingConv(CallingConv::C);
   // Set the function to be in the same linkage unit
-  raisedFunction->setDSOLocal(true);
+  RaisedFunction->setDSOLocal(true);
   // TODO : Set other function attributes as needed.
   // Add argument names to the function.
   // Note: Call to arg_begin() calls Function::BuildLazyArguments()
   // to build the arguments.
-  Function::arg_iterator ArgIt = raisedFunction->arg_begin();
-  unsigned numFuncArgs = raisedFunction->arg_size();
+  Function::arg_iterator ArgIt = RaisedFunction->arg_begin();
+  unsigned numFuncArgs = RaisedFunction->arg_size();
   StringRef prefix("arg");
   // Set the name.
   for (unsigned i = 0; i < numFuncArgs; ++i, ++ArgIt)
@@ -514,9 +514,9 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
 
   // Insert the map of raised function to tempFunctionPointer.
   const_cast<ModuleRaiser *>(MR)->insertPlaceholderRaisedFunctionMap(
-      raisedFunction, tempFunctionPtr);
+      RaisedFunction, tempFunctionPtr);
 
-  return raisedFunction->getFunctionType();
+  return RaisedFunction->getFunctionType();
 }
 
 // Discover and return the type of return register (viz., RAX or its
@@ -539,7 +539,7 @@ Type *X86MachineInstructionRaiser::getReachingReturnType(
       SmallVector<MachineBasicBlock *, 8> WorkList;
       Type *ReturnTypeOnPath = nullptr;
 
-      for (auto P : MBB.predecessors()) {
+      for (auto *P : MBB.predecessors()) {
         WorkList.insert(WorkList.begin(), P);
       }
 
@@ -562,7 +562,7 @@ Type *X86MachineInstructionRaiser::getReachingReturnType(
               break;
             }
             // Continue traversal
-            for (auto Pred : PredMBB->predecessors()) {
+            for (auto *Pred : PredMBB->predecessors()) {
               if (!BlockVisited[Pred->getNumber()])
                 WorkList.insert(WorkList.begin(), Pred);
             }
@@ -625,11 +625,11 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     if (I->isReturn())
       continue;
 
-    // No need to inspect padding instructions. ld uses nop and lld uses int3
-    // for alignment padding in text section.
+    // No need to inspect padding instructions. ld uses nop and lld uses int3 for
+    // alignment padding in text section.
     auto Opcode = I->getOpcode();
     if (isNoop(Opcode) || (Opcode == X86::INT3))
-      continue;
+    	continue;
 
     unsigned DefReg = X86::NoRegister;
     const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();

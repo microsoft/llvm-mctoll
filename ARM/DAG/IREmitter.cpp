@@ -699,7 +699,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
                                // variadic function prototype.
     bool IsSyscall = false;
     if (CallFunc == nullptr) {
-      // According MI to get BL instruction address.
+      // According to MI to get BL instruction address.
       // uint64_t callAddr = DAGInfo->NPMap[Node]->InstAddr;
       uint64_t CallAddr = MR->getTextSectionAddress() +
                           getMCInstIndex(*(DAGInfo->NPMap[Node]->MI));

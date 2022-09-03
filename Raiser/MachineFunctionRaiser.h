@@ -29,31 +29,31 @@ using IndexedData32 = std::pair<uint64_t, uint32_t>;
 
 class MachineFunctionRaiser {
 public:
-  MachineFunctionRaiser(Module &M, MachineFunction &MF, const ModuleRaiser *MR,
+  MachineFunctionRaiser(Module &TheM, MachineFunction &TheMF, const ModuleRaiser *TheMR,
                         uint64_t Start, uint64_t End)
-      : MF(MF), M(M), machineInstRaiser(nullptr), MR(MR) {
+      : MF(TheMF), M(TheM), MachineInstRaiser(nullptr), MR(TheMR) {
 
-    mcInstRaiser = new MCInstRaiser(Start, End);
+    InstRaiser = new MCInstRaiser(Start, End);
 
     // The new MachineFunction is not in SSA form, yet
     MF.getProperties().reset(MachineFunctionProperties::Property::IsSSA);
   };
 
-  virtual ~MachineFunctionRaiser() { delete mcInstRaiser; }
+  virtual ~MachineFunctionRaiser() { delete InstRaiser; }
 
   bool runRaiserPasses();
 
   MachineFunction &getMachineFunction() const { return MF; }
 
   // Getters
-  MCInstRaiser *getMCInstRaiser() { return mcInstRaiser; }
+  MCInstRaiser *getMCInstRaiser() { return InstRaiser; }
 
   Module &getModule() { return M; }
 
   MachineInstructionRaiser *getMachineInstrRaiser();
 
   void setMachineInstrRaiser(MachineInstructionRaiser *MIR) {
-    machineInstRaiser = MIR;
+    MachineInstRaiser = MIR;
   }
 
   Function *getRaisedFunction();
@@ -69,13 +69,13 @@ private:
   Module &M;
 
   // Data members built and used by this class
-  MCInstRaiser *mcInstRaiser;
-  MachineInstructionRaiser *machineInstRaiser;
+  MCInstRaiser *InstRaiser;
+  MachineInstructionRaiser *MachineInstRaiser;
   // A vector of data blobs found in the instruction stream
   // of this function. A data blob is a sequence of data bytes.
   // Multiple such data blobs may be found while disassembling
   // the instruction stream of a function symbol.
-  std::vector<IndexedData32> dataBlobVector;
+  std::vector<IndexedData32> DataBlobVector;
   const ModuleRaiser *MR;
 };
 

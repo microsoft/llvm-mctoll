@@ -106,14 +106,14 @@ public:
   enum { INVALID_MBB = -1 };
 
 private:
-  X86MachineInstructionRaiser *x86MIRaiser;
+  X86MachineInstructionRaiser *X86MIRaiser;
   // Map of physical registers -> MBBNoToValueMap, representing per-block
   // register definitions.
-  PhysRegMBBValueDefMap physRegDefsInMBB;
+  PhysRegMBBValueDefMap PhysRegDefsInMBB;
 };
 
 
 } // end namespace mctoll
 } // end namespace llvm
 
-#endif // LVM_TOOLS_LLVM_MCTOLL_X86_X86RAISEDVALUETRACKER_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86RAISEDVALUETRACKER_H

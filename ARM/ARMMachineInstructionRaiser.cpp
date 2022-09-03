@@ -36,34 +36,34 @@ bool ARMMachineInstructionRaiser::raiseMachineFunction() {
   ARMModuleRaiser &rmr = const_cast<ARMModuleRaiser &>(*amr);
 
   ARMMIRevising mir(rmr);
-  mir.init(&MF, raisedFunction);
-  mir.setMCInstRaiser(mcInstRaiser);
+  mir.init(&MF, RaisedFunction);
+  mir.setMCInstRaiser(InstRaiser);
   mir.revise();
 
   ARMEliminatePrologEpilog epe(rmr);
-  epe.init(&MF, raisedFunction);
+  epe.init(&MF, RaisedFunction);
   epe.eliminate();
 
   ARMCreateJumpTable cjt(rmr);
-  cjt.init(&MF, raisedFunction);
-  cjt.setMCInstRaiser(mcInstRaiser);
+  cjt.init(&MF, RaisedFunction);
+  cjt.setMCInstRaiser(InstRaiser);
   cjt.create();
   cjt.getJTlist(jtList);
 
   ARMArgumentRaiser ar(rmr);
-  ar.init(&MF, raisedFunction);
+  ar.init(&MF, RaisedFunction);
   ar.raiseArgs();
 
   ARMFrameBuilder fb(rmr);
-  fb.init(&MF, raisedFunction);
+  fb.init(&MF, RaisedFunction);
   fb.build();
 
   ARMInstructionSplitting ispl(rmr);
-  ispl.init(&MF, raisedFunction);
+  ispl.init(&MF, RaisedFunction);
   ispl.split();
 
   ARMSelectionDAGISel sdis(rmr);
-  sdis.init(&MF, raisedFunction);
+  sdis.init(&MF, RaisedFunction);
   sdis.setjtList(jtList);
   sdis.doSelection();
 
@@ -98,14 +98,14 @@ Value *ARMMachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
 
 FunctionType *ARMMachineInstructionRaiser::getRaisedFunctionPrototype() {
   ARMFunctionPrototype AFP;
-  raisedFunction = AFP.discover(MF);
+  RaisedFunction = AFP.discover(MF);
 
   Function *ori = const_cast<Function *>(&MF.getFunction());
   // Insert the map of raised function to tempFunctionPointer.
   const_cast<ModuleRaiser *>(MR)->insertPlaceholderRaisedFunctionMap(
-      raisedFunction, ori);
+      RaisedFunction, ori);
 
-  return raisedFunction->getFunctionType();
+  return RaisedFunction->getFunctionType();
 }
 
 // Create a new MachineFunctionRaiser object and add it to the list of

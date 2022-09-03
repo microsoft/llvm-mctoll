@@ -119,17 +119,17 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       // mov instruction of the kind mov offset(, IndxReg, Scale), Reg
       else {
         // Get index of memory reference in the instruction.
-        int memoryRefOpIndex = getMemoryRefOpIndex(JmpTblBaseCalcMI);
+        int MemoryRefOpIndex = getMemoryRefOpIndex(JmpTblBaseCalcMI);
         if ((InstKind == InstructionKind::MOV_FROM_MEM) ||
             (InstKind == InstructionKind::BRANCH_MEM_OP)) {
-          assert((memoryRefOpIndex >= 0) && "Unexpected memory operand index");
-          X86AddressMode memRef =
-              llvm::getAddressFromInstr(&JmpTblBaseCalcMI, memoryRefOpIndex);
-          if (memRef.Base.Reg == X86::NoRegister) {
-            unsigned memReadTargetByteSz = getInstructionMemOpSize(Opcode);
-            assert(memReadTargetByteSz > 0 &&
+          assert((MemoryRefOpIndex >= 0) && "Unexpected memory operand index");
+          X86AddressMode MemRef =
+              llvm::getAddressFromInstr(&JmpTblBaseCalcMI, MemoryRefOpIndex);
+          if (MemRef.Base.Reg == X86::NoRegister) {
+            unsigned MemReadTargetByteSz = getInstructionMemOpSize(Opcode);
+            assert(MemReadTargetByteSz > 0 &&
                    "Incorrect memory access size of instruction");
-            int JmpTblBaseAddress = memRef.Disp;
+            int JmpTblBaseAddress = MemRef.Disp;
             if (JmpTblBaseAddress > 0) {
               // This value should be an absolute offset into a rodata section.
               // Get the contents of the section with JmpTblBase
@@ -169,13 +169,13 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
               size_t CurReadByteOffset = JmpTblBaseOffset;
 
               while (CurReadByteOffset < DataSize) {
-                ArrayRef<uint8_t> v(memReadTargetByteSz);
+                ArrayRef<uint8_t> v(MemReadTargetByteSz);
 
-                if (CurReadByteOffset + memReadTargetByteSz > DataSize)
+                if (CurReadByteOffset + MemReadTargetByteSz > DataSize)
                   break;
 
                 Error EC = SectionContent.readBytes(CurReadByteOffset,
-                                                    memReadTargetByteSz, v);
+                                                    MemReadTargetByteSz, v);
                 // Eat the error; the section does not have jumptable data
                 if (EC) {
                   handleAllErrors(std::move(EC),
@@ -198,7 +198,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
                   // stop looking for table entries.
                   break;
                 }
-                CurReadByteOffset += memReadTargetByteSz;
+                CurReadByteOffset += MemReadTargetByteSz;
               }
             }
           }
@@ -237,10 +237,10 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         // NOTE: This check is not needed for branch with memory operand.
         unsigned SR = find64BitSuperReg(JmpTblBaseReg);
 
-        for (MachineBasicBlock::const_instr_iterator instIter =
+        for (MachineBasicBlock::const_instr_iterator InstIter =
                  JmpTblBaseCalcMI.getNextNode()->getIterator();
-             instIter != JmpTblBaseCalcMBB.end(); ++instIter) {
-          for (auto O : instIter->defs()) {
+             InstIter != JmpTblBaseCalcMBB.end(); ++InstIter) {
+          for (auto O : InstIter->defs()) {
             if (O.isReg()) {
               if (find64BitSuperReg(O.getReg()) == SR) {
                 BuildJumpTable = false;
@@ -276,7 +276,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         SwitchMBB->erase(BranchInstr);
 
         // Set default basic block in jump table info
-        for (auto Pred : SwitchMBB->predecessors()) {
+        for (auto *Pred : SwitchMBB->predecessors()) {
           if (Pred != &JmpTblBaseCalcMBB) {
             JmpTblInfo.df_MBB = Pred;
             break;
@@ -299,7 +299,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         // the assert to and continue if the assumption is correct.
         SwitchMBB = *(JmpTblBaseCalcMBB.pred_begin());
         // Set default basic block in jump table info
-        for (auto Succ : SwitchMBB->successors()) {
+        for (auto *Succ : SwitchMBB->successors()) {
           if (Succ != &JmpTblBaseCalcMBB) {
             JmpTblInfo.df_MBB = Succ;
             break;
@@ -345,7 +345,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
       // Find the appropriate jump opcode based on the size of switch value
       BuildMI(SwitchMBB, DebugLoc(), TII->get(X86::JMP64r))
           .addJumpTableIndex(JmpTblInfo.jtIdx);
-      jtList.push_back(JmpTblInfo);
+      JTList.push_back(JmpTblInfo);
 
       // Add jump table targets as successors of SwitchMBB.
       for (MachineBasicBlock *NewSucc : JmpTgtMBBvec) {
@@ -357,9 +357,9 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
   }
 
   // Delete MBBs
-  for (auto MBB : MBBsToBeErased) {
+  for (auto *MBB : MBBsToBeErased) {
     // Remove MBB from the successors of all the predecessors of MBB
-    for (auto Pred : MBB->predecessors())
+    for (auto *Pred : MBB->predecessors())
       Pred->removeSuccessor(MBB);
     MBB->eraseFromParent();
   }
@@ -373,7 +373,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
 // MachineBasicBlock with a jmp to jump-table.
 Value *
 X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
-  Value *switchOnVal = nullptr;
+  Value *SwitchOnVal = nullptr;
   // Walk the basic block backwards to find the most recent
   // instruction that implicitly defines eflags.
   bool EflagsModifierFound = false;
@@ -381,8 +381,8 @@ X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
   for (auto LastInstIter = MBB.instr_rend();
        ((CurInstrIter != LastInstIter) && (!EflagsModifierFound));
        ++CurInstrIter) {
-    MachineInstr &curInst = *CurInstrIter;
-    if (curInst.getDesc().hasImplicitDefOfPhysReg(X86::EFLAGS)) {
+    MachineInstr &CurInst = *CurInstrIter;
+    if (CurInst.getDesc().hasImplicitDefOfPhysReg(X86::EFLAGS)) {
       EflagsModifierFound = true;
     }
   }
@@ -405,7 +405,7 @@ X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
            "Unexpected number of operands of sub instruction found while "
            "detecting switch compare value");
 
-    unsigned int cmpSrcReg = X86::NoRegister;
+    unsigned int CmpSrcReg = X86::NoRegister;
 
     if (CurInstrIter->getNumExplicitDefs() == 1) {
       const unsigned DestOpIndex = 0, UseOp1Index = 1, UseOp2Index = 2;
@@ -417,7 +417,7 @@ X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
       assert(SrcOp.isReg() && ImmOp.isImm() &&
              "Unexpected types of operands of sub instruction found while "
              "detecting switch compare value");
-      cmpSrcReg = SrcOp.getReg();
+      CmpSrcReg = SrcOp.getReg();
     } else if (CurInstrIter->getNumExplicitDefs() == 0) {
       const unsigned UseOp1Index = 0, UseOp2Index = 1;
       const MachineOperand &SrcOp = CurInstrIter->getOperand(UseOp1Index);
@@ -425,49 +425,49 @@ X86MachineInstructionRaiser::getSwitchCompareValue(MachineBasicBlock &MBB) {
       assert(SrcOp.isReg() && ImmOp.isImm() &&
              "Unexpected types of operands of sub instruction found while "
              "detecting switch compare value");
-      cmpSrcReg = SrcOp.getReg();
+      CmpSrcReg = SrcOp.getReg();
     } else {
       assert(false && "Unexpected number of defs in compare instruction found "
                       "while determining switch compare value");
     }
 
-    assert(Register::isPhysicalRegister(cmpSrcReg) &&
+    assert(Register::isPhysicalRegister(CmpSrcReg) &&
            "Unable to detect compare source register");
-    Value *CmpVal = getRegOrArgValue(cmpSrcReg, MBB.getNumber());
+    Value *CmpVal = getRegOrArgValue(CmpSrcReg, MBB.getNumber());
     Instruction *CmpInst = dyn_cast<Instruction>(CmpVal);
     assert((CmpInst != nullptr) &&
            "Expect instruction while finding switch compare value");
-    switchOnVal = CmpInst->getOperand(0);
+    SwitchOnVal = CmpInst->getOperand(0);
     // If switchOnval is a cast value, it is most likely cast to match the
     // source of the compare instruction. Get to the value prior to casting.
-    CastInst *castInst = dyn_cast<CastInst>(switchOnVal);
-    while (castInst) {
-      switchOnVal = castInst->getOperand(0);
-      castInst = dyn_cast<CastInst>(switchOnVal);
+    CastInst *CastInstr = dyn_cast<CastInst>(SwitchOnVal);
+    while (CastInstr) {
+      SwitchOnVal = CastInstr->getOperand(0);
+      CastInstr = dyn_cast<CastInst>(SwitchOnVal);
     }
   } else if (instrNameStartsWith(*CurInstrIter, "XOR32")) {
     CurInstrIter--;
     const unsigned UseOp1Index = 1;
     const MachineOperand &SrcOp = CurInstrIter->getOperand(UseOp1Index);
-    unsigned int cmpSrcReg = X86::NoRegister;
-    cmpSrcReg = SrcOp.getReg();
-    Value *CmpVal = getRegOrArgValue(cmpSrcReg, MBB.getNumber());
+    unsigned int CmpSrcReg = X86::NoRegister;
+    CmpSrcReg = SrcOp.getReg();
+    Value *CmpVal = getRegOrArgValue(CmpSrcReg, MBB.getNumber());
     Instruction *CmpInst = dyn_cast<Instruction>(CmpVal);
     assert((CmpInst != nullptr) &&
            "Expect instruction while finding switch compare value");
-    switchOnVal = CmpInst->getOperand(0);
+    SwitchOnVal = CmpInst->getOperand(0);
     // If switchOnval is a cast value, it is most likely cast to match the
     // source of the compare instruction. Get to the value prior to casting.
-    CastInst *castInst = dyn_cast<CastInst>(switchOnVal);
-    while (castInst) {
-      switchOnVal = castInst->getOperand(0);
-      castInst = dyn_cast<CastInst>(switchOnVal);
+    CastInst *CastInstr = dyn_cast<CastInst>(SwitchOnVal);
+    while (CastInstr) {
+      SwitchOnVal = CastInstr->getOperand(0);
+      CastInstr = dyn_cast<CastInst>(SwitchOnVal);
     }
   } else
     assert(false && "Unhandled EFLAGS modifying instruction found while "
                     "detecting switch compare value");
 
-  return switchOnVal;
+  return SwitchOnVal;
 }
 
 #undef DEBUG_TYPE

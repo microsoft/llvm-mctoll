@@ -29,8 +29,8 @@ ARMArgumentRaiser::ARMArgumentRaiser(ARMModuleRaiser &mr)
 
 ARMArgumentRaiser::~ARMArgumentRaiser() {}
 
-void ARMArgumentRaiser::init(MachineFunction *mf, Function *rf) {
-  ARMRaiserBase::init(mf, rf);
+void ARMArgumentRaiser::init(MachineFunction *NewMF, Function *NewRF) {
+  ARMRaiserBase::init(NewMF, NewRF);
   MFI = &MF->getFrameInfo();
   TII = MF->getSubtarget<ARMSubtarget>().getInstrInfo();
 }

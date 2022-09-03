@@ -26,11 +26,11 @@ class IncludedFileInfo {
   ~IncludedFileInfo(){};
 
 public:
-  typedef struct FunctionRetAndArgs_t {
+  struct FunctionRetAndArgs {
     std::string ReturnType;
     std::vector<std::string> Arguments;
-    bool isVariadic;
-  } FunctionRetAndArgs;
+    bool IsVariadic;
+  };
 
   static Function *CreateFunction(StringRef &CFuncName, ModuleRaiser &MR);
 
@@ -43,7 +43,7 @@ public:
                                            std::string &Target,
                                            std::string &SysRoot);
 
-  static bool IsExternalVariable(std::string Name);
+  static bool isExternalVariable(std::string Name);
 };
 
 } // end namespace mctoll

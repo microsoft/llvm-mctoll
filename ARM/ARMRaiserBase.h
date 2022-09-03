@@ -26,18 +26,21 @@ namespace mctoll {
 class ARMRaiserBase : public FunctionPass {
 protected:
   ARMRaiserBase() = delete;
-  ARMRaiserBase(char &PassID, ARMModuleRaiser &mr)
-      : FunctionPass(PassID), MR(&mr) {
+  ARMRaiserBase(char &PassID, ARMModuleRaiser &ArmMR)
+      : FunctionPass(PassID), MR(&ArmMR) {
     M = MR->getModule();
   }
   ~ARMRaiserBase() override {}
-  virtual void init(MachineFunction *mf = nullptr, Function *rf = nullptr) {
-    if (mf)
-      MF = mf;
-    if (rf)
-      RF = rf;
+
+  virtual void init(MachineFunction *NewMF = nullptr, Function *NewRF = nullptr) {
+    if (NewMF)
+      MF = NewMF;
+    if (NewRF)
+      RF = NewRF;
   }
-  virtual bool runOnMachineFunction(MachineFunction &mf) { return false; }
+
+  virtual bool runOnMachineFunction(MachineFunction &CurrMF) { return false; }
+
   bool runOnFunction(Function &Func) override {
     RF = &Func;
     MF = MR->getMachineFunction(&Func);

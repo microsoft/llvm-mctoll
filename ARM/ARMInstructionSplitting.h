@@ -28,9 +28,9 @@ namespace mctoll {
 class ARMInstructionSplitting : public ARMRaiserBase {
 public:
   static char ID;
-  ARMInstructionSplitting(ARMModuleRaiser &mr);
+  ARMInstructionSplitting(ARMModuleRaiser &MR);
   ~ARMInstructionSplitting() override;
-  void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
+  void init(MachineFunction *MF = nullptr, Function *RF = nullptr) override;
   bool split();
   bool runOnMachineFunction(MachineFunction &mf) override;
 
@@ -44,21 +44,21 @@ private:
   MachineInstr *splitLDRSTRPreImm(MachineBasicBlock &MBB, MachineInstr &MI);
   MachineInstr *splitLDRSTRImm(MachineBasicBlock &MBB, MachineInstr &MI);
   MachineInstr *splitCommon(MachineBasicBlock &MBB, MachineInstr &MI,
-                            unsigned newOpc);
+                            unsigned NewOpc);
   MachineInstr *splitS(MachineBasicBlock &MBB, MachineInstr &MI,
-                       unsigned newOpc, int idx);
+                       unsigned NewOpc, int Idx);
   MachineInstr *splitC(MachineBasicBlock &MBB, MachineInstr &MI,
-                       unsigned newOpc, int idx);
+                       unsigned NewOpc, int Idx);
   MachineInstr *splitCS(MachineBasicBlock &MBB, MachineInstr &MI,
-                        unsigned newOpc, int idx);
+                        unsigned NewOpc, int Idx);
   /// True if the ARM instruction performs Shift_C().
-  bool isShift_C(unsigned Opcode);
+  bool isShift_C(unsigned Opcode); // NOLINT(readability-identifier-naming)
   /// No matter what pattern of Load/Store is, change the Opcode to xxxi12.
   unsigned getLoadStoreOpcode(unsigned Opcode);
   /// If the MI is load/store which needs wback, it will return true.
   bool isLDRSTRPre(unsigned Opcode);
-  MachineInstrBuilder &addOperand(MachineInstrBuilder &mib, MachineOperand &mo,
-                                  bool isDef = false);
+  MachineInstrBuilder &addOperand(MachineInstrBuilder &MIB, MachineOperand &MO,
+                                  bool IsDef = false);
 
   MachineRegisterInfo *MRI;
   const ARMBaseInstrInfo *TII;

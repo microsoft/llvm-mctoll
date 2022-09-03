@@ -54,13 +54,13 @@ public:
     clang::QualType RetTy = FuncDecl->getDeclaredReturnType();
     Entry.ReturnType =
         getUnqualifiedTypeString(RetTy, FuncDecl->getASTContext());
-    for (auto Param : FuncDecl->parameters()) {
+    for (auto *Param : FuncDecl->parameters()) {
       clang::QualType ParamTy = Param->getOriginalType();
       std::string ParamTyStr =
           getUnqualifiedTypeString(ParamTy, FuncDecl->getASTContext());
       Entry.Arguments.push_back(ParamTyStr);
     }
-    Entry.isVariadic = FuncDecl->isVariadic();
+    Entry.IsVariadic = FuncDecl->isVariadic();
     // TODO: Raising binaries compiled from C++ sources is not yet supported. C
     // does not support function overloading. So, for now, trivially check for
     // function name to detect duplicate function prototype specification. Need
@@ -188,26 +188,26 @@ Function *IncludedFileInfo::CreateFunction(StringRef &CFuncName,
   if (Func != nullptr)
     return Func;
 
-  auto iter = IncludedFileInfo::ExternalFunctions.find(CFuncName.str());
-  if (iter == IncludedFileInfo::ExternalFunctions.end()) {
+  auto Iter = IncludedFileInfo::ExternalFunctions.find(CFuncName.str());
+  if (Iter == IncludedFileInfo::ExternalFunctions.end()) {
     errs() << "Unknown prototype for function : " << CFuncName.data() << "\n";
     errs() << "Use -I </full/path/to/file>, where /full/path/to/file declares "
               "its prototype\n";
     return nullptr;
   }
 
-  const IncludedFileInfo::FunctionRetAndArgs &retAndArgs = iter->second;
+  const IncludedFileInfo::FunctionRetAndArgs &RetAndArgs = Iter->second;
   Type *RetType =
-      MR.getFunctionFilter()->getPrimitiveDataType(retAndArgs.ReturnType);
+      MR.getFunctionFilter()->getPrimitiveDataType(RetAndArgs.ReturnType);
   std::vector<Type *> ArgVec;
-  for (StringRef arg : retAndArgs.Arguments) {
-    Type *argType = MR.getFunctionFilter()->getPrimitiveDataType(arg);
+  for (StringRef Arg : RetAndArgs.Arguments) {
+    Type *argType = MR.getFunctionFilter()->getPrimitiveDataType(Arg);
     ArgVec.push_back(argType);
   }
 
   ArrayRef<Type *> Args(ArgVec);
   if (llvm::FunctionType *FuncType =
-          FunctionType::get(RetType, Args, retAndArgs.isVariadic)) {
+          FunctionType::get(RetType, Args, RetAndArgs.IsVariadic)) {
     FunctionCallee FunCallee = M->getOrInsertFunction(CFuncName, FuncType);
     assert(isa<Function>(FunCallee.getCallee()) && "Expect Function");
     Func = reinterpret_cast<Function *>(FunCallee.getCallee());
@@ -265,7 +265,7 @@ bool IncludedFileInfo::getExternalFunctionPrototype(
   return true;
 }
 
-bool IncludedFileInfo::IsExternalVariable(std::string Name) {
+bool IncludedFileInfo::isExternalVariable(std::string Name) {
   // If there is a suffix like stdout@@GLIBC_2.2.5, remove it to check
   // if the symbol is defined in a user-passed header file
   auto NameEnd = Name.find("@@");

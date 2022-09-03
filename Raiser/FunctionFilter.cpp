@@ -23,12 +23,12 @@ using namespace llvm::mctoll;
 
 FunctionFilter::~FunctionFilter() {
   if (!ExcludedFunctionVector.empty())
-    for (auto FIE : ExcludedFunctionVector)
+    for (auto *FIE : ExcludedFunctionVector)
       if (FIE != nullptr)
         delete FIE;
 
   if (!IncludedFunctionVector.empty())
-    for (auto FII : IncludedFunctionVector)
+    for (auto *FII : IncludedFunctionVector)
       if (FII != nullptr)
         delete FII;
 }
@@ -206,7 +206,7 @@ FunctionFilter::findFuncInfoBySymbol(StringRef &Sym,
   else
     assert(false && "Unsupported filter type specified");
 
-  for (auto F : FunctionVec) {
+  for (auto *F : FunctionVec) {
     if (F->getSymName() == Sym)
       return F;
   }
@@ -227,7 +227,7 @@ Function *FunctionFilter::findFunctionByIndex(uint64_t StartIndex,
 
   assert(FuncVec != nullptr && "Unexpected null function vector");
 
-  for (auto F : *FuncVec) {
+  for (auto *F : *FuncVec) {
     if (F->StartIdx == StartIndex)
       return F->Func;
   }
@@ -251,7 +251,7 @@ void FunctionFilter::eraseFunctionBySymbol(StringRef &Sym,
   for (FunctionFilter::FuncInfoVector::iterator I = FuncVec->begin(),
                                                 E = FuncVec->end();
        I != E; ++I) {
-    auto EM = *I;
+    auto *EM = *I;
     if (EM != nullptr && EM->getSymName() == Sym) {
       FuncVec->erase(I);
       delete EM;
@@ -268,9 +268,9 @@ bool FunctionFilter::readFilterFunctionConfigFile(
   if (FunctionFilterFilename.size() == 0)
     return false;
 
-  std::ifstream f;
-  f.open(FunctionFilterFilename);
-  if (!f.is_open()) {
+  std::ifstream F;
+  F.open(FunctionFilterFilename);
+  if (!F.is_open()) {
     dbgs() << "Warning: Can not read the configuration file of filter "
               "function set!!!";
     return false;
@@ -278,8 +278,8 @@ bool FunctionFilter::readFilterFunctionConfigFile(
 
   FunctionFilter::FilterType FFType = FunctionFilter::FILTER_NONE;
   char Buf[512];
-  while (!f.eof()) {
-    f.getline(Buf, 512);
+  while (!F.eof()) {
+    F.getline(Buf, 512);
     StringRef RawLine(Buf);
     StringRef Line = RawLine.trim();
     // Ignore comment line
@@ -327,7 +327,7 @@ bool FunctionFilter::readFilterFunctionConfigFile(
     }
   }
   // Close function filter configuration file
-  f.close();
+  F.close();
   return true;
 }
 
@@ -336,7 +336,7 @@ bool FunctionFilter::isFilterSetEmpty(FilterType FT) {
   FuncInfoVector FunctionSet;
   if (FT == FILTER_INCLUDE)
     return IncludedFunctionVector.empty();
-  else if (FT == FILTER_EXCLUDE)
+  if (FT == FILTER_EXCLUDE)
     return ExcludedFunctionVector.empty();
 
   llvm_unreachable_internal("Unexpected function filter type specified");

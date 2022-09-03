@@ -50,12 +50,11 @@ bool X86RegisterUtils::isEflagBit(unsigned RegNo) {
 
 int X86RegisterUtils::getEflagBitIndex(unsigned EFBit) {
   assert(isEflagBit(EFBit) && "Undefined EFLAGS bit");
-  int index = 0;
-  for (auto v : X86RegisterUtils::EFlagBits) {
-    if (v == EFBit)
-      return index;
-    else
-      index++;
+  int Index = 0;
+  for (auto V : X86RegisterUtils::EFlagBits) {
+    if (V == EFBit)
+      return Index;
+    Index++;
   }
   assert(false && "Unknown EFLAGS bit");
   return -1;
@@ -114,13 +113,13 @@ bool X86RegisterUtils::is8BitPhysReg(unsigned int PReg) {
 unsigned int X86RegisterUtils::getPhysRegSizeInBits(unsigned int PReg) {
   if (X86RegisterUtils::is64BitPhysReg(PReg) || X86RegisterUtils::is64BitSSE2Reg(PReg))
     return 64;
-  else if (X86RegisterUtils::is32BitPhysReg(PReg) || X86RegisterUtils::is32BitSSE2Reg(PReg))
+  if (X86RegisterUtils::is32BitPhysReg(PReg) || X86RegisterUtils::is32BitSSE2Reg(PReg))
     return 32;
-  else if (X86RegisterUtils::is16BitPhysReg(PReg))
+  if (X86RegisterUtils::is16BitPhysReg(PReg))
     return 16;
-  else if (X86RegisterUtils::is8BitPhysReg(PReg))
+  if (X86RegisterUtils::is8BitPhysReg(PReg))
     return 8;
-  else if (isEflagBit(PReg))
+  if (isEflagBit(PReg))
     return 1;
 
   llvm_unreachable("Unhandled physical register specified");
@@ -141,11 +140,14 @@ unsigned X86RegisterUtils::getArgumentReg(int Index, Type *Ty) {
   // Note: any pointer is an address and hence uses a 64-bit register
   if ((Ty == Type::getInt64Ty(Ctx)) || (Ty->isPointerTy())) {
     return X86RegisterUtils::GPR64ArgRegs64Bit[Index];
-  } else if (Ty == Type::getInt32Ty(Ctx)) {
+  }
+  if (Ty == Type::getInt32Ty(Ctx)) {
     return X86RegisterUtils::GPR64ArgRegs32Bit[Index];
-  } else if (Ty == Type::getInt16Ty(Ctx)) {
+  }
+  if (Ty == Type::getInt16Ty(Ctx)) {
     return X86RegisterUtils::GPR64ArgRegs16Bit[Index];
-  } else if (Ty == Type::getInt8Ty(Ctx)) {
+  }
+  if (Ty == Type::getInt8Ty(Ctx)) {
     return X86RegisterUtils::GPR64ArgRegs8Bit[Index];
   }
   return 0;

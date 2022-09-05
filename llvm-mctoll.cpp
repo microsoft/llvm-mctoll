@@ -94,6 +94,11 @@ using namespace object;
 namespace {
 
 using namespace llvm::opt; // for HelpHidden in Opts.inc
+// custom Flag for opt::DriverFlag defined in the llvm/Option/Option.h
+enum MyFlag {
+  HelpSkipped   = (1 << 4)
+};
+
 enum ID {
   OPT_INVALID = 0, // This is not an option ID.
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
@@ -128,8 +133,9 @@ public:
 
   void printHelp(StringRef Argv0, bool ShowHidden = false) const {
     Argv0 = sys::path::filename(Argv0);
+    unsigned FlagsToExclude = HelpSkipped | (ShowHidden ? 0 : HelpHidden);
     opt::OptTable::printHelp(outs(), (Argv0 + Usage).str().c_str(), Description,
-                             ShowHidden, ShowHidden);
+                             0, FlagsToExclude, ShowHidden);
     // TODO Replace this with OptTable API once it adds extrahelp support.
     outs() << "\nPass @FILE as argument to read options from FILE.\n";
   }

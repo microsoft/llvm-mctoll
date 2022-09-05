@@ -1,20 +1,18 @@
 ## Using --sysroot flag
 
---sysroot points to toolchain root.
+--sysroot points to toolchain root. It is useful during development on a non-Linux machine to raise Linux binaries or on a Linux machine using a toolchain other than the one installed.
 
 * On linux sysroot is "/"
 * On MAC may show `xcrun --show-sdk-path`
 
-### cross build linux and arm binary
+### Cross-building Linux x86_64 and arm binaries
 
-On the [llvm-mctoll-toolchains](https://github.com/sv99/llvm-mctoll-toolchains) exists minimal working toolchain
-for cross compilation for arm-linux-gnueabihf and x86_64-linux-gnu.
-
+Instructions to build a minimal functional toolchain that may be used with `llvm-mctoll` are provided [here](https://github.com/sv99/llvm-mctoll-toolchains). These facilitate cross compilation of and raising of x86_64-linux-gnu and for arm-linux-gnueabihf targets. You may choose to create and use a toolchain of your choice.
 ```bash
 # toolchain directory
 # ~/toolchain/arm-linux-gnueabihf
 # ~/toolchain/x86_64-linux-gnu
-# clang must be build with ARM support!
+# clang must be built with ARM support!
 
 # ELF 32-bit ARM Linux
 clang --sysroot ~/toolchain/arm-linux-gnueabihf \
@@ -29,9 +27,9 @@ clang --sysroot ~/toolchain/x86_64-linux-gnu \
 file helllo-lin
 ```
 
-This worked on linux and MAC.
+The above has been tested to work on MacOS (and Linux).
 
-### raising binary
+### Raising Linux binary on a non-Linux host
 
 Toolchains needs for successful parsing header file.
 
@@ -51,7 +49,7 @@ lvm-mctoll --sysroot ~/toolchain/x86_64-linux-gnu \
   -debug -d hello-arm 
  ```
 
-### run arm binary using docker
+### Running Linux ARM binary using docker on a non-Linux development host
 
 [multiarch/qemu-user-static](https://github.com/multiarch/qemu-user-static) is to enable
 an execution of different multi-architecture containers

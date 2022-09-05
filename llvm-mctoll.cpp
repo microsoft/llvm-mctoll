@@ -124,8 +124,9 @@ cl::opt<CodeGenFileType> OutputFormat(
                           "Emit nothing, for performance testing")),
     cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
-cl::opt<bool> mctoll::Disassemble("raise", cl::desc("Raise machine instruction"),
-                                cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+cl::opt<bool> mctoll::Disassemble("raise",
+                                  cl::desc("Raise machine instruction"),
+                                  cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::alias Disassembled("d", cl::desc("Alias for -raise"),
                        cl::aliasopt(Disassemble), cl::cat(LLVMMCToLLCategory),
@@ -140,12 +141,14 @@ static cl::opt<bool> NoVerify("disable-verify", cl::Hidden,
                               cl::desc("Do not verify input module"));
 
 cl::opt<std::string>
-    mctoll::TripleName("triple", cl::desc("Target triple to disassemble for, "
-                                        "see -version for available targets"));
+    mctoll::TripleName("triple",
+                       cl::desc("Target triple to disassemble for, "
+                                "see -version for available targets"));
 
 cl::opt<std::string>
-    mctoll::ArchName("arch-name", cl::desc("Target arch to disassemble for, "
-                                         "see -version for available targets"));
+    mctoll::ArchName("arch-name",
+                     cl::desc("Target arch to disassemble for, "
+                              "see -version for available targets"));
 
 cl::opt<std::string> mctoll::FilterFunctionSet(
     "filter-functions-file",
@@ -159,15 +162,15 @@ cl::alias static FilterFunctionSetF(
 
 cl::list<std::string>
     mctoll::FilterSections("section",
-                         cl::desc("Operate on the specified sections only. "
-                                  "With -macho dump segment,section"));
+                           cl::desc("Operate on the specified sections only. "
+                                    "With -macho dump segment,section"));
 
 cl::alias static FilterSectionsj("j", cl::desc("Alias for --section"),
                                  cl::aliasopt(FilterSections));
 
 cl::opt<bool>
     mctoll::PrintImmHex("print-imm-hex",
-                      cl::desc("Use hex format for immediate values"));
+                        cl::desc("Use hex format for immediate values"));
 
 cl::opt<bool> PrintFaultMaps("fault-map-section",
                              cl::desc("Display contents of faultmap section"));
@@ -187,8 +190,7 @@ cl::list<std::string> mctoll::IncludeFileNames(
 
 cl::alias static IncludeFileNamesShort(
     "I", cl::desc("Alias for --include-files=<single-header-file>"),
-    cl::aliasopt(IncludeFileNames), cl::cat(LLVMMCToLLCategory),
-    cl::NotHidden);
+    cl::aliasopt(IncludeFileNames), cl::cat(LLVMMCToLLCategory), cl::NotHidden);
 
 cl::opt<std::string> mctoll::CompilationDBDir(
     "compilation-db-path",
@@ -732,12 +734,12 @@ static bool isAFunctionSymbol(const ObjectFile *Obj, SymbolInfoTy &Symbol) {
   return false;
 }
 
-
 //#ifdef __cplusplus
-//extern "C" {
+// extern "C" {
 //#endif
 
-#define MODULE_RAISER(TargetName) extern "C" void register##TargetName##ModuleRaiser();
+#define MODULE_RAISER(TargetName)                                              \
+  extern "C" void register##TargetName##ModuleRaiser();
 #include "Raisers.def"
 //#ifdef __cplusplus
 //}
@@ -1329,9 +1331,12 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
               branchTargetSet.insert(Target);
             }
 
-            // Mark the next instruction as a target.
+            // Mark the next instruction as a target, if it is not beyond the
+            // function end
             uint64_t fallThruIndex = Index + Size;
-            branchTargetSet.insert(fallThruIndex);
+            if (fallThruIndex < End) {
+              branchTargetSet.insert(fallThruIndex);
+            }
           }
         }
       }
@@ -1544,8 +1549,8 @@ int main(int argc, char **argv) {
   auto OF = OutputFilename.getValue();
 
   if (!IncludeFNames.empty()) {
-    if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFNames,
-                                                        mctoll::CompilationDBDir)) {
+    if (!IncludedFileInfo::getExternalFunctionPrototype(
+            IncludeFNames, mctoll::CompilationDBDir)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }

@@ -118,8 +118,44 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
 
   // Add the entry instruction -> MBB map entry for the last MBB
   if (MF.size()) {
+    // If the terminating instruction of last MBB is a branch instruction,
+    // ensure appropriate control flow edges are added.
+    std::vector<uint64_t> termMCInstTargets;
+    auto mcIDMapIter = mcInstMap.rbegin();
+    if (mcIDMapIter != mcInstMap.rend()) {
+      uint64_t termMCInstIndex = mcIDMapIter->first;
+      auto termMCInst = mcIDMapIter->second.getMCInst();
+      // The following code handles a situation where the text section ends with
+      // an unconditional branch. In such situations, no fall-through target is
+      // recorded in targetIndices since offset after the branch is not within
+      // the function boundary. The above loop relies on a fall-through being
+      // registered to add control flow edges and we have no fall-through edge
+      // to add them for the last MBB with a branch. If the function were padded
+      // with noop, this would not trigger and the case would be naturally
+      // handled in the above loop.
+      if (MIA->isBranch(termMCInst)) {
+        uint64_t Target;
+        // Get its target
+        assert(!MIA->isConditionalBranch(termMCInst) &&
+               "Unexpected conditional branch at the end of text section");
+        // Since this instruction is the last one, its size is
+        // (FuncEnd - termMCInstIndex).
+        if (MIA->evaluateBranch(termMCInst, termMCInstIndex,
+                                (FuncEnd - termMCInstIndex), Target)) {
+          // Record its target if it is within the function start
+          // and function end.  Branch instructions with such
+          // targets are - for now - treated not to be instructions
+          // but most likely data bytes embedded in instruction stream.
+          // TODO: How to handle any branches out of these bounds?
+          // Does such a situation exist?
+          if ((Target >= FuncStart) && (Target < FuncEnd)) {
+            termMCInstTargets.push_back(Target);
+          }
+        }
+      }
+    }
     MBBNumToMCInstTargetsMap.insert(
-        std::make_pair(MF.back().getNumber(), std::vector<uint64_t>()));
+        std::make_pair(MF.back().getNumber(), termMCInstTargets));
     mcInstToMBBNum.insert(
         std::make_pair(curMBBEntryInstIndex, MF.back().getNumber()));
   }
@@ -199,11 +235,12 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
   }
 
   LLVMContext &C = machineFunction.getFunction().getContext();
-  // Creation of MDNode representing Metadata with mcInstIndex may be done using
-  // the following couple of lines of code. But I just wanted to spell it out
-  // for better understanding.
+  // Creation of MDNode representing Metadata with mcInstIndex may be done
+  // using the following couple of lines of code. But I just wanted to spell
+  // it out for better understanding.
 
-  // MDNode* temp_N = MDNode::get(C, ConstantAsMetadata::get(ConstantInt::get(C,
+  // MDNode* temp_N = MDNode::get(C,
+  // ConstantAsMetadata::get(ConstantInt::get(C,
   //                                                  llvm::APInt(64,
   //                                                              mcInstIndex,
   //                                                              false))));

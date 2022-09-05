@@ -7,7 +7,7 @@ This tool statically (AOT) translates (or raises) binaries to LLVM IR.
 `Llvm-mctoll` is capable of raising X86-64 and Arm32 Linux/ELF libraries and executables to LLVM IR.
 Raising Windows, OS X and C++ binaries needs to be added. At this time X86-64 support is more mature than Arm32.
 
-Development and primary testing is being done on Ubuntu 20.04. Testing is also done on Ubuntu 18.04. The tool is expected to build and run on Ubuntu 16.04, Ubuntu 17.04, Ubuntu 17.10, CentOS 7.5, Debian 10, Windows 10, and OS X to raise Linux/ELF binaries.
+Development and primary testing is being done on Ubuntu 22.04. Testing is also done on Ubuntu 20.04. The tool is expected to build and run on Ubuntu 18.04, 16.04, Ubuntu 17.04, Ubuntu 17.10, CentOS 7.5, Debian 10, Windows 10, and OS X to raise Linux/ELF binaries.
 
 | Triple | VarArgs | FuncProto | StackFrame | JumpTables | SharedLibs | C++ |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |

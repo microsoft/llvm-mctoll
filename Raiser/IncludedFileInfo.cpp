@@ -79,7 +79,7 @@ public:
           std::pair<std::string, IncludedFileInfo::FunctionRetAndArgs>(
               FuncDecl->getQualifiedNameAsString(), Entry));
       LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
-                        << " : Entry found at "
+                        << " : Added entry found at "
                         << FuncDecl->getLocation().printToString(
                                Context.getSourceManager())
                         << "\n");
@@ -151,13 +151,13 @@ public:
 
   void HandleTranslationUnit(clang::ASTContext &Context) final {
     auto Decls = Context.getTranslationUnitDecl()->decls();
-    // clang::SourceManager &SourceManager(Context.getSourceManager());
     for (auto &Decl : Decls) {
-      if (Decl->isFunctionOrFunctionTemplate()) {
-        // const auto &FileID = SourceManager.getFileID(Decl->getLocation());
-        // if (FileID != SourceManager.getMainFileID())
-        //   continue;
+      if (Decl->isFunctionOrFunctionTemplate() && Decl->isFirstDecl()) {
         clang::FunctionDecl *FuncDecl = Decl->getAsFunction();
+        LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString() << " : Visit "
+                          << FuncDecl->getLocation().printToString(
+                                 Context.getSourceManager())
+                          << "\n");
         Visitor.TraverseFunctionDecl(FuncDecl);
       } else if (Decl->getKind() == clang::Decl::Kind::Var) {
         auto *VarDecl = dyn_cast<clang::VarDecl>(Decl);

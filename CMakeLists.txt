@@ -54,6 +54,10 @@ configure_file(
   ${LLVM_INCLUDE_DIR}/Raisers.def
   )
 
+set(LLVM_TARGET_DEFINITIONS Opts.td)
+tablegen(LLVM Opts.inc -gen-opt-parser-defs)
+add_public_tablegen_target(MctoolOptsTableGen)
+
 add_subdirectory(test)
 
 add_llvm_tool(llvm-mctoll
@@ -62,6 +66,8 @@ add_llvm_tool(llvm-mctoll
   MachODump.cpp
   EmitRaisedOutputPass.cpp
   PeepholeOptimizationPass.cpp
+  DEPENDS
+  MctoolOptsTableGen
 )
 
 # Link against LLVM libraries and target-specific Raiser libraries

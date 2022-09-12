@@ -60,43 +60,19 @@ using namespace llvm;
 using namespace llvm::mctoll;
 using namespace object;
 
-extern cl::opt<std::string> MCPU;
-extern cl::list<std::string> MAttrs;
+extern std::string MCPU;
+extern std::vector<std::string> MAttrs;
 
-static cl::opt<bool>
-    UseDbg("g",
-           cl::desc("Print line information from debug info if available"));
-
-static cl::opt<std::string> DSYMFile("dsym",
-                                     cl::desc("Use .dSYM file for debug info"));
-
-static cl::opt<bool> FullLeadingAddr("full-leading-addr",
-                                     cl::desc("Print full leading address"));
-
-static cl::opt<bool> NoLeadingHeaders("no-leading-headers",
-                                      cl::desc("Print no leading headers"));
-cl::opt<bool>
-    ArchiveMemberOffsets("archive-member-offsets",
-                         cl::desc("Print the offset to each archive member for "
-                                  "Mach-O archives (requires -macho and "
-                                  "-archive-headers)"));
-
-cl::opt<bool>
-    mctoll::NonVerbose("non-verbose",
-                     cl::desc("Print the info for Mach-O objects in "
-                              "non-verbose or numeric form (requires -macho)"));
-
-cl::opt<std::string> mctoll::DisSymName(
-    "dis-symname",
-    cl::desc("disassemble just this symbol's instructions (requires -macho)"));
-
-static cl::opt<bool> NoSymbolicOperands(
-    "no-symbolic-operands",
-    cl::desc("do not symbolic operands when disassembling (requires -macho)"));
-
-static cl::list<std::string>
-    ArchFlags("arch", cl::desc("architecture(s) from a Mach-O file to dump"),
-              cl::ZeroOrMore);
+static std::string DisSymName;
+static bool PrintImmHex;
+static bool UseDbg;
+static std::string DSYMFile;
+static bool FullLeadingAddr;
+static bool NoLeadingHeaders;
+// static bool ArchiveMemberOffsets;
+static bool NonVerbose;
+static bool NoSymbolicOperands;
+static std::vector<std::string> ArchFlags;
 
 bool ArchAll = false;
 

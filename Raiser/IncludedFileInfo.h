@@ -40,7 +40,8 @@ public:
   static std::set<std::string> ExternalVariables;
 
   static bool getExternalFunctionPrototype(std::vector<string> &FileNames,
-                                             std::string &CompDBDir);
+                                           std::string &Target,
+                                           std::string &SysRoot);
 
   static bool IsExternalVariable(std::string Name);
 };

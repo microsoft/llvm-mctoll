@@ -56,17 +56,20 @@
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/Wasm.h"
+#include "llvm/Option/Arg.h"
+#include "llvm/Option/ArgList.h"
+#include "llvm/Option/Option.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
@@ -88,118 +91,90 @@ using namespace llvm;
 using namespace llvm::mctoll;
 using namespace object;
 
-static cl::OptionCategory LLVMMCToLLCategory("llvm-mctoll options");
+namespace {
 
-static cl::list<std::string> InputFileNames(cl::Positional,
-                                            cl::desc("<input object files>"),
-                                            cl::OneOrMore);
-static cl::opt<std::string> OutputFilename("outfile",
-                                           cl::desc("Output filename"),
-                                           cl::value_desc("filename"),
-                                           cl::cat(LLVMMCToLLCategory),
-                                           cl::NotHidden);
-cl::alias OutputFilenameshort("o", cl::desc("Alias for --outfile"),
-                              cl::aliasopt(OutputFilename),
-                              cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+using namespace llvm::opt; // for HelpHidden in Opts.inc
+// custom Flag for opt::DriverFlag defined in the llvm/Option/Option.h
+enum MyFlag {
+  HelpSkipped   = (1 << 4)
+};
 
-cl::opt<std::string>
-    MCPU("mcpu",
-         cl::desc("Target a specific cpu type (-mcpu=help for details)"),
-         cl::value_desc("cpu-name"), cl::init(""));
+enum ID {
+  OPT_INVALID = 0, // This is not an option ID.
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
+               HELPTEXT, METAVAR, VALUES)                                      \
+  OPT_##ID,
+#include "Opts.inc"
+#undef OPTION
+};
 
-cl::list<std::string>
-    MAttrs("mattr", cl::CommaSeparated,
-           cl::desc("Target specific attributes (-mattr=help for details)"),
-           cl::value_desc("a1,+a2,-a3,..."));
+#define PREFIX(NAME, VALUE) const char *const NAME[] = VALUE;
+#include "Opts.inc"
+#undef PREFIX
 
-// Output file type. Default is binary bitcode.
-cl::opt<CodeGenFileType> OutputFormat(
-    "output-format", cl::init(CGFT_AssemblyFile),
-    cl::desc("Output format (default: binary bitcode):"),
-    cl::values(clEnumValN(CGFT_AssemblyFile, "ll",
-                          "Emit llvm text bitcode ('.ll') file"),
-               clEnumValN(CGFT_ObjectFile, "bc",
-                          "Emit llvm binary bitcode ('.bc') file"),
-               clEnumValN(CGFT_Null, "null",
-                          "Emit nothing, for performance testing")),
-    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+const opt::OptTable::Info InfoTable[] = {
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
+               HELPTEXT, METAVAR, VALUES)                                      \
+  {                                                                            \
+      PREFIX,      NAME,      HELPTEXT,                                        \
+      METAVAR,     OPT_##ID,  opt::Option::KIND##Class,                        \
+      PARAM,       FLAGS,     OPT_##GROUP,                                     \
+      OPT_##ALIAS, ALIASARGS, VALUES},
+#include "Opts.inc"
+#undef OPTION
+};
 
-cl::opt<bool> mctoll::Disassemble("raise",
-                                  cl::desc("Raise machine instruction"),
-                                  cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+class MctollOptTable : public opt::OptTable {
+public:
+  MctollOptTable(const char *Usage, const char *Description)
+      : OptTable(InfoTable), Usage(Usage), Description(Description) {
+    setGroupedShortOptions(true);
+  }
 
-cl::alias Disassembled("d", cl::desc("Alias for -raise"),
-                       cl::aliasopt(Disassemble), cl::cat(LLVMMCToLLCategory),
-                       cl::NotHidden);
+  void printHelp(StringRef Argv0, bool ShowHidden = false) const {
+    Argv0 = sys::path::filename(Argv0);
+    unsigned FlagsToExclude = HelpSkipped | (ShowHidden ? 0 : HelpHidden);
+    opt::OptTable::printHelp(outs(), (Argv0 + Usage).str().c_str(), Description,
+                             0, FlagsToExclude, ShowHidden);
+    // TODO Replace this with OptTable API once it adds extrahelp support.
+    outs() << "\nPass @FILE as argument to read options from FILE.\n";
+  }
 
-static cl::opt<bool>
-    MachOOpt("macho", cl::desc("Use MachO specific object file parser"));
-static cl::alias MachOm("m", cl::desc("Alias for --macho"),
-                        cl::aliasopt(MachOOpt));
+private:
+  const char *Usage;
+  const char *Description;
+};
 
-static cl::opt<bool> NoVerify("disable-verify", cl::Hidden,
-                              cl::desc("Do not verify input module"));
+enum OutputFormatTy { OF_LL, OF_BC, OF_Null, OF_Unknown };
 
-cl::opt<std::string>
-    mctoll::TripleName("triple",
-                       cl::desc("Target triple to disassemble for, "
-                                "see -version for available targets"));
+} // namespace
 
-cl::opt<std::string>
-    mctoll::ArchName("arch-name",
-                     cl::desc("Target arch to disassemble for, "
-                              "see -version for available targets"));
+#define DEBUG_TYPE "mctoll"
 
-cl::opt<std::string> mctoll::FilterFunctionSet(
-    "filter-functions-file",
-    cl::desc("Specify which functions to raise via a configuration file."),
-    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+static std::vector<std::string> InputFileNames;
+static std::string OutputFilename;
+std::string MCPU;
+std::vector<std::string> MAttrs;
+OutputFormatTy OutputFormat; // Output file type. Default is binary bitcode.
+bool mctoll::Disassemble;
+static bool MachOOpt;
+static bool NoVerify;
+std::string mctoll::TargetName;
+std::string mctoll::TripleName;
+std::string mctoll::SysRoot;
+std::string mctoll::ArchName;
+static std::string FilterConfigFileName;
+std::vector<std::string> mctoll::FilterSections;
 
-cl::alias static FilterFunctionSetF(
-    "f", cl::desc("Alias for --filter-functions-file"),
-    cl::aliasopt(FilterFunctionSet), cl::cat(LLVMMCToLLCategory),
-    cl::NotHidden);
+static uint64_t StartAddress;
+static bool HasStartAddressFlag;
+static uint64_t StopAddress = UINT64_MAX;
+static bool HasStopAddressFlag;
 
-cl::list<std::string>
-    mctoll::FilterSections("section",
-                           cl::desc("Operate on the specified sections only. "
-                                    "With -macho dump segment,section"));
+std::vector<std::string> mctoll::IncludeFileNames;
+std::string mctoll::CompilationDBDir;
 
-cl::alias static FilterSectionsj("j", cl::desc("Alias for --section"),
-                                 cl::aliasopt(FilterSections));
-
-cl::opt<bool>
-    mctoll::PrintImmHex("print-imm-hex",
-                        cl::desc("Use hex format for immediate values"));
-
-cl::opt<bool> PrintFaultMaps("fault-map-section",
-                             cl::desc("Display contents of faultmap section"));
-
-cl::opt<unsigned long long>
-    StartAddress("start-address", cl::desc("Disassemble beginning at address"),
-                 cl::value_desc("address"), cl::init(0));
-cl::opt<unsigned long long> StopAddress("stop-address",
-                                        cl::desc("Stop disassembly at address"),
-                                        cl::value_desc("address"),
-                                        cl::init(UINT64_MAX));
-cl::list<std::string> mctoll::IncludeFileNames(
-    "include-files", cl::CommaSeparated,
-    cl::desc("List of comma-seperated header files with function prototypes "
-             "using standard C syntax."),
-    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
-
-cl::alias static IncludeFileNamesShort(
-    "I", cl::desc("Alias for --include-files=<single-header-file>"),
-    cl::aliasopt(IncludeFileNames), cl::cat(LLVMMCToLLCategory), cl::NotHidden);
-
-cl::opt<std::string> mctoll::CompilationDBDir(
-    "compilation-db-path",
-    cl::desc("Absolute directory path to either compile_commands.json or "
-             "compile_flags.txt with any additional details needed to parse "
-             "include files. "
-             "See https://clang.llvm.org/docs/JSONCompilationDatabase.html for "
-             "details."),
-    cl::cat(LLVMMCToLLCategory), cl::NotHidden);
+static bool PrintImmHex;
 
 namespace {
 static ManagedStatic<std::vector<std::string>> RunPassNames;
@@ -215,15 +190,6 @@ struct RunPassOption {
   }
 };
 } // namespace
-
-#define DEBUG_TYPE "mctoll"
-
-static RunPassOption RunPassOpt;
-
-static cl::opt<RunPassOption, true, cl::parser<std::string>> RunPass(
-    "run-pass",
-    cl::desc("Run compiler only for specified passes (comma separated list)"),
-    cl::value_desc("pass-name"), cl::ZeroOrMore, cl::location(RunPassOpt));
 
 namespace {
 typedef std::function<bool(llvm::object::SectionRef const &)> FilterPredicate;
@@ -296,7 +262,7 @@ SectionFilter ToolSectionFilter(llvm::object::ObjectFile const &O) {
 static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   // Figure out the target triple.
   llvm::Triple TheTriple("unknown-unknown-unknown");
-  if (mctoll::TripleName.empty()) {
+  if (TripleName.empty()) {
     if (Obj) {
       auto Arch = Obj->getArch();
       TheTriple.setArch(Triple::ArchType(Arch));
@@ -343,8 +309,8 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
       error("Unsupported target " + TheTriple.getArchName());
   }
 
-  // A few of opcodes in ARMv4 or ARMv5 are indentified as ARMv6 opcodes,
-  // so unify the triple Archs lower then ARMv6 to ARMv6 temporarily.
+  // A few of opcodes in ARMv4 or ARMv5 are identified as ARMv6 opcodes,
+  // so unify the triple Archs lower than ARMv6 to ARMv6 temporarily.
   if (TheTriple.getArchName() == "armv4t" ||
       TheTriple.getArchName() == "armv5te" ||
       TheTriple.getArchName() == "armv5" || TheTriple.getArchName() == "armv5t")
@@ -355,7 +321,7 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   return TheTarget;
 }
 
-static std::unique_ptr<ToolOutputFile> GetOutputStream(StringRef InfileName) {
+static std::unique_ptr<ToolOutputFile> getOutputStream(StringRef InfileName) {
   // If output file name is not explicitly specified construct a name based on
   // the input file name.
   if (OutputFilename.empty()) {
@@ -368,30 +334,22 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(StringRef InfileName) {
       OutputFilename = std::string(InfileName);
 
     switch (OutputFormat) {
-    case CGFT_AssemblyFile:
+    case OF_LL:
       OutputFilename += "-dis.ll";
       break;
     // Just uses enum CGFT_ObjectFile represent llvm bitcode file type
     // provisionally.
-    case CGFT_ObjectFile:
+    case OF_BC:
       OutputFilename += "-dis.bc";
       break;
-    case CGFT_Null:
+    default:
       OutputFilename += ".null";
       break;
     }
   }
 
   // Decide if we need "binary" output.
-  bool Binary = false;
-  switch (OutputFormat) {
-  case CGFT_AssemblyFile:
-    break;
-  case CGFT_ObjectFile:
-  case CGFT_Null:
-    Binary = true;
-    break;
-  }
+  bool Binary = OutputFormat != OF_LL;
 
   // Open the file.
   std::error_code EC;
@@ -734,16 +692,8 @@ static bool isAFunctionSymbol(const ObjectFile *Obj, SymbolInfoTy &Symbol) {
   return false;
 }
 
-//#ifdef __cplusplus
-// extern "C" {
-//#endif
-
-#define MODULE_RAISER(TargetName)                                              \
-  extern "C" void register##TargetName##ModuleRaiser();
+#define MODULE_RAISER(TargetName) extern "C" void register##TargetName##ModuleRaiser();
 #include "Raisers.def"
-//#ifdef __cplusplus
-//}
-//#endif
 
 static void InitializeAllModuleRaisers() {
 #define MODULE_RAISER(TargetName) register##TargetName##ModuleRaiser();
@@ -1002,7 +952,6 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     uint64_t Index;
 
     FunctionFilter *FuncFilter = moduleRaiser->getFunctionFilter();
-    auto FilterConfigFileName = FilterFunctionSet.getValue();
     if (!FilterConfigFileName.empty()) {
       if (!FuncFilter->readFilterFunctionConfigFile(FilterConfigFileName)) {
         dbgs() << "Unable to read function filter configuration file "
@@ -1068,7 +1017,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         auto &SymStr = Symbols[si].Name;
 
         bool raiseFuncSymbol = true;
-        if ((!FilterFunctionSet.getValue().empty())) {
+        if ((!FilterConfigFileName.empty())) {
           // Check the symbol name whether it should be excluded or not.
           // Check in a non-empty exclude list
           if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_EXCLUDE)) {
@@ -1109,7 +1058,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         // However, in a raiser, we are conceptually walking the traditional
         // compiler pipeline backwards. So we build MachineFunction from
         // the binary before building Function object. Given the dependency,
-        // build a place holder Function object to allow for building the
+        // build a placeholder Function object to allow for building the
         // MachineFunction object.
         // This Function object is NOT populated when raising MachineFunction
         // abstraction of the binary function. Instead, a new Function is
@@ -1364,7 +1313,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   Triple TheTriple = Triple(TripleName);
 
   // Decide where to send the output.
-  std::unique_ptr<ToolOutputFile> Out = GetOutputStream(Obj->getFileName());
+  std::unique_ptr<ToolOutputFile> Out = getOutputStream(Obj->getFileName());
   if (!Out)
     return;
 
@@ -1376,6 +1325,22 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   legacy::PassManager PM;
 
   LLVMTargetMachine &LLVMTM = static_cast<LLVMTargetMachine &>(*Target);
+
+  CodeGenFileType OutputFileType;
+
+  switch (OutputFormat) {
+  case OF_LL:
+    OutputFileType = CGFT_AssemblyFile;
+    break;
+  // Just uses enum CGFT_ObjectFile represent llvm bitcode file type
+  // provisionally.
+  case OF_BC:
+    OutputFileType = CGFT_ObjectFile;
+    break;
+  default:
+    OutputFileType = CGFT_Null;
+    break;
+  }
 
   if (RunPassNames->empty()) {
     TargetPassConfig &TPC = *LLVMTM.createPassConfig(PM);
@@ -1393,7 +1358,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     PM.add(new PeepholeOptimizationPass());
 
     // Add print pass to emit ouptut file.
-    PM.add(new EmitRaisedOutputPass(*OS, OutputFormat));
+    PM.add(new EmitRaisedOutputPass(*OS, OutputFileType));
 
     TPC.printAndVerify("");
     for (const std::string &RunPassName : *RunPassNames) {
@@ -1404,7 +1369,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     TPC.setInitialized();
   } else if (Target->addPassesToEmitFile(
                  PM, *OS, nullptr, /* no dwarf output file stream*/
-                 OutputFormat, NoVerify, machineModuleInfo)) {
+                 OutputFileType, NoVerify, machineModuleInfo)) {
     outs() << ToolName << "run system pass!\n";
   }
 
@@ -1500,11 +1465,103 @@ static void DumpInput(StringRef file) {
     report_error(errorCodeToError(object_error::invalid_file_type), file);
 }
 
+[[noreturn]] static void reportCmdLineError(const Twine &Message) {
+  WithColor::error(errs(), ToolName) << Message << "\n";
+  exit(1);
+}
+
+template <typename T>
+static void parseIntArg(const llvm::opt::InputArgList &InputArgs, int ID,
+                        T &Value) {
+  if (const opt::Arg *A = InputArgs.getLastArg(ID)) {
+    StringRef V(A->getValue());
+    if (!llvm::to_integer(V, Value, 0)) {
+      reportCmdLineError(A->getSpelling() +
+                         ": expected a non-negative integer, but got '" + V +
+                         "'");
+    }
+  }
+}
+
+static void invalidArgValue(const opt::Arg *A) {
+  reportCmdLineError("'" + StringRef(A->getValue()) +
+                     "' is not a valid value for '" + A->getSpelling() + "'");
+}
+
+static std::vector<std::string>
+commaSeparatedValues(const llvm::opt::InputArgList &InputArgs, int ID) {
+  std::vector<std::string> Values;
+  for (StringRef Value : InputArgs.getAllArgValues(ID)) {
+    llvm::SmallVector<StringRef, 2> SplitValues;
+    llvm::SplitString(Value, SplitValues, ",");
+    for (StringRef SplitValue : SplitValues)
+      Values.push_back(SplitValue.str());
+  }
+  return Values;
+}
+
+static void parseOptions(const llvm::opt::InputArgList &InputArgs) {
+  llvm::DebugFlag = InputArgs.hasArg(OPT_debug);
+  Disassemble = InputArgs.hasArg(OPT_raise);
+  FilterConfigFileName = InputArgs.getLastArgValue(OPT_filter_functions_file_EQ).str();
+  MCPU = InputArgs.getLastArgValue(OPT_mcpu_EQ).str();
+  MAttrs = commaSeparatedValues(InputArgs, OPT_mattr_EQ);
+  FilterSections = InputArgs.getAllArgValues(OPT_section_EQ);
+  parseIntArg(InputArgs, OPT_start_address_EQ, StartAddress);
+  HasStartAddressFlag = InputArgs.hasArg(OPT_start_address_EQ);
+  parseIntArg(InputArgs, OPT_stop_address_EQ, StopAddress);
+  HasStopAddressFlag = InputArgs.hasArg(OPT_stop_address_EQ);
+  TargetName = InputArgs.getLastArgValue(OPT_target_EQ).str();
+  SysRoot = InputArgs.getLastArgValue(OPT_sysyroot_EQ).str();
+  OutputFilename = InputArgs.getLastArgValue(OPT_outfile_EQ).str();
+
+  InputFileNames = InputArgs.getAllArgValues(OPT_INPUT);
+  if (InputFileNames.empty())
+    reportCmdLineError("no input file");
+
+  IncludeFileNames = InputArgs.getAllArgValues(OPT_include_file_EQ);
+  std::string IncludeFileNames2 = InputArgs.getLastArgValue(OPT_include_files_EQ).str();
+  if (!IncludeFileNames2.empty()) {
+    SmallVector<StringRef, 8> FNames;
+    StringRef(IncludeFileNames2).split(FNames, ',', -1, false);
+    for (auto N : FNames)
+      IncludeFileNames.push_back(std::string(N));
+  }
+
+  if (const opt::Arg *A = InputArgs.getLastArg(OPT_output_format_EQ)) {
+    OutputFormat = StringSwitch<OutputFormatTy>(A->getValue())
+                        .Case("ll", OF_LL)
+                        .Case("BC", OF_BC)
+                        .Case("Null", OF_Null)
+                        .Default(OF_Unknown);
+    if (OutputFormat == OF_Unknown)
+      invalidArgValue(A);
+  }
+}
+
 int main(int argc, char **argv) {
-  // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
-  PrettyStackTraceProgram X(argc, argv);
-  llvm_shutdown_obj Y; // Call llvm_shutdown() on exit.
+  InitLLVM X(argc, argv);
+
+  // parse command line
+  BumpPtrAllocator A;
+  StringSaver Saver(A);
+  MctollOptTable Tbl(" [options] <input object files>",
+                     "MC to LLVM IR raiser");
+  ToolName = argv[0];
+  opt::InputArgList Args =
+      Tbl.parseArgs(argc, argv, OPT_UNKNOWN, Saver,
+                    [&](StringRef Msg) {
+        error(Msg);
+        exit(1);
+      });
+  if (Args.size() == 0 || Args.hasArg(OPT_help)) {
+    Tbl.printHelp(ToolName);
+    return 0;
+  }
+  if (Args.hasArg(OPT_help_hidden)) {
+    Tbl.printHelp(ToolName, /*ShowHidden=*/true);
+    return 0;
+  }
 
   // Initialize targets and assembly printers/parsers.
   llvm::InitializeAllTargets();
@@ -1512,14 +1569,14 @@ int main(int argc, char **argv) {
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllDisassemblers();
 
-  // Register the target printer for --version.
-  cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
+  if (Args.hasArg(OPT_version)) {
+    cl::PrintVersionMessage();
+    outs() << '\n';
+    TargetRegistry::printRegisteredTargetsForVersion(outs());
+    return 0;
+  }
 
-  cl::HideUnrelatedOptions(LLVMMCToLLCategory);
-
-  cl::ParseCommandLineOptions(argc, argv, "MC to LLVM IR raiser\n");
-
-  ToolName = argv[0];
+    parseOptions(Args);
 
   // Set appropriate bug report message
   llvm::setBugReportMsg(
@@ -1546,19 +1603,20 @@ int main(int argc, char **argv) {
   // Stash output file name as well since it would also be reset during parsing
   // done by clang::tooling::CommonOptionsParser invoked in
   // getExternalFunctionPrototype().
-  auto OF = OutputFilename.getValue();
+  auto OF = OutputFilename;
 
   if (!IncludeFNames.empty()) {
-    if (!IncludedFileInfo::getExternalFunctionPrototype(
-            IncludeFNames, mctoll::CompilationDBDir)) {
+    if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFNames,
+                                                        TargetName,
+                                                        SysRoot)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }
   // Restore stashed Outputfilename
-  OutputFilename.setValue(OF);
+  OutputFilename = OF;
   // Disassemble contents of .text section.
   Disassemble = true;
-  FilterSections.addValue(".text");
+  FilterSections.push_back(".text");
 
   llvm::setCurrentDebugType(DEBUG_TYPE);
   std::for_each(InputFNames.begin(), InputFNames.end(), DumpInput);

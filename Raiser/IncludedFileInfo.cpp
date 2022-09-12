@@ -79,7 +79,7 @@ public:
           std::pair<std::string, IncludedFileInfo::FunctionRetAndArgs>(
               FuncDecl->getQualifiedNameAsString(), Entry));
       LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString()
-                        << " : Entry found at "
+                        << " : Added entry found at "
                         << FuncDecl->getLocation().printToString(
                                Context.getSourceManager())
                         << "\n");
@@ -151,16 +151,16 @@ public:
 
   void HandleTranslationUnit(clang::ASTContext &Context) final {
     auto Decls = Context.getTranslationUnitDecl()->decls();
-    clang::SourceManager &SourceManager(Context.getSourceManager());
     for (auto &Decl : Decls) {
-      if (Decl->isFunctionOrFunctionTemplate()) {
-        const auto &FileID = SourceManager.getFileID(Decl->getLocation());
-        if (FileID != SourceManager.getMainFileID())
-          continue;
+      if (Decl->isFunctionOrFunctionTemplate() && Decl->isFirstDecl()) {
         clang::FunctionDecl *FuncDecl = Decl->getAsFunction();
+        LLVM_DEBUG(dbgs() << FuncDecl->getQualifiedNameAsString() << " : Visit "
+                          << FuncDecl->getLocation().printToString(
+                                 Context.getSourceManager())
+                          << "\n");
         Visitor.TraverseFunctionDecl(FuncDecl);
       } else if (Decl->getKind() == clang::Decl::Kind::Var) {
-        auto VarDecl = dyn_cast<clang::VarDecl>(Decl);
+        auto *VarDecl = dyn_cast<clang::VarDecl>(Decl);
         IncludedFileInfo::ExternalVariables.insert(
             VarDecl->getQualifiedNameAsString());
       }
@@ -225,42 +225,33 @@ Function *IncludedFileInfo::CreateFunction(StringRef &CFuncName,
 }
 
 bool IncludedFileInfo::getExternalFunctionPrototype(
-    std::vector<std::string> &FileNames, std::string &CompDBDir) {
-  static llvm::cl::OptionCategory InclFileParseCategory(
-      "parse-header-files options");
+    std::vector<std::string> &FileNames, std::string &Target,
+    std::string &SysRoot) {
   std::vector<const char *> ArgPtrVec;
   ArgPtrVec.push_back("parse-header-files");
-  if (!CompDBDir.empty()) {
-    ArgPtrVec.push_back("-p");
-    ArgPtrVec.push_back(CompDBDir.c_str());
-  }
+  ArgPtrVec.push_back("--");
+
   if (llvm::DebugFlag)
-    ArgPtrVec.push_back("-debug");
-
-  // Dummy positional arguments to satisfy the requirement of having at least
-  // two positional arguments.
-  ArgPtrVec.push_back("dummy-positional-arg-1");
-  ArgPtrVec.push_back("dummy-positional-arg-2");
-
-  if (CompDBDir.empty())
-    ArgPtrVec.push_back("--");
+    ArgPtrVec.push_back("-v");
+  if (!Target.empty()) {
+    ArgPtrVec.push_back("-target");
+    ArgPtrVec.push_back(Target.c_str());
+  }
+  if (!SysRoot.empty()) {
+    ArgPtrVec.push_back("--sysroot");
+    ArgPtrVec.push_back(SysRoot.c_str());
+  }
 
   auto *ToolArgv = ArgPtrVec.data();
   int ArgSz = ArgPtrVec.size();
 
-  // Construct a CommonOptionsParser object for the Compilations.
-  auto ExpParser = clang::tooling::CommonOptionsParser::create(
-      ArgSz, ToolArgv, InclFileParseCategory);
+  std::string ErrorMessage;
+  std::unique_ptr<clang::tooling::CompilationDatabase> Compilations =
+      clang::tooling::FixedCompilationDatabase::loadFromCommandLine(ArgSz, ToolArgv, ErrorMessage);
+  if (!ErrorMessage.empty())
+    llvm::errs() << ErrorMessage.append("\n");
 
-  if (!ExpParser) {
-    llvm::errs() << ExpParser.takeError();
-    return 1;
-  }
-  clang::tooling::CommonOptionsParser &OptParser = ExpParser.get();
-  // Pass include FileNames vector and NOT OptParser.getSourcePathList() since
-  // only a dymmy-positional-arg was passed while constructing OptParser.
-  clang::tooling::ClangTool Tool(OptParser.getCompilations(), FileNames);
-
+  clang::tooling::ClangTool Tool(*Compilations, FileNames);
   int Success = Tool.run(
       clang::tooling::newFrontendActionFactory<FuncDeclFindingAction>().get());
   switch (Success) {

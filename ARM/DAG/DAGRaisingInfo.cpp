@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the implementaion of DAGRaisingInfo class for use
+// This file contains the implementation of DAGRaisingInfo class for use
 // by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,7 @@ DAGRaisingInfo::DAGRaisingInfo(SelectionDAG &Dag) : DAG(Dag) {}
 Value *DAGRaisingInfo::getRealValue(SDNode *Node) {
   assert(Node != nullptr && "Node cannot be nullptr!");
   assert(NPMap[Node] != nullptr &&
-         "Cannot find the corresponding node proprety!");
+         "Cannot find the corresponding node property!");
   return NPMap[Node]->Val;
 }
 

@@ -26,7 +26,7 @@ namespace mctoll {
 class DAGRaisingInfo {
 public:
   DAGRaisingInfo() = delete;
-  DAGRaisingInfo(SelectionDAG &DAG);
+  DAGRaisingInfo(SelectionDAG &Dag);
   void clear();
   /// Gets corresponding SelectionDAG object.
   SelectionDAG &getCurDAG() { return DAG; }
@@ -36,7 +36,7 @@ public:
   void setRealValue(SDNode *N, Value *V);
 
   SelectionDAG &DAG;
-  /// The map for each SDNode with its additional preperty.
+  /// The map for each SDNode with its additional property.
   DenseMap<SDNode *, NodePropertyInfo *> NPMap;
 };
 

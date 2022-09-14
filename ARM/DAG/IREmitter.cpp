@@ -968,7 +968,6 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
   case ARMISD::CMN: {
     Value *S0 = getIRValue(Node->getOperand(0));
     Value *S1 = getIRValue(Node->getOperand(1));
-    Value *Inst;
     if (DAGInfo->NPMap[Node]->HasCPSR) {
       unsigned CondValue = DAGInfo->NPMap[Node]->Cond;
       HANDLE_EMIT_CONDCODE_COMMON(Add)
@@ -976,7 +975,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       IRB.CreateBr(ElseBB);
       IRB.SetInsertPoint(ElseBB);
     } else {
-      Inst = IRB.CreateAdd(S0, S1);
+      Value *Inst = IRB.CreateAdd(S0, S1);
       DAGInfo->setRealValue(Node, Inst);
       FuncInfo->ArgValMap[FuncInfo->NodeRegMap[Node]] = Inst;
       emitCPSR(S0, S1, BB, 0);

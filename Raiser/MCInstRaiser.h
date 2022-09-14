@@ -51,7 +51,9 @@ public:
     return ((Index >= FuncStart) && (Index <= FuncEnd));
   }
   // Dump routine
-  void dump() const;
+  void dump(const MCInstPrinter *Printer = nullptr,
+            StringRef Separator = " ",
+            const MCRegisterInfo *RegInfo = nullptr) const;
   // Data in Code
   void setDataInCode(bool V) { DataInCode = V; }
   bool hasDataInCode() { return DataInCode; }

@@ -61,13 +61,16 @@ MCInstOrData &MCInstOrData::operator=(const MCInstOrData &E) {
   return *this;
 }
 
-void MCInstOrData::dump() const {
+void MCInstOrData::dump(const MCInstPrinter *Printer,
+                        StringRef Separator,
+                        const MCRegisterInfo *RegInfo) const {
   switch (Type) {
   case Tag::DATA:
-    outs() << "0x" << format("%04" PRIx16, Data) << "\n";
+    dbgs() << "0x" << format("%04" PRIx16, Data) << "\n";
     break;
   case Tag::INSTRUCTION:
-    LLVM_DEBUG(Inst.dump());
+    LLVM_DEBUG(Inst.dump_pretty(dbgs(), Printer, Separator, RegInfo));
+    dbgs() << "\n";
     break;
   }
 }

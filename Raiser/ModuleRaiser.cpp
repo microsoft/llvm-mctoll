@@ -184,7 +184,7 @@ bool ModuleRaiser::runMachineFunctionPasses() {
     LLVM_DEBUG(dbgs() << "Function: "
                       << MFR->getMachineFunction().getName().data() << "\n");
     LLVM_DEBUG(dbgs() << "Parsed MCInst List\n");
-    LLVM_DEBUG(MFR->getMCInstRaiser()->dump());
+    LLVM_DEBUG(MFR->getMCInstRaiser()->dump(MIP, " ", MRI));
   }
 
   // For each of the functions, run passes to set up for instruction raising.

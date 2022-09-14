@@ -53,13 +53,15 @@ class ModuleRaiser {
 public:
   ModuleRaiser()
       : M(nullptr), TM(nullptr), MMI(nullptr), MIA(nullptr), MII(nullptr),
+        MRI(nullptr), MIP(nullptr),
         Obj(nullptr), DisAsm(nullptr), TextSectionIndex(-1),
         Arch(Triple::ArchType::UnknownArch), FFT(nullptr), InfoSet(false) {}
 
   void setModuleRaiserInfo(Module *NewM, const TargetMachine *NewTM,
                            MachineModuleInfo *NewMMI, const MCInstrAnalysis *NewMIA,
-                           const MCInstrInfo *NewMII, const ObjectFile *NewObj,
-                           MCDisassembler *NewDisAsm) {
+                           const MCInstrInfo *NewMII, const MCRegisterInfo *NewMRI,
+                           const MCInstPrinter *NewMIP,
+                           const ObjectFile *NewObj,  MCDisassembler *NewDisAsm) {
     assert((InfoSet == false) &&
            "Module Raiser information can be set only once");
     M = NewM;
@@ -67,6 +69,8 @@ public:
     MMI = NewMMI;
     MIA = NewMIA;
     MII = NewMII;
+    MRI = NewMRI;
+    MIP = NewMIP;
     Obj = NewObj;
     DisAsm = NewDisAsm;
     FFT = new FunctionFilter(*M);
@@ -107,6 +111,8 @@ public:
   MachineModuleInfo *getMachineModuleInfo() const { return MMI; }
   const MCInstrAnalysis *getMCInstrAnalysis() const { return MIA; }
   const MCInstrInfo *getMCInstrInfo() const { return MII; }
+  const MCRegisterInfo *getMCRegisterInfo() const { return MRI; }
+  const MCInstPrinter *getMCInstPrinter() const { return MIP; }
   const ObjectFile *getObjectFile() const { return Obj; }
   const MCDisassembler *getMCDisassembler() const { return DisAsm; }
   Triple::ArchType getArchType() { return Arch; }
@@ -163,6 +169,8 @@ protected:
   MachineModuleInfo *MMI;
   const MCInstrAnalysis *MIA;
   const MCInstrInfo *MII;
+  const MCRegisterInfo *MRI;
+  const MCInstPrinter *MIP;
   const ObjectFile *Obj;
   MCDisassembler *DisAsm;
   /// Index of text section whose instructions are raised

@@ -35,8 +35,8 @@ void DAGRaisingInfo::setRealValue(SDNode *N, Value *V) {
 }
 
 void DAGRaisingInfo::clear() {
-  for (auto &elmt : NPMap)
-    delete elmt.second;
+  for (auto &Elm : NPMap)
+    delete Elm.second;
 
   NPMap.clear();
 }

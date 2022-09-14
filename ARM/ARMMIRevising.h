@@ -29,12 +29,12 @@ class ARMMIRevising : public ARMRaiserBase {
 public:
   static char ID;
 
-  ARMMIRevising(ARMModuleRaiser &MRsr);
+  ARMMIRevising(ARMModuleRaiser &MR, MachineFunction *MF, Function *RF,
+                MCInstRaiser *MCIR);
   ~ARMMIRevising() override;
-  void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
+
   bool revise();
-  bool runOnMachineFunction(MachineFunction &mf) override;
-  void setMCInstRaiser(MCInstRaiser *PMCIR);
+  bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
   bool reviseMI(MachineInstr &MI);

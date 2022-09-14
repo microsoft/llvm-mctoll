@@ -19,31 +19,31 @@ using namespace llvm::mctoll;
 
 /// Initialize this FunctionRaisingInfo with the given Function and its
 /// associated MachineFunction.
-void FunctionRaisingInfo::set(ARMModuleRaiser &mr, Function &fn,
-                              MachineFunction &mf, SelectionDAG *dag) {
-  MR = &mr;
-  Fn = &fn;
-  MF = &mf;
-  CTX = dag->getContext();
+void FunctionRaisingInfo::set(ARMModuleRaiser &MRVal, Function &FNVal,
+                              MachineFunction &MFVal, SelectionDAG *DAG) {
+  MR = &MRVal;
+  Fn = &FNVal;
+  MF = &MFVal;
+  CTX = DAG->getContext();
   DLT = &MR->getModule()->getDataLayout();
 
   DefaultType = Type::getIntNTy(*CTX, DLT->getPointerSizeInBits());
 }
 
-SDValue FunctionRaisingInfo::getValueByRegister(unsigned reg) {
-  assert((RegValMap.count(reg) != 0) &&
+SDValue FunctionRaisingInfo::getValueByRegister(unsigned Reg) {
+  assert((RegValMap.count(Reg) != 0) &&
          "Can not find the corresponding value!");
-  return SDValue(RegValMap[reg], 0);
+  return SDValue(RegValMap[Reg], 0);
 }
 
-void FunctionRaisingInfo::setValueByRegister(unsigned reg, SDValue val) {
-  assert((val.getNode() != nullptr) && "Can not map a nullptr to a register!");
-  RegValMap[reg] = val.getNode();
+void FunctionRaisingInfo::setValueByRegister(unsigned Reg, SDValue Val) {
+  assert((Val.getNode() != nullptr) && "Can not map a nullptr to a register!");
+  RegValMap[Reg] = Val.getNode();
 }
 
-SDValue FunctionRaisingInfo::getValFromRegMap(SDValue val) {
-  unsigned reg = static_cast<RegisterSDNode *>(val.getNode())->getReg();
-  return (RegValMap.count(reg) == 0) ? val : SDValue(RegValMap[reg], 0);
+SDValue FunctionRaisingInfo::getValFromRegMap(SDValue Val) {
+  Register Reg = static_cast<RegisterSDNode *>(Val.getNode())->getReg();
+  return (RegValMap.count(Reg) == 0) ? Val : SDValue(RegValMap[Reg], 0);
 }
 
 /// Clear out all the function-specific state. This returns this
@@ -61,10 +61,10 @@ void FunctionRaisingInfo::clear() {
 }
 
 /// Get the corresponding BasicBlock of given MachineBasicBlock.
-BasicBlock *FunctionRaisingInfo::getBasicBlock(MachineBasicBlock &mbb) {
-  for (auto bb : MBBMap) {
-    if (bb.second == &mbb)
-      return const_cast<BasicBlock *>(bb.first);
+BasicBlock *FunctionRaisingInfo::getBasicBlock(MachineBasicBlock &MBB) {
+  for (auto Block : MBBMap) {
+    if (Block.second == &MBB)
+      return const_cast<BasicBlock *>(Block.first);
   }
 
   return nullptr;
@@ -73,21 +73,21 @@ BasicBlock *FunctionRaisingInfo::getBasicBlock(MachineBasicBlock &mbb) {
 /// Get the corresponding BasicBlock of given MachineBasicBlock.
 /// If does not give a MachineBasicBlock, it will create a new BasicBlock
 /// on current Function, and returns it.
-BasicBlock *FunctionRaisingInfo::getOrCreateBasicBlock(MachineBasicBlock *mbb) {
-  Function *fn = getCRF();
-  if (mbb == nullptr)
-    return BasicBlock::Create(fn->getContext(), "", fn);
+BasicBlock *FunctionRaisingInfo::getOrCreateBasicBlock(MachineBasicBlock *MBB) {
+  Function *Fn = getCRF();
+  if (MBB == nullptr)
+    return BasicBlock::Create(Fn->getContext(), "", Fn);
 
-  BasicBlock *bb = getBasicBlock(*mbb);
-  if (bb != nullptr)
-    return bb;
+  BasicBlock *Block = getBasicBlock(*MBB);
+  if (Block != nullptr)
+    return Block;
 
-  if (&MF->front() == mbb)
-    bb = &fn->getEntryBlock();
+  if (&MF->front() == MBB)
+    Block = &Fn->getEntryBlock();
   else
-    bb = BasicBlock::Create(fn->getContext(), "", fn);
+    Block = BasicBlock::Create(Fn->getContext(), "", Fn);
 
-  MBBMap.insert(std::make_pair(bb, mbb));
+  MBBMap.insert(std::make_pair(Block, MBB));
 
-  return bb;
+  return Block;
 }

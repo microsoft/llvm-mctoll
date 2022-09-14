@@ -6,19 +6,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the declaration of RISCV32ModuleRaiser class for use by
+// This file contains the implementation of RISCV32ModuleRaiser class for use by
 // llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//
 
-#include "RISCV32ModuleRaiser.h"
+#include "RISCVModuleRaiser.h"
 #include "llvm/Object/ELFObjectFile.h"
 
 using namespace llvm;
-
-namespace RaiserContext {
-extern SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
-}
+using namespace llvm::mctoll;
 
 bool RISCV32ModuleRaiser::collectDynamicRelocations() {
   if (!Obj->isELF())
@@ -37,15 +34,6 @@ bool RISCV32ModuleRaiser::collectDynamicRelocations() {
   return true;
 }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void InitializeRISCV32ModuleRaiser() {
-  ModuleRaiser *m = new RISCV32ModuleRaiser();
-  RaiserContext::ModuleRaiserRegistry.push_back(m);
+void registerRISCV32ModuleRaiser() {
+  registerModuleRaiser(new RISCV32ModuleRaiser());
 }
-
-#ifdef __cplusplus
-}
-#endif

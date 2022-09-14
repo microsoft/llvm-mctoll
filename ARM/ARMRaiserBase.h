@@ -27,9 +27,8 @@ class ARMRaiserBase : public FunctionPass {
 protected:
   ARMRaiserBase() = delete;
   ARMRaiserBase(char &PassID, ARMModuleRaiser &ArmMR)
-      : FunctionPass(PassID), MR(&ArmMR) {
-    M = MR->getModule();
-  }
+      : FunctionPass(PassID), MR(&ArmMR) {}
+
   ~ARMRaiserBase() override {}
 
   virtual void init(MachineFunction *NewMF = nullptr, Function *NewRF = nullptr) {
@@ -48,13 +47,14 @@ protected:
   }
 
   /// Get current raised llvm::Function.
-  Function *getCRF() { return RF; }
+  Function *getRaisedFunction() { return RF; }
+  /// Get current raised llvm::Module.
+  Module *getModule() const { return MR->getModule(); }
 
   ARMModuleRaiser *MR;
   /// Current raised llvm::Function.
   Function *RF;
   MachineFunction *MF;
-  Module *M;
 };
 
 } // end namespace mctoll

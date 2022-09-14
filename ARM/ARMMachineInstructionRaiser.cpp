@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ARMMachineInstructionRaiser.h"
 #include "ARMArgumentRaiser.h"
 #include "ARMCreateJumpTable.h"
 #include "ARMEliminatePrologEpilog.h"
@@ -19,6 +18,7 @@
 #include "ARMFunctionPrototype.h"
 #include "ARMInstructionSplitting.h"
 #include "ARMMIRevising.h"
+#include "ARMMachineInstructionRaiser.h"
 #include "ARMModuleRaiser.h"
 #include "ARMSelectionDAGISel.h"
 
@@ -26,53 +26,43 @@ using namespace llvm;
 using namespace llvm::mctoll;
 
 ARMMachineInstructionRaiser::ARMMachineInstructionRaiser(
-    MachineFunction &machFunc, const ModuleRaiser *mr, MCInstRaiser *mcir)
-    : MachineInstructionRaiser(machFunc, mr, mcir),
-      machRegInfo(MF.getRegInfo()) {}
+    MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MCIR)
+    : MachineInstructionRaiser(MF, MR, MCIR), MachineRegInfo(MF.getRegInfo()) {}
 
 bool ARMMachineInstructionRaiser::raiseMachineFunction() {
-  const ARMModuleRaiser *amr = dyn_cast<ARMModuleRaiser>(MR);
-  assert(amr != nullptr && "The ARM module raiser is not initialized!");
-  ARMModuleRaiser &rmr = const_cast<ARMModuleRaiser &>(*amr);
+  const ARMModuleRaiser *ConstAMR = dyn_cast<ARMModuleRaiser>(MR);
+  assert(ConstAMR != nullptr && "The ARM module raiser is not initialized!");
+  ARMModuleRaiser &AMR = const_cast<ARMModuleRaiser &>(*ConstAMR);
 
-  ARMMIRevising mir(rmr);
-  mir.init(&MF, RaisedFunction);
-  mir.setMCInstRaiser(InstRaiser);
-  mir.revise();
+  ARMMIRevising MIR(AMR,&MF, RaisedFunction, InstRaiser);
+  MIR.revise();
 
-  ARMEliminatePrologEpilog epe(rmr);
-  epe.init(&MF, RaisedFunction);
-  epe.eliminate();
+  ARMEliminatePrologEpilog EPE(AMR, &MF, RaisedFunction);
+  EPE.eliminate();
 
-  ARMCreateJumpTable cjt(rmr);
-  cjt.init(&MF, RaisedFunction);
-  cjt.setMCInstRaiser(InstRaiser);
-  cjt.create();
-  cjt.getJTlist(jtList);
+  ARMCreateJumpTable CJT(AMR, &MF, RaisedFunction, InstRaiser);
+  CJT.create();
+  CJT.getJTlist(JTList);
 
-  ARMArgumentRaiser ar(rmr);
-  ar.init(&MF, RaisedFunction);
-  ar.raiseArgs();
+  ARMArgumentRaiser AR(AMR, &MF, RaisedFunction);
+  AR.raiseArgs();
 
-  ARMFrameBuilder fb(rmr);
-  fb.init(&MF, RaisedFunction);
-  fb.build();
+  ARMFrameBuilder FB(AMR, &MF, RaisedFunction);
+  FB.build();
 
-  ARMInstructionSplitting ispl(rmr);
-  ispl.init(&MF, RaisedFunction);
-  ispl.split();
+  ARMInstructionSplitting ISpl(AMR, &MF, RaisedFunction);
+  ISpl.split();
 
-  ARMSelectionDAGISel sdis(rmr);
-  sdis.init(&MF, RaisedFunction);
-  sdis.setjtList(jtList);
-  sdis.doSelection();
+  ARMSelectionDAGISel SelDis(AMR, &MF, RaisedFunction);
+  SelDis.setjtList(JTList);
+  SelDis.doSelection();
 
   return true;
 }
 
 bool ARMMachineInstructionRaiser::raise() {
-  raiseMachineFunction();
-  return true;
+  return raiseMachineFunction();
+  // return true;
 }
 
 int ARMMachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
@@ -100,23 +90,23 @@ FunctionType *ARMMachineInstructionRaiser::getRaisedFunctionPrototype() {
   ARMFunctionPrototype AFP;
   RaisedFunction = AFP.discover(MF);
 
-  Function *ori = const_cast<Function *>(&MF.getFunction());
+  Function *Ori = const_cast<Function *>(&MF.getFunction());
   // Insert the map of raised function to tempFunctionPointer.
   const_cast<ModuleRaiser *>(MR)->insertPlaceholderRaisedFunctionMap(
-      RaisedFunction, ori);
+      RaisedFunction, Ori);
 
   return RaisedFunction->getFunctionType();
 }
 
-// Create a new MachineFunctionRaiser object and add it to the list of
-// MachineFunction raiser objects of this module.
+/// Create a new MachineFunctionRaiser object and add it to the list of
+/// MachineFunction raiser objects of this module.
 MachineFunctionRaiser *ARMModuleRaiser::CreateAndAddMachineFunctionRaiser(
-    Function *f, const ModuleRaiser *mr, uint64_t start, uint64_t end) {
-  MachineFunctionRaiser *mfRaiser = new MachineFunctionRaiser(
-      *M, mr->getMachineModuleInfo()->getOrCreateMachineFunction(*f), mr, start,
-      end);
-  mfRaiser->setMachineInstrRaiser(new ARMMachineInstructionRaiser(
-      mfRaiser->getMachineFunction(), mr, mfRaiser->getMCInstRaiser()));
-  mfRaiserVector.push_back(mfRaiser);
-  return mfRaiser;
+    Function *F, const ModuleRaiser *MR, uint64_t Start, uint64_t End) {
+  MachineFunctionRaiser *MFR = new MachineFunctionRaiser(
+      *M, MR->getMachineModuleInfo()->getOrCreateMachineFunction(*F), MR, Start,
+      End);
+  MFR->setMachineInstrRaiser(new ARMMachineInstructionRaiser(
+      MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
+  MFRaiserVector.push_back(MFR);
+  return MFR;
 }

@@ -15,11 +15,11 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMSELECTIONDAGISEL_H
 
 #include "ARMRaiserBase.h"
-#include "DAGBuilder.h"
-#include "DAGRaisingInfo.h"
-#include "FunctionRaisingInfo.h"
-#include "IREmitter.h"
-#include "InstSelector.h"
+#include "DAG/DAGBuilder.h"
+#include "DAG/DAGRaisingInfo.h"
+#include "DAG/FunctionRaisingInfo.h"
+#include "DAG/IREmitter.h"
+#include "DAG/InstSelector.h"
 #include "Raiser/ModuleRaiser.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 
@@ -30,11 +30,11 @@ namespace mctoll {
 /// the DAG, eventually emits SDNodes of the DAG to LLVM IRs.
 class ARMSelectionDAGISel : public ARMRaiserBase {
 public:
-  ARMSelectionDAGISel(ARMModuleRaiser &mr);
+  ARMSelectionDAGISel(ARMModuleRaiser &MR, MachineFunction *MF, Function *RF);
   ~ARMSelectionDAGISel() override;
-  void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
+
   bool doSelection();
-  bool runOnMachineFunction(MachineFunction &mf) override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
   bool setjtList(std::vector<JumpTableInfo> &List);
   static char ID;
 
@@ -54,7 +54,7 @@ private:
   DAGRaisingInfo *DAGInfo;
   MachineBasicBlock *MBB;
   BasicBlock *BB;
-  std::vector<JumpTableInfo> jtList;
+  std::vector<JumpTableInfo> JTList;
 };
 
 } // end namespace mctoll

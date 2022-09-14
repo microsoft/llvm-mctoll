@@ -24,34 +24,34 @@ namespace mctoll {
 /// selection.
 class InstSelector {
 public:
-  InstSelector(DAGRaisingInfo &dagInfo, FunctionRaisingInfo &funcInfo)
-      : DAGInfo(&dagInfo), CurDAG(&dagInfo.getCurDAG()), FuncInfo(&funcInfo) {}
+  InstSelector(DAGRaisingInfo &DagInfoVal, FunctionRaisingInfo &FuncInfoVal)
+      : DAGInfo(&DagInfoVal), CurDAG(&DagInfoVal.getCurDAG()), FuncInfo(&FuncInfoVal) {}
   void select(SDNode *N);
 
 private:
-  bool isTwoAddressMode(SDNode *node) {
-    if (nullptr == node)
+  bool isTwoAddressMode(SDNode *Node) {
+    if (nullptr == Node)
       return false;
 
-    NodePropertyInfo *npi = DAGInfo->NPMap[node];
+    NodePropertyInfo *NPI = DAGInfo->NPMap[Node];
 
-    if (nullptr == npi)
+    if (nullptr == NPI)
       return false;
 
-    return npi->IsTwoAddress;
+    return NPI->IsTwoAddress;
   }
-  bool getAddressModule(SDNode *node);
+  // bool getAddressModule(SDNode *Node);
   /// Gets the Metadata of given SDNode.
   SDValue getMDOperand(SDNode *N);
   /// Record the new defined Node, it uses to map the register number to Node.
   /// In DAG emitter, emitter get a value of use base on this defined Node.
-  void recordDefinition(SDNode *oldNode, SDNode *newNode);
+  void recordDefinition(SDNode *OldNode, SDNode *NewNode);
   /// Replace all uses of F with T, then remove F from the DAG.
   void replaceNode(SDNode *F, SDNode *T);
   /// Checks the SDNode is a function argument or not.
-  bool isArgumentNode(SDNode *node);
+  bool isArgumentNode(SDNode *Node);
   /// Checks the SDNode is a function return or not.
-  bool isReturnNode(SDNode *node);
+  bool isReturnNode(SDNode *Node);
   /// Instruction opcode selection.
   void selectCode(SDNode *N);
   EVT getDefaultEVT() { return EVT::getEVT(FuncInfo->getDefaultType()); }

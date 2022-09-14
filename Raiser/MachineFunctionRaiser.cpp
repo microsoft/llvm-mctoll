@@ -23,9 +23,9 @@ bool MachineFunctionRaiser::runRaiserPasses() {
 
 // Cleanup empty basic blocks from raised function
 void MachineFunctionRaiser::cleanupRaisedFunction() {
-  Function *RaisedFunc = getRaisedFunction();
+  Function *RF = getRaisedFunction();
   std::vector<BasicBlock *> EmptyBlocks;
-  for (BasicBlock &BB : *RaisedFunc)
+  for (BasicBlock &BB : *RF)
     if (BB.empty())
       EmptyBlocks.push_back(&BB);
 
@@ -41,6 +41,6 @@ Function *MachineFunctionRaiser::getRaisedFunction() {
   return MachineInstRaiser->getRaisedFunction();
 }
 
-void MachineFunctionRaiser::setRaisedFunction(Function *F) {
-  return MachineInstRaiser->setRaisedFunction(F);
+void MachineFunctionRaiser::setRaisedFunction(Function *RF) {
+  return MachineInstRaiser->setRaisedFunction(RF);
 }

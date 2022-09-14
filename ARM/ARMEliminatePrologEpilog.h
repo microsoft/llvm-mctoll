@@ -23,20 +23,20 @@ class ARMEliminatePrologEpilog : public ARMRaiserBase {
 public:
   static char ID;
 
-  ARMEliminatePrologEpilog(ARMModuleRaiser &mr);
+  ARMEliminatePrologEpilog(ARMModuleRaiser &MR, MachineFunction *MF, Function *RF);
   ~ARMEliminatePrologEpilog();
-  void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
+
   bool eliminate();
-  bool runOnMachineFunction(MachineFunction &mf) override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
-  bool checkRegister(unsigned Reg, std::vector<MachineInstr *> &instrs) const;
-  bool eliminateProlog(MachineFunction &mf) const;
-  bool eliminateEpilog(MachineFunction &mf) const;
+  bool checkRegister(unsigned Reg, std::vector<MachineInstr *> &Instrs) const;
+  bool eliminateProlog(MachineFunction &MF) const;
+  bool eliminateEpilog(MachineFunction &MF) const;
   /// Analyze stack size base on moving sp.
-  void analyzeStackSize(MachineFunction &mf);
+  void analyzeStackSize(MachineFunction &MF);
   /// Analyze frame adjustment base on the offset between fp and base sp.
-  void analyzeFrameAdjustment(MachineFunction &mf);
+  void analyzeFrameAdjustment(MachineFunction &MF);
 };
 
 } // end namespace mctoll

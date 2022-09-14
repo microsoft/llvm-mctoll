@@ -24,17 +24,18 @@ using namespace llvm::mctoll;
 
 char ARMInstructionSplitting::ID = 0;
 
-ARMInstructionSplitting::ARMInstructionSplitting(ARMModuleRaiser &mr)
-    : ARMRaiserBase(ID, mr) {}
-
-ARMInstructionSplitting::~ARMInstructionSplitting() {}
-
-void ARMInstructionSplitting::init(MachineFunction *mf, Function *rf) {
-  ARMRaiserBase::init(mf, rf);
+ARMInstructionSplitting::ARMInstructionSplitting(ARMModuleRaiser &CurrMR,
+                                                 MachineFunction *CurrMF,
+                                                 Function *CurrRF)
+    : ARMRaiserBase(ID, CurrMR) {
+  MF = CurrMF;
+  RF = CurrRF;
   TII = MF->getSubtarget<ARMSubtarget>().getInstrInfo();
   MRI = &MF->getRegInfo();
-  CTX = &M->getContext();
+  CTX = &getModule()->getContext();
 }
+
+ARMInstructionSplitting::~ARMInstructionSplitting() {}
 
 /// Check if the MI has shift pattern.
 unsigned ARMInstructionSplitting::checkisShifter(unsigned Opcode) {
@@ -191,24 +192,24 @@ unsigned ARMInstructionSplitting::getShiftOpcode(ARM_AM::ShiftOpc SOpc,
 }
 
 MachineInstrBuilder &
-ARMInstructionSplitting::addOperand(MachineInstrBuilder &mib,
-                                    MachineOperand &mo, bool isDef) {
-  switch (mo.getType()) {
+ARMInstructionSplitting::addOperand(MachineInstrBuilder &MIB,
+                                    MachineOperand &MO, bool IsDef) {
+  switch (MO.getType()) {
   default:
     assert(false && "Unsupported MachineOperand type!");
     break;
   case MachineOperand::MO_Register: {
-    if (isDef)
-      mib.addDef(mo.getReg());
+    if (IsDef)
+      MIB.addDef(MO.getReg());
     else
-      mib.addUse(mo.getReg());
+      MIB.addUse(MO.getReg());
   } break;
   case MachineOperand::MO_FrameIndex: {
-    mib.addFrameIndex(mo.getIndex());
+    MIB.addFrameIndex(MO.getIndex());
   } break;
   }
 
-  return mib;
+  return MIB;
 }
 
 /// Split LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, #+/-<imm>]! to:
@@ -232,34 +233,34 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRPreImm(MachineBasicBlock &MBB,
       ConstantInt::get(*CTX, llvm::APInt(64, 1, false)));
   MDNode *N_sec = MDNode::get(*CTX, CMD_sec);
 
-  unsigned newOpc = getLoadStoreOpcode(MI.getOpcode());
+  unsigned NewOpc = getLoadStoreOpcode(MI.getOpcode());
   // Add Rm,[Rm, #imm]!
-  MachineInstrBuilder fst =
+  MachineInstrBuilder Fst =
       BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr));
-  addOperand(fst, Rm, true);
-  addOperand(fst, Rm);
-  fst.addImm(Rs.getImm());
+  addOperand(Fst, Rm, true);
+  addOperand(Fst, Rm);
+  Fst.addImm(Rs.getImm());
 
-  MachineInstrBuilder sec =
-      BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+  MachineInstrBuilder Sec =
+      BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
   if (MI.mayStore())
     // STRxxx Rn, [Rm]
-    addOperand(sec, Rn);
+    addOperand(Sec, Rn);
   else if (MI.mayLoad())
     // LDRxxx Rd, [Rm]
-    addOperand(sec, Rd, true);
-  addOperand(sec, Rm);
+    addOperand(Sec, Rd, true);
+  addOperand(Sec, Rm);
 
-  int idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
+  int Idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
   // Add CPSR if the MI has.
-  if (idx != -1) {
-    fst.addImm(MI.getOperand(idx - 1).getImm());
-    addOperand(fst, MI.getOperand(idx));
-    sec.addImm(MI.getOperand(idx - 1).getImm());
-    addOperand(sec, MI.getOperand(idx));
+  if (Idx != -1) {
+    Fst.addImm(MI.getOperand(Idx - 1).getImm());
+    addOperand(Fst, MI.getOperand(Idx));
+    Sec.addImm(MI.getOperand(Idx - 1).getImm());
+    addOperand(Sec, MI.getOperand(Idx));
   }
-  fst.addMetadata(N_fst);
-  sec.addMetadata(N_sec);
+  Fst.addMetadata(N_fst);
+  Sec.addMetadata(N_sec);
   return &MI;
 }
 
@@ -272,7 +273,7 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRPre(MachineBasicBlock &MBB,
   unsigned Simm = MI.getOperand(4).getImm();
   unsigned SOffSet = ARM_AM::getAM2Offset(Simm);
   ARM_AM::ShiftOpc SOpc = ARM_AM::getAM2ShiftOpc(Simm);
-  unsigned SVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+  Register SVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
 
   MachineOperand &Rd = MI.getOperand(0);
   MachineOperand &Rn = MI.getOperand(1);
@@ -295,101 +296,101 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRPre(MachineBasicBlock &MBB,
       ConstantInt::get(*CTX, llvm::APInt(64, 2, false)));
   MDNode *N_thd = MDNode::get(*CTX, CMD_thd);
 
-  unsigned newOpc = getLoadStoreOpcode(MI.getOpcode());
-  int idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
+  unsigned NewOpc = getLoadStoreOpcode(MI.getOpcode());
+  int Idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
   if (SOffSet > 0) {
     // LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, +/-<Rm>{, <shift>}]!
 
     // Rs shift #imm and write result to VReg.
-    MachineInstrBuilder fst =
+    MachineInstrBuilder Fst =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), SVReg);
-    addOperand(fst, Rs);
-    fst.addImm(SOffSet);
+    addOperand(Fst, Rs);
+    Fst.addImm(SOffSet);
 
     // Add Rm, VReg
-    MachineInstrBuilder sec =
+    MachineInstrBuilder Sec =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr));
-    addOperand(sec, Rm, true);
-    addOperand(sec, Rm);
-    sec.addReg(SVReg);
+    addOperand(Sec, Rm, true);
+    addOperand(Sec, Rm);
+    Sec.addReg(SVReg);
 
-    MachineInstrBuilder thd =
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+    MachineInstrBuilder Thd =
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
     if (MI.mayStore())
       // STRxxx Rn, [Rm]
-      addOperand(thd, Rn);
+      addOperand(Thd, Rn);
     else if (MI.mayLoad())
       // LDRxxx Rd, [Rm]
-      addOperand(thd, Rd, true);
-    addOperand(thd, Rm);
+      addOperand(Thd, Rd, true);
+    addOperand(Thd, Rm);
 
     // Add CPSR if the MI has.
-    if (idx != -1) {
-      fst.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(fst, MI.getOperand(idx));
-      sec.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(sec, MI.getOperand(idx));
-      thd.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(thd, MI.getOperand(idx));
+    if (Idx != -1) {
+      Fst.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Fst, MI.getOperand(Idx));
+      Sec.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Sec, MI.getOperand(Idx));
+      Thd.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Thd, MI.getOperand(Idx));
     }
-    fst.addMetadata(N_fst);
-    sec.addMetadata(N_sec);
-    thd.addMetadata(N_thd);
+    Fst.addMetadata(N_fst);
+    Sec.addMetadata(N_sec);
+    Thd.addMetadata(N_thd);
   } else if (ShiftOpc == ARM::RRX) {
     // Split LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, +/-<Rm>, RRX]!
-    MachineInstrBuilder fst =
+    MachineInstrBuilder Fst =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), SVReg);
-    addOperand(fst, Rs);
+    addOperand(Fst, Rs);
 
-    MachineInstrBuilder sec =
+    MachineInstrBuilder Sec =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr));
-    addOperand(sec, Rm, true);
-    addOperand(sec, Rm);
-    sec.addReg(SVReg);
+    addOperand(Sec, Rm, true);
+    addOperand(Sec, Rm);
+    Sec.addReg(SVReg);
 
-    MachineInstrBuilder thd =
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+    MachineInstrBuilder Thd =
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
     if (MI.mayStore())
-      addOperand(thd, Rn);
+      addOperand(Thd, Rn);
     else if (MI.mayLoad())
-      addOperand(thd, Rd, true);
-    addOperand(thd, Rm);
+      addOperand(Thd, Rd, true);
+    addOperand(Thd, Rm);
 
     // Add CPSR if the MI has.
-    if (idx != -1) {
-      sec.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(sec, MI.getOperand(idx));
-      thd.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(thd, MI.getOperand(idx));
+    if (Idx != -1) {
+      Sec.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Sec, MI.getOperand(Idx));
+      Thd.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Thd, MI.getOperand(Idx));
     }
-    fst.addMetadata(N_fst);
-    sec.addMetadata(N_sec);
-    thd.addMetadata(N_thd);
+    Fst.addMetadata(N_fst);
+    Sec.addMetadata(N_sec);
+    Thd.addMetadata(N_thd);
   } else {
     // Split LDRxxx/STRxxx<c><q> <Rt>, [<Rn>, +/-<Rm>]!
-    MachineInstrBuilder fst =
+    MachineInstrBuilder Fst =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr));
-    addOperand(fst, Rm, true);
-    addOperand(fst, Rm);
-    addOperand(fst, Rs);
+    addOperand(Fst, Rm, true);
+    addOperand(Fst, Rm);
+    addOperand(Fst, Rs);
 
-    MachineInstrBuilder sec =
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+    MachineInstrBuilder Sec =
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
     if (MI.mayStore())
-      addOperand(sec, Rn);
+      addOperand(Sec, Rn);
     else if (MI.mayLoad())
-      addOperand(sec, Rd, true);
-    addOperand(sec, Rm);
+      addOperand(Sec, Rd, true);
+    addOperand(Sec, Rm);
 
     // Add CPSR if the MI has.
-    if (idx != -1) {
-      fst.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(fst, MI.getOperand(idx));
-      sec.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(sec, MI.getOperand(idx));
+    if (Idx != -1) {
+      Fst.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Fst, MI.getOperand(Idx));
+      Sec.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Sec, MI.getOperand(Idx));
     }
-    fst.addMetadata(N_fst);
-    sec.addMetadata(N_sec);
+    Fst.addMetadata(N_fst);
+    Sec.addMetadata(N_sec);
   }
   return &MI;
 }
@@ -399,7 +400,7 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRPre(MachineBasicBlock &MBB,
 /// LDRxxx/STRxxx Rd, [VReg]
 MachineInstr *ARMInstructionSplitting::splitLDRSTRImm(MachineBasicBlock &MBB,
                                                       MachineInstr &MI) {
-  unsigned VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+  Register VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
   MachineOperand &Rd = MI.getOperand(0);
   MachineOperand &Rn = MI.getOperand(1);
   MachineOperand &Rm = MI.getOperand(2);
@@ -415,32 +416,32 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTRImm(MachineBasicBlock &MBB,
       ConstantInt::get(*CTX, llvm::APInt(64, 1, false)));
   MDNode *N_sec = MDNode::get(*CTX, CMD_sec);
 
-  unsigned newOpc = getLoadStoreOpcode(MI.getOpcode());
+  unsigned NewOpc = getLoadStoreOpcode(MI.getOpcode());
   // Add VReg, Rn, #imm
-  MachineInstrBuilder fst =
+  MachineInstrBuilder Fst =
       BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr), VReg);
-  addOperand(fst, Rn);
-  fst.addImm(Rm.getImm());
+  addOperand(Fst, Rn);
+  Fst.addImm(Rm.getImm());
 
   // LDRxxx/STRxxx Rd, [VReg]
-  MachineInstrBuilder sec =
-      BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+  MachineInstrBuilder Sec =
+      BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
   if (MI.mayStore())
-    addOperand(sec, Rd);
+    addOperand(Sec, Rd);
   else
-    addOperand(sec, Rd, true);
-  sec.addReg(VReg);
+    addOperand(Sec, Rd, true);
+  Sec.addReg(VReg);
 
-  int idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
+  int Idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
   // Add CPSR if the MI has.
-  if (idx != -1) {
-    fst.addImm(MI.getOperand(idx - 1).getImm());
-    addOperand(fst, MI.getOperand(idx));
-    sec.addImm(MI.getOperand(idx - 1).getImm());
-    addOperand(sec, MI.getOperand(idx));
+  if (Idx != -1) {
+    Fst.addImm(MI.getOperand(Idx - 1).getImm());
+    addOperand(Fst, MI.getOperand(Idx));
+    Sec.addImm(MI.getOperand(Idx - 1).getImm());
+    addOperand(Sec, MI.getOperand(Idx));
   }
-  fst.addMetadata(N_fst);
-  sec.addMetadata(N_sec);
+  Fst.addMetadata(N_fst);
+  Sec.addMetadata(N_sec);
   return &MI;
 }
 
@@ -453,8 +454,8 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTR(MachineBasicBlock &MBB,
   unsigned Simm = MI.getOperand(3).getImm();
   unsigned SOffSet = ARM_AM::getAM2Offset(Simm);
   ARM_AM::ShiftOpc SOpc = ARM_AM::getAM2ShiftOpc(Simm);
-  unsigned SVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
-  unsigned AVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+  Register SVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+  Register AVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
 
   MachineOperand &Rd = MI.getOperand(0);
   MachineOperand &Rn = MI.getOperand(1);
@@ -476,90 +477,90 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTR(MachineBasicBlock &MBB,
       ConstantInt::get(*CTX, llvm::APInt(64, 2, false)));
   MDNode *N_thd = MDNode::get(*CTX, CMD_thd);
 
-  unsigned newOpc = getLoadStoreOpcode(MI.getOpcode());
-  int idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
+  unsigned NewOpc = getLoadStoreOpcode(MI.getOpcode());
+  int Idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
   if (SOffSet > 0) {
     // Split LDRxxx/STRxxx Rd, [Rn, Rm, shift]
-    MachineInstrBuilder fst =
+    MachineInstrBuilder Fst =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), SVReg);
-    addOperand(fst, Rm);
-    fst.addImm(SOffSet);
+    addOperand(Fst, Rm);
+    Fst.addImm(SOffSet);
 
-    MachineInstrBuilder sec =
+    MachineInstrBuilder Sec =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr), AVReg);
-    addOperand(sec, Rn);
-    sec.addReg(SVReg);
+    addOperand(Sec, Rn);
+    Sec.addReg(SVReg);
 
-    MachineInstrBuilder thd =
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+    MachineInstrBuilder Thd =
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
     if (MI.mayStore())
-      addOperand(thd, Rd);
+      addOperand(Thd, Rd);
     else
-      addOperand(thd, Rd, true);
-    thd.addReg(AVReg);
+      addOperand(Thd, Rd, true);
+    Thd.addReg(AVReg);
     // Add CPSR if the MI has.
-    if (idx != -1) {
-      fst.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(fst, MI.getOperand(idx));
-      sec.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(sec, MI.getOperand(idx));
-      thd.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(thd, MI.getOperand(idx));
+    if (Idx != -1) {
+      Fst.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Fst, MI.getOperand(Idx));
+      Sec.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Sec, MI.getOperand(Idx));
+      Thd.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Thd, MI.getOperand(Idx));
     }
-    fst.addMetadata(N_fst);
-    sec.addMetadata(N_sec);
-    thd.addMetadata(N_thd);
+    Fst.addMetadata(N_fst);
+    Sec.addMetadata(N_sec);
+    Thd.addMetadata(N_thd);
   } else if (ShiftOpc == ARM::RRX) {
     // Split LDRxxx/STRxxx Rd, [Rn, Rm, rrx]
-    MachineInstrBuilder fst =
+    MachineInstrBuilder Fst =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), SVReg);
-    addOperand(fst, Rm);
+    addOperand(Fst, Rm);
 
-    MachineInstrBuilder sec =
+    MachineInstrBuilder Sec =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr), AVReg);
-    addOperand(sec, Rn);
-    sec.addReg(SVReg);
+    addOperand(Sec, Rn);
+    Sec.addReg(SVReg);
 
-    MachineInstrBuilder thd =
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+    MachineInstrBuilder Thd =
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
     if (MI.mayStore())
-      addOperand(thd, Rd);
+      addOperand(Thd, Rd);
     else
-      addOperand(thd, Rd, true);
-    thd.addReg(AVReg);
+      addOperand(Thd, Rd, true);
+    Thd.addReg(AVReg);
     // Add CPSR if the MI has.
-    if (idx != -1) {
-      sec.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(sec, MI.getOperand(idx));
-      thd.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(thd, MI.getOperand(idx));
+    if (Idx != -1) {
+      Sec.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Sec, MI.getOperand(Idx));
+      Thd.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Thd, MI.getOperand(Idx));
     }
-    fst.addMetadata(N_fst);
-    sec.addMetadata(N_sec);
-    thd.addMetadata(N_thd);
+    Fst.addMetadata(N_fst);
+    Sec.addMetadata(N_sec);
+    Thd.addMetadata(N_thd);
   } else {
     // Split LDRxxx/STRxxx Rd, [Rn, Rm]
-    MachineInstrBuilder fst =
+    MachineInstrBuilder Fst =
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ARM::ADDrr), AVReg);
-    addOperand(fst, Rn);
-    addOperand(fst, Rm);
+    addOperand(Fst, Rn);
+    addOperand(Fst, Rm);
 
-    MachineInstrBuilder sec =
-        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
+    MachineInstrBuilder Sec =
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
     if (MI.mayStore())
-      addOperand(sec, Rd);
+      addOperand(Sec, Rd);
     else
-      addOperand(sec, Rd, true);
-    sec.addReg(AVReg);
+      addOperand(Sec, Rd, true);
+    Sec.addReg(AVReg);
     // Add CPSR if the MI has.
-    if (idx != -1) {
-      fst.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(fst, MI.getOperand(idx));
-      sec.addImm(MI.getOperand(idx - 1).getImm());
-      addOperand(sec, MI.getOperand(idx));
+    if (Idx != -1) {
+      Fst.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Fst, MI.getOperand(Idx));
+      Sec.addImm(MI.getOperand(Idx - 1).getImm());
+      addOperand(Sec, MI.getOperand(Idx));
     }
-    fst.addMetadata(N_fst);
-    sec.addMetadata(N_sec);
+    Fst.addMetadata(N_fst);
+    Sec.addMetadata(N_sec);
   }
   return &MI;
 }
@@ -567,8 +568,8 @@ MachineInstr *ARMInstructionSplitting::splitLDRSTR(MachineBasicBlock &MBB,
 /// Split 'Opcode Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitCommon(MachineBasicBlock &MBB,
                                                    MachineInstr &MI,
-                                                   unsigned newOpc) {
-  MachineInstr *mi = nullptr;
+                                                   unsigned NewOpc) {
+  MachineInstr *ResMI = nullptr;
   for (unsigned i = 0; i < MI.getNumOperands(); i++) {
     if (MI.getOperand(i).isImm()) {
       unsigned Simm = MI.getOperand(i).getImm();
@@ -576,7 +577,7 @@ MachineInstr *ARMInstructionSplitting::splitCommon(MachineBasicBlock &MBB,
       ARM_AM::ShiftOpc SOpc = ARM_AM::getSORegShOp(Simm);
       unsigned ShiftOpc = getShiftOpcode(SOpc, SOffSet);
 
-      unsigned VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+      Register VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
       if (ShiftOpc) {
         MachineOperand &Rd = MI.getOperand(0);
         MachineOperand &Rn = MI.getOperand(i - 2);
@@ -594,81 +595,81 @@ MachineInstr *ARMInstructionSplitting::splitCommon(MachineBasicBlock &MBB,
           // Split Opcode Rd, Rn, Rm, shift #imm
 
           // Rm shifts SOffset and writes result to VReg.
-          MachineInstrBuilder fst =
+          MachineInstrBuilder Fst =
               BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-          addOperand(fst, Rm);
-          fst.addImm(SOffSet);
-          fst.addMetadata(N_fst);
+          addOperand(Fst, Rm);
+          Fst.addImm(SOffSet);
+          Fst.addMetadata(N_fst);
 
           // Build 'opcode Rd, Rn, VReg'
-          MachineInstrBuilder sec =
-              BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-          addOperand(sec, Rd, true);
-          for (unsigned n = 1; n < (i - 1); n++) {
-            addOperand(sec, MI.getOperand(n));
+          MachineInstrBuilder Sec =
+              BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+          addOperand(Sec, Rd, true);
+          for (unsigned N = 1; N < (i - 1); N++) {
+            addOperand(Sec, MI.getOperand(N));
           }
-          sec.addReg(VReg);
-          sec.addMetadata(N_sec);
+          Sec.addReg(VReg);
+          Sec.addMetadata(N_sec);
         } else {
           if (ShiftOpc == ARM::RRX) {
             // Split 'opcode Rd, Rn, Rm, RRX'
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rm);
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rm);
+            Fst.addMetadata(N_fst);
 
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
 
-            for (unsigned n = 1; n < i - 1; n++) {
-              addOperand(sec, MI.getOperand(n));
+            for (unsigned N = 1; N < i - 1; N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addMetadata(N_sec);
           } else {
             // Split 'opcode Rd, Rn, Rm, shift Rs'
 
             // Build 'ShiftOpc VReg, Rn, Rm'
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rn);
-            addOperand(fst, Rm);
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rn);
+            addOperand(Fst, Rm);
+            Fst.addMetadata(N_fst);
 
             // Build 'opcode Rd, Rn, VReg'
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
 
-            for (unsigned n = 1; n < (i - 2); n++) {
-              addOperand(sec, MI.getOperand(n));
+            for (unsigned N = 1; N < (i - 2); N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addMetadata(N_sec);
           }
         }
-        mi = &MI;
+        ResMI = &MI;
         break;
       }
     }
   }
 
-  return mi;
+  return ResMI;
 }
 
 /// Split 'opcode<s> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitS(MachineBasicBlock &MBB,
-                                              MachineInstr &MI, unsigned newOpc,
-                                              int idx) {
-  MachineInstr *mi = nullptr;
+                                              MachineInstr &MI, unsigned NewOpc,
+                                              int Idx) {
+  MachineInstr *ResMI = nullptr;
   for (unsigned i = 0; i < MI.getNumOperands(); i++) {
     if (MI.getOperand(i).isImm()) {
       unsigned Simm = MI.getOperand(i).getImm();
       unsigned SOffSet = ARM_AM::getSORegOffset(Simm);
       ARM_AM::ShiftOpc SOpc = ARM_AM::getSORegShOp(Simm);
       unsigned ShiftOpc = getShiftOpcode(SOpc, SOffSet);
-      unsigned VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+      Register VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
 
       if (ShiftOpc) {
         ConstantAsMetadata *CMD_fst = ConstantAsMetadata::get(
@@ -689,69 +690,69 @@ MachineInstr *ARMInstructionSplitting::splitS(MachineBasicBlock &MBB,
             // Split opcode<s> Rd, Rn, Rm, shift #imm.
 
             // Rm shift #imm and  the new MI updates CPSR.
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rm);
-            fst.addImm(SOffSet);
-            fst.addImm(ARMCC::AL);
-            addOperand(fst, MI.getOperand(idx));
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rm);
+            Fst.addImm(SOffSet);
+            Fst.addImm(ARMCC::AL);
+            addOperand(Fst, MI.getOperand(Idx));
+            Fst.addMetadata(N_fst);
 
             // Build 'opcode<s> Rd, Rn, VReg'
             // The new MI updates CPSR.
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
-            for (unsigned n = 1; n < (i - 1); n++) {
-              addOperand(sec, MI.getOperand(n));
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
+            for (unsigned N = 1; N < (i - 1); N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addImm(ARMCC::AL);
-            addOperand(sec, MI.getOperand(idx));
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addImm(ARMCC::AL);
+            addOperand(Sec, MI.getOperand(Idx));
+            Sec.addMetadata(N_sec);
           } else {
             if (ShiftOpc == ARM::RRX) {
               // Split opcode<s> Rd, Rn, Rm, RRX.
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rm);
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rm);
+              Fst.addMetadata(N_fst);
               // XXX: RRX implicit CPSR, how to add cpsr?
 
               // Build base instructions
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 1); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 1); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(ARMCC::AL);
-              addOperand(sec, MI.getOperand(idx));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(ARMCC::AL);
+              addOperand(Sec, MI.getOperand(Idx));
+              Sec.addMetadata(N_sec);
             } else {
               // Split opcode<s> Rd, Rn, Rm, shift Rs.
               // The new MI updates CPSR.
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rn);
-              addOperand(fst, Rm);
-              fst.addImm(ARMCC::AL);
-              addOperand(fst, MI.getOperand(idx));
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rn);
+              addOperand(Fst, Rm);
+              Fst.addImm(ARMCC::AL);
+              addOperand(Fst, MI.getOperand(Idx));
+              Fst.addMetadata(N_fst);
 
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 2); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 2); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(ARMCC::AL);
-              addOperand(sec, MI.getOperand(idx));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(ARMCC::AL);
+              addOperand(Sec, MI.getOperand(Idx));
+              Sec.addMetadata(N_sec);
             }
           }
         } else {
@@ -759,91 +760,91 @@ MachineInstr *ARMInstructionSplitting::splitS(MachineBasicBlock &MBB,
             // Split opcode<s> Rd, Rn, Rm, shift #imm.
 
             // Rm shift #imm,  and the new MI doesn't update CPSR.
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rm);
-            fst.addImm(SOffSet);
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rm);
+            Fst.addImm(SOffSet);
+            Fst.addMetadata(N_fst);
 
             // Build 'opcode<s> Rd, Rn, VReg'
             // The new MI updates CPSR.
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
-            for (unsigned n = 1; n < (i - 1); n++) {
-              addOperand(sec, MI.getOperand(n));
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
+            for (unsigned N = 1; N < (i - 1); N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addImm(ARMCC::AL);
-            addOperand(sec, MI.getOperand(idx));
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addImm(ARMCC::AL);
+            addOperand(Sec, MI.getOperand(Idx));
+            Sec.addMetadata(N_sec);
           } else {
             if (ShiftOpc == ARM::RRX) {
               // Split opcode<s> Rd, Rn, Rm, rrx.
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rm);
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rm);
+              Fst.addMetadata(N_fst);
               // RRX implicit CPSR, how to add cpsr?
 
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 1); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 1); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(ARMCC::AL);
-              addOperand(sec, MI.getOperand(idx));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(ARMCC::AL);
+              addOperand(Sec, MI.getOperand(Idx));
+              Sec.addMetadata(N_sec);
             } else {
               // Split opcode<s> Rd, Rn, Rm, shift Rs.
 
               // Rm shift reg,  and the new MI doesn't update CPSR.
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rn);
-              addOperand(fst, Rm);
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rn);
+              addOperand(Fst, Rm);
+              Fst.addMetadata(N_fst);
 
               // Build 'opcode<s> Rd, Rn, VReg'
               // The new MI updates CPSR.
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 2); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 2); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(ARMCC::AL);
-              addOperand(sec, MI.getOperand(idx));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(ARMCC::AL);
+              addOperand(Sec, MI.getOperand(Idx));
+              Sec.addMetadata(N_sec);
             }
           }
         }
-        mi = &MI;
+        ResMI = &MI;
         break;
       }
     }
   }
 
-  return mi;
+  return ResMI;
 }
 
 /// Split 'opcode<c> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitC(MachineBasicBlock &MBB,
-                                              MachineInstr &MI, unsigned newOpc,
-                                              int idx) {
-  MachineInstr *mi = nullptr;
+                                              MachineInstr &MI, unsigned NewOpc,
+                                              int Idx) {
+  MachineInstr *ResMI = nullptr;
   for (unsigned i = 0; i < MI.getNumOperands(); i++) {
     if (MI.getOperand(i).isImm()) {
       unsigned Simm = MI.getOperand(i).getImm();
       unsigned SOffSet = ARM_AM::getSORegOffset(Simm);
       ARM_AM::ShiftOpc SOpc = ARM_AM::getSORegShOp(Simm);
       unsigned ShiftOpc = getShiftOpcode(SOpc, SOffSet);
-      unsigned VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+      Register VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
 
       if (ShiftOpc) {
         MachineOperand &Rd = MI.getOperand(0);
@@ -862,91 +863,91 @@ MachineInstr *ARMInstructionSplitting::splitC(MachineBasicBlock &MBB,
           // Split opcode<c> Rd, Rn, Rm, shift #imm
           // The new MI checks CondCode.
 
-          MachineInstrBuilder fst =
+          MachineInstrBuilder Fst =
               BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-          addOperand(fst, Rm);
-          fst.addImm(SOffSet);
-          fst.addImm(MI.getOperand(idx - 1).getImm());
-          addOperand(fst, MI.getOperand(idx));
-          fst.addMetadata(N_fst);
+          addOperand(Fst, Rm);
+          Fst.addImm(SOffSet);
+          Fst.addImm(MI.getOperand(Idx - 1).getImm());
+          addOperand(Fst, MI.getOperand(Idx));
+          Fst.addMetadata(N_fst);
 
-          MachineInstrBuilder sec =
-              BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-          addOperand(sec, Rd, true);
-          for (unsigned n = 1; n < (i - 1); n++) {
-            addOperand(sec, MI.getOperand(n));
+          MachineInstrBuilder Sec =
+              BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+          addOperand(Sec, Rd, true);
+          for (unsigned N = 1; N < (i - 1); N++) {
+            addOperand(Sec, MI.getOperand(N));
           }
-          sec.addReg(VReg);
-          sec.addImm(MI.getOperand(idx - 1).getImm());
-          addOperand(sec, MI.getOperand(idx));
-          sec.addMetadata(N_sec);
+          Sec.addReg(VReg);
+          Sec.addImm(MI.getOperand(Idx - 1).getImm());
+          addOperand(Sec, MI.getOperand(Idx));
+          Sec.addMetadata(N_sec);
         } else {
           if (ShiftOpc == ARM::RRX) {
             // Split opcode<c> Rd, Rn, Rm, RRX
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rm);
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rm);
+            Fst.addMetadata(N_fst);
             // XXX: RRX implicit CPSR, how to add cpsr?
 
             // Build base instructions
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
 
-            for (unsigned n = 1; n < (i - 1); n++) {
-              addOperand(sec, MI.getOperand(n));
+            for (unsigned N = 1; N < (i - 1); N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addImm(MI.getOperand(idx - 1).getImm());
-            addOperand(sec, MI.getOperand(idx));
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addImm(MI.getOperand(Idx - 1).getImm());
+            addOperand(Sec, MI.getOperand(Idx));
+            Sec.addMetadata(N_sec);
           } else {
             // Split opcode<c> Rd, Rn, Rm, shift Rs
             // The new MI checks CondCode.
 
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rn);
-            addOperand(fst, Rm);
-            fst.addImm(MI.getOperand(idx - 1).getImm());
-            addOperand(fst, MI.getOperand(idx));
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rn);
+            addOperand(Fst, Rm);
+            Fst.addImm(MI.getOperand(Idx - 1).getImm());
+            addOperand(Fst, MI.getOperand(Idx));
+            Fst.addMetadata(N_fst);
 
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
 
-            for (unsigned n = 1; n < (i - 2); n++) {
-              addOperand(sec, MI.getOperand(n));
+            for (unsigned N = 1; N < (i - 2); N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addImm(MI.getOperand(idx - 1).getImm());
-            addOperand(sec, MI.getOperand(idx));
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addImm(MI.getOperand(Idx - 1).getImm());
+            addOperand(Sec, MI.getOperand(Idx));
+            Sec.addMetadata(N_sec);
           }
         }
-        mi = &MI;
+        ResMI = &MI;
         break;
       }
     }
   }
 
-  return mi;
+  return ResMI;
 }
 
 /// Split 'opcode<s><c> Rd, Rn, Rm, shift' except LDRxxx/STRxxx.
 MachineInstr *ARMInstructionSplitting::splitCS(MachineBasicBlock &MBB,
                                                MachineInstr &MI,
-                                               unsigned newOpc, int idx) {
-  MachineInstr *mi = nullptr;
+                                               unsigned NewOpc, int Idx) {
+  MachineInstr *ResMI = nullptr;
   for (unsigned i = 0; i < MI.getNumOperands(); i++) {
     if (MI.getOperand(i).isImm()) {
       unsigned Simm = MI.getOperand(i).getImm();
       unsigned SOffSet = ARM_AM::getSORegOffset(Simm);
       ARM_AM::ShiftOpc SOpc = ARM_AM::getSORegShOp(Simm);
       unsigned ShiftOpc = getShiftOpcode(SOpc, SOffSet);
-      unsigned VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+      Register VReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
 
       if (ShiftOpc) {
         MachineOperand &Rd = MI.getOperand(0);
@@ -967,72 +968,72 @@ MachineInstr *ARMInstructionSplitting::splitCS(MachineBasicBlock &MBB,
             // Split opcode<s><c> Rd, Rn, Rm, shift #imm
 
             // The new MI both updates CPSR and checks CondCode.
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rm);
-            fst.addImm(SOffSet);
-            fst.addImm(MI.getOperand(idx - 1).getImm());
-            addOperand(fst, MI.getOperand(idx));
-            addOperand(fst, MI.getOperand(idx + 1));
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rm);
+            Fst.addImm(SOffSet);
+            Fst.addImm(MI.getOperand(Idx - 1).getImm());
+            addOperand(Fst, MI.getOperand(Idx));
+            addOperand(Fst, MI.getOperand(Idx + 1));
+            Fst.addMetadata(N_fst);
 
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
-            for (unsigned n = 1; n < (i - 1); n++) {
-              addOperand(sec, MI.getOperand(n));
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
+            for (unsigned N = 1; N < (i - 1); N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addImm(MI.getOperand(idx - 1).getImm());
-            addOperand(sec, MI.getOperand(idx));
-            addOperand(sec, MI.getOperand(idx + 1));
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addImm(MI.getOperand(Idx - 1).getImm());
+            addOperand(Sec, MI.getOperand(Idx));
+            addOperand(Sec, MI.getOperand(Idx + 1));
+            Sec.addMetadata(N_sec);
           } else {
             if (ShiftOpc == ARM::RRX) {
               // Split opcode<s><c> Rd, Rn, Rm, RRX
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rm);
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rm);
+              Fst.addMetadata(N_fst);
               // RRX implicit CPSR, how to add cpsr?
 
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 1); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 1); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(MI.getOperand(idx - 1).getImm());
-              addOperand(sec, MI.getOperand(idx));
-              addOperand(sec, MI.getOperand(idx + 1));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(MI.getOperand(Idx - 1).getImm());
+              addOperand(Sec, MI.getOperand(Idx));
+              addOperand(Sec, MI.getOperand(Idx + 1));
+              Sec.addMetadata(N_sec);
             } else {
               // Split opcode<s><c> Rd, Rn, Rm, shift Rs
 
               // The new MI both updates CPSR and checks CondCode.
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rn);
-              addOperand(fst, Rm);
-              fst.addImm(MI.getOperand(idx - 1).getImm());
-              addOperand(fst, MI.getOperand(idx));
-              addOperand(fst, MI.getOperand(idx + 1));
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rn);
+              addOperand(Fst, Rm);
+              Fst.addImm(MI.getOperand(Idx - 1).getImm());
+              addOperand(Fst, MI.getOperand(Idx));
+              addOperand(Fst, MI.getOperand(Idx + 1));
+              Fst.addMetadata(N_fst);
 
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 2); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 2); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(MI.getOperand(idx - 1).getImm());
-              addOperand(sec, MI.getOperand(idx));
-              addOperand(sec, MI.getOperand(idx + 1));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(MI.getOperand(Idx - 1).getImm());
+              addOperand(Sec, MI.getOperand(Idx));
+              addOperand(Sec, MI.getOperand(Idx + 1));
+              Sec.addMetadata(N_sec);
             }
           }
         } else {
@@ -1042,100 +1043,100 @@ MachineInstr *ARMInstructionSplitting::splitCS(MachineBasicBlock &MBB,
 
             // Rm shifts #imm
             // The new MI checks CondCode, doesn't update CPSR.
-            MachineInstrBuilder fst =
+            MachineInstrBuilder Fst =
                 BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-            addOperand(fst, Rm);
-            fst.addImm(SOffSet);
-            fst.addImm(MI.getOperand(idx - 1).getImm());
-            addOperand(fst, MI.getOperand(idx));
-            fst.addMetadata(N_fst);
+            addOperand(Fst, Rm);
+            Fst.addImm(SOffSet);
+            Fst.addImm(MI.getOperand(Idx - 1).getImm());
+            addOperand(Fst, MI.getOperand(Idx));
+            Fst.addMetadata(N_fst);
 
             // Build 'newOpc<s><c> Rd, Rn, VReg'
             // The new MI both updates CPSR and checks CondCode.
-            MachineInstrBuilder sec =
-                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-            addOperand(sec, Rd, true);
-            for (unsigned n = 1; n < (i - 1); n++) {
-              addOperand(sec, MI.getOperand(n));
+            MachineInstrBuilder Sec =
+                BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+            addOperand(Sec, Rd, true);
+            for (unsigned N = 1; N < (i - 1); N++) {
+              addOperand(Sec, MI.getOperand(N));
             }
-            sec.addReg(VReg);
-            sec.addImm(MI.getOperand(idx - 1).getImm());
-            addOperand(sec, MI.getOperand(idx));
-            addOperand(sec, MI.getOperand(idx + 1));
-            sec.addMetadata(N_sec);
+            Sec.addReg(VReg);
+            Sec.addImm(MI.getOperand(Idx - 1).getImm());
+            addOperand(Sec, MI.getOperand(Idx));
+            addOperand(Sec, MI.getOperand(Idx + 1));
+            Sec.addMetadata(N_sec);
           } else {
             if (ShiftOpc == ARM::RRX) {
               // Split opcode<s><c> Rd, Rn, Rm, RRX
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rm);
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rm);
+              Fst.addMetadata(N_fst);
               // RRX implicit CPSR, how to add cpsr?
 
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 1); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 1); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(MI.getOperand(idx - 1).getImm());
-              addOperand(sec, MI.getOperand(idx));
-              addOperand(sec, MI.getOperand(idx + 1));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(MI.getOperand(Idx - 1).getImm());
+              addOperand(Sec, MI.getOperand(Idx));
+              addOperand(Sec, MI.getOperand(Idx + 1));
+              Sec.addMetadata(N_sec);
             } else {
               // Split opcode<s><c> Rd, Rn, Rm, shift Rs
 
               // Rm shift #imm.
               // The new MI checks CondCode, doesn't update CPSR.
-              MachineInstrBuilder fst =
+              MachineInstrBuilder Fst =
                   BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(ShiftOpc), VReg);
-              addOperand(fst, Rn);
-              addOperand(fst, Rm);
-              fst.addImm(MI.getOperand(idx - 1).getImm());
-              addOperand(fst, MI.getOperand(idx));
-              fst.addMetadata(N_fst);
+              addOperand(Fst, Rn);
+              addOperand(Fst, Rm);
+              Fst.addImm(MI.getOperand(Idx - 1).getImm());
+              addOperand(Fst, MI.getOperand(Idx));
+              Fst.addMetadata(N_fst);
 
               // Build 'newOpc<s><c> Rd, Rn, VReg'
               // The new MI both updates CPSR and checks CondCode.
-              MachineInstrBuilder sec =
-                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(newOpc));
-              addOperand(sec, Rd, true);
+              MachineInstrBuilder Sec =
+                  BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(NewOpc));
+              addOperand(Sec, Rd, true);
 
-              for (unsigned n = 1; n < (i - 2); n++) {
-                addOperand(sec, MI.getOperand(n));
+              for (unsigned N = 1; N < (i - 2); N++) {
+                addOperand(Sec, MI.getOperand(N));
               }
-              sec.addReg(VReg);
-              sec.addImm(MI.getOperand(idx - 1).getImm());
-              addOperand(sec, MI.getOperand(idx));
-              addOperand(sec, MI.getOperand(idx + 1));
-              sec.addMetadata(N_sec);
+              Sec.addReg(VReg);
+              Sec.addImm(MI.getOperand(Idx - 1).getImm());
+              addOperand(Sec, MI.getOperand(Idx));
+              addOperand(Sec, MI.getOperand(Idx + 1));
+              Sec.addMetadata(N_sec);
             }
           }
         }
-        mi = &MI;
+        ResMI = &MI;
         break;
       }
     }
   }
 
-  return mi;
+  return ResMI;
 }
 
 bool ARMInstructionSplitting::split() {
   LLVM_DEBUG(dbgs() << "ARMInstructionSplitting start.\n");
 
-  std::vector<MachineInstr *> removelist;
+  std::vector<MachineInstr *> RemoveList;
   for (MachineBasicBlock &MBB : *MF) {
     for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end(); I != E;
          ++I) {
       MachineInstr &MI = *I;
-      MachineInstr *removeMI = nullptr;
+      MachineInstr *RemoveMI = nullptr;
 
-      unsigned Opcode, newOpc;
+      unsigned Opcode, NewOpc;
       Opcode = MI.getOpcode();
-      newOpc = checkisShifter(Opcode);
+      NewOpc = checkisShifter(Opcode);
 
       // Need to split
       if (getLoadStoreOpcode(Opcode)) {
@@ -1144,36 +1145,36 @@ bool ARMInstructionSplitting::split() {
         // TODO: LDRSH/LDRSB/LDRH/LDRD split.
         if (isLDRSTRPre(Opcode)) {
           if (MI.getOperand(3).isReg())
-            removeMI = splitLDRSTRPre(MBB, MI);
+            RemoveMI = splitLDRSTRPre(MBB, MI);
           else if (MI.getOperand(3).isImm() && MI.getOperand(3).getImm() != 0)
-            removeMI = splitLDRSTRPreImm(MBB, MI);
-          if (removeMI)
-            removelist.push_back(removeMI);
+            RemoveMI = splitLDRSTRPreImm(MBB, MI);
+          if (RemoveMI)
+            RemoveList.push_back(RemoveMI);
         } else if (MI.getOperand(1).isReg() &&
                    MI.getOperand(1).getReg() != ARM::SP &&
                    MI.getOperand(1).getReg() != ARM::PC) {
           if (MI.getOperand(2).isReg())
-            removeMI = splitLDRSTR(MBB, MI);
+            RemoveMI = splitLDRSTR(MBB, MI);
           else if (MI.getOperand(2).isImm() && MI.getOperand(2).getImm() != 0)
-            removeMI = splitLDRSTRImm(MBB, MI);
-          if (removeMI)
-            removelist.push_back(removeMI);
+            RemoveMI = splitLDRSTRImm(MBB, MI);
+          if (RemoveMI)
+            RemoveList.push_back(RemoveMI);
         }
-      } else if (newOpc) {
+      } else if (NewOpc) {
         // Split the MI except Load and Store.
 
         bool UpdateCPSR = false;
         bool CondCode = false;
-        int idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
+        int Idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
 
         // Check if MI contains CPSR
-        if (idx != -1) {
-          if (MI.getOperand(idx + 1).isReg() &&
-              MI.getOperand(idx + 1).getReg() == ARM::CPSR) {
+        if (Idx != -1) {
+          if (MI.getOperand(Idx + 1).isReg() &&
+              MI.getOperand(Idx + 1).getReg() == ARM::CPSR) {
             UpdateCPSR = true;
             CondCode = true;
-          } else if (MI.getOperand(idx - 1).isImm() &&
-                     MI.getOperand(idx - 1).getImm() != ARMCC::AL) {
+          } else if (MI.getOperand(Idx - 1).isImm() &&
+                     MI.getOperand(Idx - 1).getImm() != ARMCC::AL) {
             CondCode = true;
           } else
             UpdateCPSR = true;
@@ -1181,52 +1182,44 @@ bool ARMInstructionSplitting::split() {
 
         if (!UpdateCPSR && !CondCode)
           // Split the MI has no cpsr.
-          removeMI = splitCommon(MBB, MI, newOpc);
+          RemoveMI = splitCommon(MBB, MI, NewOpc);
         else if (UpdateCPSR && !CondCode)
           // Split the MI updates cpsr.
-          removeMI = splitS(MBB, MI, newOpc, idx);
+          RemoveMI = splitS(MBB, MI, NewOpc, Idx);
         else if (!UpdateCPSR && CondCode)
           // Split the MI checks CondCode.
-          removeMI = splitC(MBB, MI, newOpc, idx);
+          RemoveMI = splitC(MBB, MI, NewOpc, Idx);
         else
           // Split the MI both updates cpsr and check CondCode
-          removeMI = splitCS(MBB, MI, newOpc, idx);
+          RemoveMI = splitCS(MBB, MI, NewOpc, Idx);
 
-        if (removeMI)
-          removelist.push_back(removeMI);
+        if (RemoveMI)
+          RemoveList.push_back(RemoveMI);
       }
     }
   }
 
   // Remove old MI.
-  for (MachineInstr *mi : removelist)
-    mi->removeFromParent();
+  for (MachineInstr *MI : RemoveList)
+    MI->removeFromParent();
 
   // For debugging.
   LLVM_DEBUG(MF->dump());
-  LLVM_DEBUG(getCRF()->dump());
+  LLVM_DEBUG(getRaisedFunction()->dump());
   LLVM_DEBUG(dbgs() << "ARMInstructionSplitting end.\n");
 
   return true;
 }
 
-bool ARMInstructionSplitting::runOnMachineFunction(MachineFunction &mf) {
-  bool rtn = false;
+bool ARMInstructionSplitting::runOnMachineFunction(MachineFunction &MF) {
   init();
-  rtn = split();
-  return rtn;
+  return split();
 }
 
 #undef DEBUG_TYPE
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-FunctionPass *InitializeARMInstructionSplitting(ARMModuleRaiser &mr) {
-  return new ARMInstructionSplitting(mr);
+extern "C" FunctionPass *createARMInstructionSplitting(ARMModuleRaiser &MR,
+                                                       MachineFunction *MF,
+                                                       Function *RF) {
+  return new ARMInstructionSplitting(MR, MF, RF);
 }
-
-#ifdef __cplusplus
-}
-#endif

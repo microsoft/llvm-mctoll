@@ -28,9 +28,9 @@ namespace mctoll {
 class ARMInstructionSplitting : public ARMRaiserBase {
 public:
   static char ID;
-  ARMInstructionSplitting(ARMModuleRaiser &MR);
+  ARMInstructionSplitting(ARMModuleRaiser &MR, MachineFunction *MF, Function *RF);
   ~ARMInstructionSplitting() override;
-  void init(MachineFunction *MF = nullptr, Function *RF = nullptr) override;
+
   bool split();
   bool runOnMachineFunction(MachineFunction &mf) override;
 

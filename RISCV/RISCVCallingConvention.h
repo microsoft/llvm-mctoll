@@ -14,12 +14,13 @@
 #ifndef LLVM_TOOLS_LLVM_MCTOLL_RISCV_CALLING_CONVENTION_H
 #define LLVM_TOOLS_LLVM_MCTOLL_RISCV_CALLING_CONVENTION_H
 
-#include <vector>
-#include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "llvm/MC/MCRegisterInfo.h"
+// #include "MCTargetDesc/RISCVMCTargetDesc.h"
+#include <vector>
+
+using std::vector;
 
 using namespace llvm;
-using std::vector;
 
 class RISCVCallingConvention {
 public:
@@ -49,8 +50,8 @@ public:
   RISCVCallingConvention::ConstRandomAccessIterator floatArgRegsEnd() const { return mFloatArgRegs.end(); }
 
 protected:
-  void addIntArgRegister(MCPhysReg reg) { mIntArgRegs.emplace_back(reg); }
-  void addFloatArgRegister(MCPhysReg reg) { mFloatArgRegs.emplace_back(reg); }
+  void addIntArgRegister(MCPhysReg Reg) { mIntArgRegs.emplace_back(Reg); }
+  void addFloatArgRegister(MCPhysReg Reg) { mFloatArgRegs.emplace_back(Reg); }
   virtual void addIntRegs8() = 0;
   virtual void addFloatRegsSingle() = 0;
   virtual void addFloatRegsDouble() = 0;
@@ -66,7 +67,7 @@ public:
   virtual ~RISCVCallingConventionI32()
   {}
   
-  unsigned int intRegLength() const { return 32; }
+  unsigned int intRegLength() const override { return 32; }
 };
 
 class RISCVCallingConventionI64 : public RISCVCallingConvention {
@@ -75,8 +76,8 @@ public:
   virtual ~RISCVCallingConventionI64()
   {}
   
-  unsigned int intRegLength() const { return 64; }
-  unsigned int numIntRegArgs() const { return 8; }
+  unsigned int intRegLength() const override { return 64; }
+  unsigned int numIntRegArgs() const override { return 8; }
 };
 
 class RISCVILP32 : public RISCVCallingConventionI32 {
@@ -85,10 +86,10 @@ public:
   virtual ~RISCVILP32()
   {}
   
-  unsigned int floatRegLength() const { return 0; }
-  unsigned int numIntRegArgs() const { return 8; }
-  unsigned int numFloatRegArgs() const { return 0; }
-  bool isSoftFloat() const { return true; }
+  unsigned int floatRegLength() const override { return 0; }
+  unsigned int numIntRegArgs() const override { return 8; }
+  unsigned int numFloatRegArgs() const override { return 0; }
+  bool isSoftFloat() const override { return true; }
 };
 
 class RISCVILP32F : public RISCVCallingConventionI32 {
@@ -97,10 +98,10 @@ public:
   virtual ~RISCVILP32F()
   {}
   
-  unsigned int floatRegLength() const { return 32; }
-  unsigned int numIntRegArgs() const { return 8; }
-  unsigned int numFloatRegArgs() const { return 8; }
-  bool isSoftFloat() const { return false; }
+  unsigned int floatRegLength() const override { return 32; }
+  unsigned int numIntRegArgs() const override{ return 8; }
+  unsigned int numFloatRegArgs() const override { return 8; }
+  bool isSoftFloat() const override { return false; }
 };
 
 class RISCVILP32D : public RISCVCallingConventionI32 {
@@ -109,10 +110,10 @@ public:
   virtual ~RISCVILP32D()
   {}
   
-  unsigned int floatRegLength() const { return 64; }
-  unsigned int numIntRegArgs() const { return 8; }
-  unsigned int numFloatRegArgs() const { return 8; }
-  bool isSoftFloat() const { return false; }
+  unsigned int floatRegLength() const override { return 64; }
+  unsigned int numIntRegArgs() const override { return 8; }
+  unsigned int numFloatRegArgs() const override { return 8; }
+  bool isSoftFloat() const override { return false; }
 };
 
 class RISCVILP32E : public RISCVCallingConventionI32 {
@@ -121,10 +122,10 @@ public:
   virtual ~RISCVILP32E()
   {}
   
-  unsigned int floatRegLength() const { return 0; }
-  unsigned int numIntRegArgs() const { return 6; }
-  unsigned int numFloatRegArgs() const { return 0; }
-  bool isSoftFloat() const { return true; }
+  unsigned int floatRegLength() const override { return 0; }
+  unsigned int numIntRegArgs() const override { return 6; }
+  unsigned int numFloatRegArgs() const override { return 0; }
+  bool isSoftFloat() const override { return true; }
 };
 
 class RISCVLP64 : public RISCVCallingConventionI64 {
@@ -133,9 +134,9 @@ public:
   virtual ~RISCVLP64()
   {}
   
-  unsigned int floatRegLength() const { return 0; }
-  unsigned int numFloatRegArgs() const { return 0; }
-  bool isSoftFloat() const { return true; }
+  unsigned int floatRegLength() const override { return 0; }
+  unsigned int numFloatRegArgs() const override { return 0; }
+  bool isSoftFloat() const override { return true; }
 };
 
 class RISCVLP64F : public RISCVCallingConventionI64 {
@@ -144,9 +145,9 @@ public:
   virtual ~RISCVLP64F()
   {}
   
-  unsigned int floatRegLength() const { return 32; }
-  unsigned int numFloatRegArgs() const { return 8; }
-  bool isSoftFloat() const { return false; }
+  unsigned int floatRegLength() const override { return 32; }
+  unsigned int numFloatRegArgs() const override { return 8; }
+  bool isSoftFloat() const override { return false; }
 };
 
 class RISCVLP64D : public RISCVCallingConventionI64 {
@@ -155,9 +156,9 @@ public:
   virtual ~RISCVLP64D()
   {}
   
-  unsigned int floatRegLength() const { return 64; }
-  unsigned int numFloatRegArgs() const { return 8; }
-  bool isSoftFloat() const { return false; }
+  unsigned int floatRegLength() const override { return 64; }
+  unsigned int numFloatRegArgs() const override { return 8; }
+  bool isSoftFloat() const override { return false; }
 };
   
 #endif // LLVM_TOOLS_LLVM_MCTOLL_RISCV_CALLING_CONVENTION_H

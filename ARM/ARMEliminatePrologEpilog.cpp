@@ -23,25 +23,26 @@ using namespace llvm::mctoll;
 
 char ARMEliminatePrologEpilog::ID = 0;
 
-ARMEliminatePrologEpilog::ARMEliminatePrologEpilog(ARMModuleRaiser &mr)
-    : ARMRaiserBase(ID, mr) {}
+ARMEliminatePrologEpilog::ARMEliminatePrologEpilog(ARMModuleRaiser &MR,
+                                                   MachineFunction *CurrMF,
+                                                   Function *CurrRF)
+    : ARMRaiserBase(ID, MR) {
+  MF = CurrMF;
+  RF = CurrRF;
+}
 
 ARMEliminatePrologEpilog::~ARMEliminatePrologEpilog() {}
-
-void ARMEliminatePrologEpilog::init(MachineFunction *mf, Function *rf) {
-  ARMRaiserBase::init(mf, rf);
-}
 
 /// Return true if an operand in the instrs vector matches the passed register
 /// number, otherwise false.
 bool ARMEliminatePrologEpilog::checkRegister(
-    unsigned Reg, std::vector<MachineInstr *> &instrs) const {
-  std::vector<MachineInstr *>::iterator it = instrs.begin();
-  for (; it < instrs.end(); ++it) {
-    MachineInstr *mi = *it;
-    if (mi->mayStore()) {
-      for (unsigned i = 0; i < mi->getNumOperands(); i++) {
-        MachineOperand MO = mi->getOperand(i);
+    unsigned Reg, std::vector<MachineInstr *> &Instrs) const {
+  std::vector<MachineInstr *>::iterator Iter = Instrs.begin();
+  for (; Iter < Instrs.end(); ++Iter) {
+    MachineInstr *MI = *Iter;
+    if (MI->mayStore()) {
+      for (unsigned i = 0; i < MI->getNumOperands(); i++) {
+        MachineOperand MO = MI->getOperand(i);
 
         // Compare the register number.
         if (MO.isReg() && MO.getReg() == Reg)
@@ -79,54 +80,54 @@ bool ARMEliminatePrologEpilog::checkRegister(
 ///
 ///       ldmdb r13, {r4-r11, r13, r15}
 bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
-  std::vector<MachineInstr *> prologInstrs;
-  MachineBasicBlock &frontMBB = MF.front();
+  std::vector<MachineInstr *> PrologInstrs;
+  MachineBasicBlock &FrontMBB = MF.front();
 
   const ARMSubtarget &STI = MF.getSubtarget<ARMSubtarget>();
   const ARMBaseRegisterInfo *RegInfo = STI.getRegisterInfo();
-  unsigned FramePtr = RegInfo->getFrameRegister(MF);
+  Register FramePtr = RegInfo->getFrameRegister(MF);
 
-  for (MachineBasicBlock::iterator frontMBBIter = frontMBB.begin();
-       frontMBBIter != frontMBB.end(); frontMBBIter++) {
-    MachineInstr &curMachInstr = (*frontMBBIter);
+  for (MachineBasicBlock::iterator FrontMBBIter = FrontMBB.begin();
+       FrontMBBIter != FrontMBB.end(); FrontMBBIter++) {
+    MachineInstr &CurMachInstr = (*FrontMBBIter);
 
     // Push the MOVr instruction
-    if (curMachInstr.getOpcode() == ARM::MOVr) {
-      if (curMachInstr.getOperand(0).isReg() &&
-          curMachInstr.getOperand(0).getReg() == ARM::R11 &&
-          curMachInstr.getOperand(1).isReg() &&
-          curMachInstr.getOperand(1).getReg() == FramePtr)
-        prologInstrs.push_back(&curMachInstr);
+    if (CurMachInstr.getOpcode() == ARM::MOVr) {
+      if (CurMachInstr.getOperand(0).isReg() &&
+          CurMachInstr.getOperand(0).getReg() == ARM::R11 &&
+          CurMachInstr.getOperand(1).isReg() &&
+          CurMachInstr.getOperand(1).getReg() == FramePtr)
+        PrologInstrs.push_back(&CurMachInstr);
     }
 
     // Push the STORE instruction
-    if (curMachInstr.mayStore()) {
-      MachineOperand storeOperand = curMachInstr.getOperand(0);
-      if (storeOperand.isReg() && storeOperand.getReg() == FramePtr) {
-        prologInstrs.push_back(&curMachInstr);
+    if (CurMachInstr.mayStore()) {
+      MachineOperand StoreOperand = CurMachInstr.getOperand(0);
+      if (StoreOperand.isReg() && StoreOperand.getReg() == FramePtr) {
+        PrologInstrs.push_back(&CurMachInstr);
       }
     }
 
     // Push the ADDri instruction
     // add Rx, sp, #imm ; This kind of patten ought to be eliminated.
-    if (curMachInstr.getOpcode() == ARM::ADDri &&
-        curMachInstr.getOperand(0).getReg() == ARM::R11 &&
-        curMachInstr.getOperand(1).getReg() == FramePtr) {
-      prologInstrs.push_back(&curMachInstr);
+    if (CurMachInstr.getOpcode() == ARM::ADDri &&
+        CurMachInstr.getOperand(0).getReg() == ARM::R11 &&
+        CurMachInstr.getOperand(1).getReg() == FramePtr) {
+      PrologInstrs.push_back(&CurMachInstr);
     }
 
     // Push the SUBri instruction
-    if (curMachInstr.getOpcode() == ARM::SUBri &&
-        curMachInstr.getOperand(0).getReg() == FramePtr &&
-        curMachInstr.getOperand(1).getReg() == FramePtr) {
-      prologInstrs.push_back(&curMachInstr);
+    if (CurMachInstr.getOpcode() == ARM::SUBri &&
+        CurMachInstr.getOperand(0).getReg() == FramePtr &&
+        CurMachInstr.getOperand(1).getReg() == FramePtr) {
+      PrologInstrs.push_back(&CurMachInstr);
     }
 
     // Push sub r11, r12, #16
-    if (curMachInstr.getOpcode() == ARM::SUBri &&
-        curMachInstr.getOperand(0).getReg() == ARM::R11 &&
-        curMachInstr.getOperand(1).getReg() == ARM::R12) {
-      prologInstrs.push_back(&curMachInstr);
+    if (CurMachInstr.getOpcode() == ARM::SUBri &&
+        CurMachInstr.getOperand(0).getReg() == ARM::R11 &&
+        CurMachInstr.getOperand(1).getReg() == ARM::R12) {
+      PrologInstrs.push_back(&CurMachInstr);
     }
   }
 
@@ -139,7 +140,7 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
     unsigned Reg = CSRegs[i];
 
     // Save register.
-    if (checkRegister(Reg, prologInstrs)) {
+    if (checkRegister(Reg, PrologInstrs)) {
       CSI.push_back(CalleeSavedInfo(Reg));
     }
   }
@@ -158,7 +159,7 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
     // Allocate stack slots for the registers that need to be saved and restored
     unsigned Offset = 0;
     for (auto &CS : CSI) {
-      unsigned Reg = CS.getReg();
+      Register Reg = CS.getReg();
       const TargetRegisterClass *RC = RegInfo->getMinimalPhysRegClass(Reg);
 
       int FrameIdx;
@@ -199,9 +200,9 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
   }
 
   // Eliminate the instructions identified in function prologue
-  unsigned int delInstSz = prologInstrs.size();
-  for (unsigned int i = 0; i < delInstSz; i++) {
-    frontMBB.erase(prologInstrs[i]);
+  unsigned int DelInstSz = PrologInstrs.size();
+  for (unsigned int i = 0; i < DelInstSz; i++) {
+    FrontMBB.erase(PrologInstrs[i]);
   }
 
   return true;
@@ -211,77 +212,77 @@ bool ARMEliminatePrologEpilog::eliminateEpilog(MachineFunction &MF) const {
   const ARMSubtarget &STI = MF.getSubtarget<ARMSubtarget>();
   const ARMBaseRegisterInfo *RegInfo = STI.getRegisterInfo();
   const ARMBaseInstrInfo *TII = STI.getInstrInfo();
-  unsigned FramePtr = RegInfo->getFrameRegister(MF);
+  Register FramePtr = RegInfo->getFrameRegister(MF);
 
   for (MachineBasicBlock &MBB : MF) {
-    std::vector<MachineInstr *> epilogInstrs;
+    std::vector<MachineInstr *> EpilogInstrs;
     // MBBI may be invalidated by the raising operation.
-    for (MachineBasicBlock::iterator backMBBIter = MBB.begin();
-         backMBBIter != MBB.end(); backMBBIter++) {
-      MachineInstr &curMachInstr = (*backMBBIter);
+    for (MachineBasicBlock::iterator BackMBBIter = MBB.begin();
+         BackMBBIter != MBB.end(); BackMBBIter++) {
+      MachineInstr &CurMachInstr = (*BackMBBIter);
 
       // Push the LOAD instruction
-      if (curMachInstr.mayLoad()) {
-        MachineOperand loadOperand = curMachInstr.getOperand(0);
-        if (loadOperand.isReg() && loadOperand.getReg() == FramePtr) {
+      if (CurMachInstr.mayLoad()) {
+        MachineOperand LoadOperand = CurMachInstr.getOperand(0);
+        if (LoadOperand.isReg() && LoadOperand.getReg() == FramePtr) {
           // If the register list of current POP includes PC register,
           // it should be replaced with return instead of removed.
-          if (curMachInstr.findRegisterUseOperandIdx(ARM::PC) != -1) {
-            MachineInstrBuilder mib =
-                BuildMI(MBB, &curMachInstr, DebugLoc(), TII->get(ARM::BX_RET));
-            int cpsridx = curMachInstr.findRegisterUseOperandIdx(ARM::CPSR);
-            if (cpsridx == -1) {
-              mib.addImm(ARMCC::AL);
+          if (CurMachInstr.findRegisterUseOperandIdx(ARM::PC) != -1) {
+            MachineInstrBuilder MIB =
+                BuildMI(MBB, &CurMachInstr, DebugLoc(), TII->get(ARM::BX_RET));
+            int CpsrIdx = CurMachInstr.findRegisterUseOperandIdx(ARM::CPSR);
+            if (CpsrIdx == -1) {
+              MIB.addImm(ARMCC::AL);
             } else {
-              mib.add(curMachInstr.getOperand(cpsridx - 1))
-                  .add(curMachInstr.getOperand(cpsridx));
+              MIB.add(CurMachInstr.getOperand(CpsrIdx - 1))
+                  .add(CurMachInstr.getOperand(CpsrIdx));
             }
-            mib.add(curMachInstr.getOperand(
-                curMachInstr.getNumExplicitOperands() - 1));
+            MIB.add(CurMachInstr.getOperand(
+                CurMachInstr.getNumExplicitOperands() - 1));
           }
-          epilogInstrs.push_back(&curMachInstr);
+          EpilogInstrs.push_back(&CurMachInstr);
         }
       }
 
       // Push the LDR instruction
-      if (curMachInstr.getOpcode() == ARM::LDR_POST_IMM &&
-          curMachInstr.getOperand(1).getReg() == FramePtr) {
-        epilogInstrs.push_back(&curMachInstr);
+      if (CurMachInstr.getOpcode() == ARM::LDR_POST_IMM &&
+          CurMachInstr.getOperand(1).getReg() == FramePtr) {
+        EpilogInstrs.push_back(&CurMachInstr);
       }
 
       // Push the STR instruction
-      if (curMachInstr.getOpcode() == ARM::STR_PRE_IMM &&
-          curMachInstr.getOperand(0).getReg() == FramePtr) {
-        epilogInstrs.push_back(&curMachInstr);
+      if (CurMachInstr.getOpcode() == ARM::STR_PRE_IMM &&
+          CurMachInstr.getOperand(0).getReg() == FramePtr) {
+        EpilogInstrs.push_back(&CurMachInstr);
       }
 
       // Push the ADDri instruction
-      if (curMachInstr.getOpcode() == ARM::ADDri &&
-          curMachInstr.getOperand(0).isReg()) {
-        if (curMachInstr.getOperand(0).getReg() == FramePtr) {
-          epilogInstrs.push_back(&curMachInstr);
+      if (CurMachInstr.getOpcode() == ARM::ADDri &&
+          CurMachInstr.getOperand(0).isReg()) {
+        if (CurMachInstr.getOperand(0).getReg() == FramePtr) {
+          EpilogInstrs.push_back(&CurMachInstr);
         }
       }
 
       // Push the SUBri instruction
-      if (curMachInstr.getOpcode() == ARM::SUBri &&
-          curMachInstr.getOperand(0).getReg() == FramePtr) {
-        epilogInstrs.push_back(&curMachInstr);
+      if (CurMachInstr.getOpcode() == ARM::SUBri &&
+          CurMachInstr.getOperand(0).getReg() == FramePtr) {
+        EpilogInstrs.push_back(&CurMachInstr);
       }
 
-      if (curMachInstr.getOpcode() == ARM::MOVr) {
-        if (curMachInstr.getOperand(1).isReg() &&
-            curMachInstr.getOperand(1).getReg() == ARM::R11 &&
-            curMachInstr.getOperand(0).isReg() &&
-            curMachInstr.getOperand(0).getReg() == FramePtr)
-          epilogInstrs.push_back(&curMachInstr);
+      if (CurMachInstr.getOpcode() == ARM::MOVr) {
+        if (CurMachInstr.getOperand(1).isReg() &&
+            CurMachInstr.getOperand(1).getReg() == ARM::R11 &&
+            CurMachInstr.getOperand(0).isReg() &&
+            CurMachInstr.getOperand(0).getReg() == FramePtr)
+          EpilogInstrs.push_back(&CurMachInstr);
       }
     }
 
     // Eliminate the instructions identified in function epilogue
-    unsigned int delInstSz = epilogInstrs.size();
-    for (unsigned int i = 0; i < delInstSz; i++) {
-      MBB.erase(epilogInstrs[i]);
+    unsigned int DelInstSz = EpilogInstrs.size();
+    for (unsigned int i = 0; i < DelInstSz; i++) {
+      MBB.erase(EpilogInstrs[i]);
     }
   }
 
@@ -291,18 +292,18 @@ bool ARMEliminatePrologEpilog::eliminateEpilog(MachineFunction &MF) const {
 /// Analyze stack size base on moving sp.
 /// Patterns like:
 /// sub	sp, sp, #28
-void ARMEliminatePrologEpilog::analyzeStackSize(MachineFunction &mf) {
-  if (mf.size() < 1)
+void ARMEliminatePrologEpilog::analyzeStackSize(MachineFunction &MF) {
+  if (MF.size() < 1)
     return;
 
-  const MachineBasicBlock &mbb = mf.front();
+  const MachineBasicBlock &MBB = MF.front();
 
-  for (const MachineInstr &mi : mbb.instrs()) {
-    if (mi.getOpcode() == ARM::SUBri && mi.getNumOperands() >= 3 &&
-        mi.getOperand(0).isReg() && mi.getOperand(0).getReg() == ARM::SP &&
-        mi.getOperand(1).isReg() && mi.getOperand(1).getReg() == ARM::SP &&
-        mi.getOperand(2).isImm() && mi.getOperand(2).getImm() > 0) {
-      mf.getFrameInfo().setStackSize(mi.getOperand(2).getImm());
+  for (const MachineInstr &MI : MBB.instrs()) {
+    if (MI.getOpcode() == ARM::SUBri && MI.getNumOperands() >= 3 &&
+        MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == ARM::SP &&
+        MI.getOperand(1).isReg() && MI.getOperand(1).getReg() == ARM::SP &&
+        MI.getOperand(2).isImm() && MI.getOperand(2).getImm() > 0) {
+      MF.getFrameInfo().setStackSize(MI.getOperand(2).getImm());
       break;
     }
   }
@@ -311,18 +312,18 @@ void ARMEliminatePrologEpilog::analyzeStackSize(MachineFunction &mf) {
 /// Analyze frame adjustment base on the offset between fp and base sp.
 /// Patterns like:
 /// add	fp, sp, #8
-void ARMEliminatePrologEpilog::analyzeFrameAdjustment(MachineFunction &mf) {
-  if (mf.size() < 1)
+void ARMEliminatePrologEpilog::analyzeFrameAdjustment(MachineFunction &MF) {
+  if (MF.size() < 1)
     return;
 
-  const MachineBasicBlock &mbb = mf.front();
+  const MachineBasicBlock &MBB = MF.front();
 
-  for (const MachineInstr &mi : mbb.instrs()) {
-    if (mi.getOpcode() == ARM::ADDri && mi.getNumOperands() >= 3 &&
-        mi.getOperand(0).isReg() && mi.getOperand(0).getReg() == ARM::R11 &&
-        mi.getOperand(1).isReg() && mi.getOperand(1).getReg() == ARM::SP &&
-        mi.getOperand(2).isImm() && mi.getOperand(2).getImm() > 0) {
-      mf.getFrameInfo().setOffsetAdjustment(mi.getOperand(2).getImm());
+  for (const MachineInstr &MI : MBB.instrs()) {
+    if (MI.getOpcode() == ARM::ADDri && MI.getNumOperands() >= 3 &&
+        MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == ARM::R11 &&
+        MI.getOperand(1).isReg() && MI.getOperand(1).getReg() == ARM::SP &&
+        MI.getOperand(2).isImm() && MI.getOperand(2).getImm() > 0) {
+      MF.getFrameInfo().setOffsetAdjustment(MI.getOperand(2).getImm());
       break;
     }
   }
@@ -333,37 +334,31 @@ bool ARMEliminatePrologEpilog::eliminate() {
 
   analyzeStackSize(*MF);
   analyzeFrameAdjustment(*MF);
-  bool success = eliminateProlog(*MF);
+  bool Success = eliminateProlog(*MF);
 
-  if (success) {
-    success = eliminateEpilog(*MF);
+  if (Success) {
+    Success = eliminateEpilog(*MF);
   }
 
   // For debugging.
   LLVM_DEBUG(MF->dump());
-  LLVM_DEBUG(getCRF()->dump());
+  LLVM_DEBUG(getRaisedFunction()->dump());
   LLVM_DEBUG(dbgs() << "ARMEliminatePrologEpilog end.\n");
 
-  return !success;
+  return !Success;
 }
 
-bool ARMEliminatePrologEpilog::runOnMachineFunction(MachineFunction &mf) {
-  bool rtn = false;
+bool ARMEliminatePrologEpilog::runOnMachineFunction(MachineFunction &MF) {
+  bool Rtn = false;
   init();
-  rtn = eliminate();
-  return rtn;
+  Rtn = eliminate();
+  return Rtn;
 }
 
 #undef DEBUG_TYPE
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-FunctionPass *InitializeARMEliminatePrologEpilog(ARMModuleRaiser &mr) {
-  return new ARMEliminatePrologEpilog(mr);
+extern "C" FunctionPass *createARMEliminatePrologEpilog(ARMModuleRaiser &MR,
+                                                        MachineFunction *MF,
+                                                        Function *RF) {
+  return new ARMEliminatePrologEpilog(MR, MF, RF);
 }
-
-#ifdef __cplusplus
-}
-#endif

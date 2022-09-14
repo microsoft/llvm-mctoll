@@ -123,7 +123,7 @@ void mctoll::registerModuleRaiser(ModuleRaiser *M) {
 
 Function *ModuleRaiser::getRaisedFunctionAt(uint64_t Index) const {
   int64_t TextSecAddr = getTextSectionAddress();
-  for (auto *MFR : mfRaiserVector)
+  for (auto *MFR : MFRaiserVector)
     if ((MFR->getMCInstRaiser()->getFuncStart() + TextSecAddr) == Index)
       return MFR->getRaisedFunction();
 
@@ -167,7 +167,7 @@ Function *ModuleRaiser::getCalledFunctionUsingTextReloc(uint64_t Loc,
   if (TextReloc != nullptr) {
     Expected<StringRef> Sym = TextReloc->getSymbol()->getName();
     assert(Sym && "Failed to find call target symbol");
-    for (auto *MFR : mfRaiserVector) {
+    for (auto *MFR : MFRaiserVector) {
       Function *F = MFR->getRaisedFunction();
       assert(F && "Unexpected null function pointer encountered");
       if (Sym->equals(F->getName()))
@@ -180,7 +180,7 @@ Function *ModuleRaiser::getCalledFunctionUsingTextReloc(uint64_t Loc,
 bool ModuleRaiser::runMachineFunctionPasses() {
   bool Success = true;
 
-  for (auto *MFR : mfRaiserVector) {
+  for (auto *MFR : MFRaiserVector) {
     LLVM_DEBUG(dbgs() << "Function: "
                       << MFR->getMachineFunction().getName().data() << "\n");
     LLVM_DEBUG(dbgs() << "Parsed MCInst List\n");
@@ -188,7 +188,7 @@ bool ModuleRaiser::runMachineFunctionPasses() {
   }
 
   // For each of the functions, run passes to set up for instruction raising.
-  for (auto *MFR : mfRaiserVector) {
+  for (auto *MFR : MFRaiserVector) {
     // 1. Build CFG
     MCInstRaiser *MCIR = MFR->getMCInstRaiser();
     // Populates the MachineFunction with CFG.
@@ -205,7 +205,7 @@ bool ModuleRaiser::runMachineFunctionPasses() {
   const int IterCount = 2;
   for (int i = 0; i < IterCount; i++) {
     AllPrototypesConstructed = true;
-    for (auto *MFR : mfRaiserVector) {
+    for (auto *MFR : MFRaiserVector) {
       LLVM_DEBUG(dbgs() << "Build Prototype for : "
                         << MFR->getMachineFunction().getName().data() << "\n");
       Function *RF = MFR->getRaisedFunction();
@@ -217,14 +217,14 @@ bool ModuleRaiser::runMachineFunctionPasses() {
     }
     LLVM_DEBUG(dbgs() << "Raised Function Prototypes: \n");
     LLVM_DEBUG({
-      for (auto MFR : mfRaiserVector) {
+      for (auto MFR : MFRaiserVector) {
         MFR->getRaisedFunction()->dump();
       }
     });
   }
   assert(AllPrototypesConstructed && "Failed to construct all prototypes");
   // Run instruction raiser passes.
-  for (auto *MFR : mfRaiserVector)
+  for (auto *MFR : MFRaiserVector)
     Success |= MFR->runRaiserPasses();
 
   return Success;
@@ -299,7 +299,7 @@ bool ModuleRaiser::changeRaisedFunctionReturnType(Function *TargetFunc,
 
   // Get the MachineFunction of TargetFunc
   MachineFunctionRaiser *TargetFuncMFRaiser = nullptr;
-  for (auto *MIR : mfRaiserVector) {
+  for (auto *MIR : MFRaiserVector) {
     if (MIR->getRaisedFunction() == TargetFunc) {
       TargetFuncMFRaiser = MIR;
       break;

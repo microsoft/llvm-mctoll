@@ -4483,7 +4483,7 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
     const MachineJumpTableInfo *MJT = MF.getJumpTableInfo();
 
     // Get the case value
-    MachineBasicBlock *cdMBB = JTList[jtIndex].conditionMBB;
+    MachineBasicBlock *cdMBB = JTList[jtIndex].ConditionMBB;
     Value *cdi = getSwitchCompareValue(*cdMBB);
     assert(cdi != nullptr && "Failed to get switch compare value.");
     Type *caseValTy = cdi->getType();
@@ -4498,7 +4498,7 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
 
     // Create the Switch Instruction
     unsigned int numCases = JTCases.size();
-    auto intr_df = mbbToBBMap.find(JTList[jtIndex].df_MBB->getNumber());
+    auto intr_df = mbbToBBMap.find(JTList[jtIndex].DefaultMBB->getNumber());
 
     BasicBlock *df_bb = intr_df->second;
     SwitchInst *Inst = SwitchInst::Create(cdi, df_bb, numCases);
@@ -5699,7 +5699,7 @@ MachineFunctionRaiser *X86ModuleRaiser::CreateAndAddMachineFunctionRaiser(
       End);
   MFR->setMachineInstrRaiser(new X86MachineInstructionRaiser(
       MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
-  mfRaiserVector.push_back(MFR);
+  MFRaiserVector.push_back(MFR);
   return MFR;
 }
 

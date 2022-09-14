@@ -278,13 +278,13 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         // Set default basic block in jump table info
         for (auto *Pred : SwitchMBB->predecessors()) {
           if (Pred != &JmpTblBaseCalcMBB) {
-            JmpTblInfo.df_MBB = Pred;
+            JmpTblInfo.DefaultMBB = Pred;
             break;
           }
         }
         // Set predecessor of current block as condition block of jump table
         // info
-        JmpTblInfo.conditionMBB = *(SwitchMBB->pred_begin());
+        JmpTblInfo.ConditionMBB = *(SwitchMBB->pred_begin());
       } else if (JmpTblBaseCalcMBBTermInst->isIndirectBranch()) {
         assert((JmpTblBaseCalcMBB.pred_size() == 1) &&
                "Expect a single predecessor during jump table discovery");
@@ -301,7 +301,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         // Set default basic block in jump table info
         for (auto *Succ : SwitchMBB->successors()) {
           if (Succ != &JmpTblBaseCalcMBB) {
-            JmpTblInfo.df_MBB = Succ;
+            JmpTblInfo.DefaultMBB = Succ;
             break;
           }
         }
@@ -315,7 +315,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
 
         // Set predecessor of current block as condition block of jump table
         // info
-        JmpTblInfo.conditionMBB = SwitchMBB;
+        JmpTblInfo.ConditionMBB = SwitchMBB;
 
         // Verify the branch instruction of SwitchMBB is a conditional
         // jmp that uses eflags. Go to the most recent instruction that
@@ -337,14 +337,14 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
 
       MachineJumpTableInfo *JTI =
           MF.getOrCreateJumpTableInfo(llvm::MachineJumpTableInfo::EK_Inline);
-      JmpTblInfo.jtIdx = JTI->createJumpTableIndex(JmpTgtMBBvec);
+      JmpTblInfo.JTIdx = JTI->createJumpTableIndex(JmpTgtMBBvec);
 
       const X86Subtarget *STI = &MF.getSubtarget<X86Subtarget>();
       const X86InstrInfo *TII = STI->getInstrInfo();
 
       // Find the appropriate jump opcode based on the size of switch value
       BuildMI(SwitchMBB, DebugLoc(), TII->get(X86::JMP64r))
-          .addJumpTableIndex(JmpTblInfo.jtIdx);
+          .addJumpTableIndex(JmpTblInfo.JTIdx);
       JTList.push_back(JmpTblInfo);
 
       // Add jump table targets as successors of SwitchMBB.

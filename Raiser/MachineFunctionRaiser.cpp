@@ -14,8 +14,8 @@ using namespace llvm::mctoll;
 bool MachineFunctionRaiser::runRaiserPasses() {
   bool Success = false;
   // Raise MCInst to MachineInstr and Build CFG
-  if (machineInstRaiser != nullptr)
-    Success = machineInstRaiser->raise();
+  if (MachineInstRaiser != nullptr)
+    Success = MachineInstRaiser->raise();
 
   cleanupRaisedFunction();
   return Success;
@@ -34,13 +34,13 @@ void MachineFunctionRaiser::cleanupRaisedFunction() {
 }
 
 MachineInstructionRaiser *MachineFunctionRaiser::getMachineInstrRaiser() {
-  return machineInstRaiser;
+  return MachineInstRaiser;
 }
 
 Function *MachineFunctionRaiser::getRaisedFunction() {
-  return machineInstRaiser->getRaisedFunction();
+  return MachineInstRaiser->getRaisedFunction();
 }
 
 void MachineFunctionRaiser::setRaisedFunction(Function *F) {
-  return machineInstRaiser->setRaisedFunction(F);
+  return MachineInstRaiser->setRaisedFunction(F);
 }

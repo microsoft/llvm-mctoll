@@ -304,7 +304,7 @@ static void printTLSDirectory(const COFFObjectFile *Obj) {
 
   const data_directory *DataDir = Obj->getDataDirectory(COFF::TLS_TABLE);
   if (!DataDir)
-    report_error("missing data dir for TLS table", Obj->getFileName());
+    reportError("missing data dir for TLS table", Obj->getFileName());
 
   uintptr_t IntPtr = 0;
   if (DataDir->RelativeVirtualAddress == 0)
@@ -334,7 +334,7 @@ static void printLoadConfiguration(const COFFObjectFile *Obj) {
   const data_directory *DataDir =
       Obj->getDataDirectory(COFF::LOAD_CONFIG_TABLE);
   if (!DataDir)
-    report_error("missing data dir for TLS table", Obj->getFileName());
+    reportError("missing data dir for TLS table", Obj->getFileName());
 
   uintptr_t IntPtr = 0;
   if (DataDir->RelativeVirtualAddress == 0)
@@ -675,11 +675,11 @@ void mctoll::printCOFFSymbolTable(const COFFObjectFile *coff) {
   for (unsigned SI = 0, SE = coff->getNumberOfSymbols(); SI != SE; ++SI) {
     auto Symbol = coff->getSymbol(SI);
     if (!Symbol)
-      report_error(Symbol.takeError(), coff->getFileName());
+      reportError(Symbol.takeError(), coff->getFileName());
 
     auto NameOrErr = coff->getSymbolName(*Symbol);
     if (!NameOrErr)
-      report_error(NameOrErr.takeError(), coff->getFileName());
+      reportError(NameOrErr.takeError(), coff->getFileName());
     StringRef Name = *NameOrErr;
 
     outs() << "[" << format("%2d", SI) << "]"

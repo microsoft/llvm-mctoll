@@ -321,12 +321,12 @@ const Value *ARMMIRevising::getGlobalValueByOffset(int64_t MCInstOffset,
 
         auto SymOrErr = Symbol->getValue();
         if (!SymOrErr)
-          report_error(SymOrErr.takeError(), "Can not find the symbol!");
+          reportError(SymOrErr.takeError(), "Can not find the symbol!");
 
         uint64_t SymVirtAddr = *SymOrErr;
         auto SecOrErr = Symbol->getSection();
         if (!SecOrErr)
-          report_error(SecOrErr.takeError(),
+          reportError(SecOrErr.takeError(),
                        "Can not find the section which is the symbol in!");
 
         section_iterator SecIter = *SecOrErr;
@@ -340,7 +340,7 @@ const Value *ARMMIRevising::getGlobalValueByOffset(int64_t MCInstOffset,
         } else {
           auto StrOrErr = SecIter->getContents();
           if (!StrOrErr)
-            report_error(StrOrErr.takeError(),
+            reportError(StrOrErr.takeError(),
                          "Failed to get the content of section!");
           StringRef SecData = *StrOrErr;
           // Currently, Symbol->getValue() is virtual address.

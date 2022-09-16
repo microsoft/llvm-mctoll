@@ -157,8 +157,8 @@ Value *X86MachineInstructionRaiser::getMemoryRefValue(const MachineInstr &MI) {
     // If this is neither a stack reference nor a pc-relative access, get the
     // associated memory address expression value.
     if (MemoryRefValue == nullptr) {
-      Value *memrefValue = getMemoryAddressExprValue(MI);
-      MemoryRefValue = memrefValue;
+      Value *MemRefValue = getMemoryAddressExprValue(MI);
+      MemoryRefValue = MemRefValue;
     }
   } else {
     // TODO : Memory references with BaseType FrameIndexBase
@@ -199,7 +199,7 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
   if (IsPCRelMemRef) {
     // If it is a PC-relative global variable with an initializer, it is memory
     // content and should not be loaded from.
-    if (auto GV = dyn_cast<GlobalVariable>(MemRefValue))
+    if (auto *GV = dyn_cast<GlobalVariable>(MemRefValue))
       LoadFromMemrefValue = !(GV->hasInitializer());
     // If it is not a PC-relative constant expression accessed using
     // GetElementPtrInst, it is memory content and should not be loaded from.
@@ -238,12 +238,11 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
     RaisedBB->getInstList().push_back(LdInst);
 
     return LdInst;
-  } else {
-    // memRefValue already represents the global value loaded from
-    // PC-relative memory location. It is incorrect to generate an
-    // additional load of this value. It should be directly used.
-    return MemRefValue;
   }
+  // memRefValue already represents the global value loaded from
+  // PC-relative memory location. It is incorrect to generate an
+  // additional load of this value. It should be directly used.
+  return MemRefValue;
 }
 
 // Delete noop instructions
@@ -259,21 +258,21 @@ bool X86MachineInstructionRaiser::deleteNOOPInstrMI(
 }
 
 bool X86MachineInstructionRaiser::deleteNOOPInstrMF() {
-  bool modified = false;
+  bool Modified = false;
   for (MachineBasicBlock &MBB : MF) {
     // MBBI may be invalidated by the raising operation.
     MachineBasicBlock::iterator MBBI = MBB.begin(), E = MBB.end();
     while (MBBI != E) {
       MachineBasicBlock::iterator NMBBI = std::next(MBBI);
-      modified |= deleteNOOPInstrMI(MBB, MBBI);
+      Modified |= deleteNOOPInstrMI(MBB, MBBI);
       MBBI = NMBBI;
     }
   }
-  return modified;
+  return Modified;
 }
 
 bool X86MachineInstructionRaiser::unlinkEmptyMBBs() {
-  bool modified = false;
+  bool Modified = false;
   std::set<unsigned> EmptyMBBNos;
   // Collect empty basic block numbers
   for (MachineBasicBlock &MBB : MF) {
@@ -287,22 +286,22 @@ bool X86MachineInstructionRaiser::unlinkEmptyMBBs() {
       // Transfer all successors of DelMBB as successors of each of the
       // predecessors of DelMBB.
       if (DelMBB->pred_size() > 0) {
-        for (auto DelMBBPred : DelMBB->predecessors()) {
+        for (auto *DelMBBPred : DelMBB->predecessors()) {
           DelMBBPred->transferSuccessors(DelMBB);
         }
       } else {
         // If DelMBB does not have any predecessors, successors of DelMBB would
         // not be deleted since transferAllSuccessors will not be called. So, we
         // need to explicitly delete all successors of DelMBB.
-        for (auto DelMBBSucc : DelMBB->successors()) {
+        for (auto *DelMBBSucc : DelMBB->successors()) {
           DelMBB->removeSuccessor(DelMBBSucc);
         }
       }
       // Do not delete DelMBB
     }
-    modified = true;
+    Modified = true;
   }
-  return modified;
+  return Modified;
 }
 
 // Return the Type of the physical register.
@@ -385,7 +384,8 @@ Type *X86MachineInstructionRaiser::getPhysRegOperandType(const MachineInstr &MI,
   assert(RegSzInBits > 0 && "Non-zero register size expected");
   if (isGPReg(PReg)) {
     return Type::getIntNTy(Ctx, RegSzInBits);
-  } else if (isSSE2Reg(PReg)) {
+  }
+  if (isSSE2Reg(PReg)) {
     return getRaisedValues()->getSSEInstructionType(MI, RegSzInBits, Ctx);
   }
   llvm_unreachable("Unhandled register type encountered");
@@ -462,7 +462,7 @@ const MachineInstr *X86MachineInstructionRaiser::getPhysRegDefiningInstInBlock(
       for (auto MO : MI.operands()) {
         // Consider only the register operand
         if (MO.isReg() && MO.isDef()) {
-          unsigned MOReg = MO.getReg();
+          Register MOReg = MO.getReg();
           // If it is a physical register other than EFLAGS
           if (MOReg != X86::EFLAGS && Register::isPhysicalRegister(MOReg)) {
             if (SuperReg == find64BitSuperReg(MOReg))
@@ -477,8 +477,8 @@ const MachineInstr *X86MachineInstructionRaiser::getPhysRegDefiningInstInBlock(
 }
 
 // FPU Access functions
-void X86MachineInstructionRaiser::FPURegisterStackPush(Value *val) {
-  assert(val->getType()->isFloatingPointTy() &&
+void X86MachineInstructionRaiser::pushFPURegisterStack(Value *Val) {
+  assert(Val->getType()->isFloatingPointTy() &&
          "Attempt to push non-FP type value on FPU register stack");
   assert((FPUStack.TOP < FPUSTACK_SZ) && (FPUStack.TOP >= 0) &&
          "Incorrect initial FPU Register Stack top in push");
@@ -487,11 +487,11 @@ void X86MachineInstructionRaiser::FPURegisterStackPush(Value *val) {
 
   assert((PushIndex < FPUSTACK_SZ) && (PushIndex >= 0) &&
          "Incorrect FPU Register Stack index computed in push");
-  FPUStack.Regs[PushIndex] = val;
+  FPUStack.Regs[PushIndex] = Val;
   FPUStack.TOP = PushIndex;
 }
 
-void X86MachineInstructionRaiser::FPURegisterStackPop() {
+void X86MachineInstructionRaiser::popFPURegisterStack() {
   assert((FPUStack.TOP < FPUSTACK_SZ) && (FPUStack.TOP >= 0) &&
          "Incorrect initial FPU Register Stack top in pop");
 
@@ -506,11 +506,11 @@ void X86MachineInstructionRaiser::FPURegisterStackPop() {
 }
 
 // Get value at index
-Value *X86MachineInstructionRaiser::FPURegisterStackGetValueAt(int8_t index) {
+Value *X86MachineInstructionRaiser::getFPURegisterStackValueAt(int8_t Index) {
   assert((FPUStack.TOP < FPUSTACK_SZ) && (FPUStack.TOP >= 0) &&
          "Incorrect initial FPU Register Stack top in FPU register access");
 
-  int8_t AccessIndex = (FPUSTACK_SZ + FPUStack.TOP + index) % FPUSTACK_SZ;
+  int8_t AccessIndex = (FPUSTACK_SZ + FPUStack.TOP + Index) % FPUSTACK_SZ;
 
   assert((AccessIndex < FPUSTACK_SZ) && (AccessIndex >= 0) &&
          "Incorrect FPU Register Stack index computed in FPU register access");
@@ -519,23 +519,23 @@ Value *X86MachineInstructionRaiser::FPURegisterStackGetValueAt(int8_t index) {
 }
 
 // Set value at index to val
-void X86MachineInstructionRaiser::FPURegisterStackSetValueAt(int8_t index,
-                                                             Value *val) {
-  assert(val->getType()->isFloatingPointTy() &&
+void X86MachineInstructionRaiser::setFPURegisterStackValueAt(int8_t Index,
+                                                             Value *Val) {
+  assert(Val->getType()->isFloatingPointTy() &&
          "Attempt to insert non-FP type value in FPU register stack");
   assert((FPUStack.TOP < FPUSTACK_SZ) && (FPUStack.TOP >= 0) &&
          "Incorrect initial FPU Register Stack top in FPU register access");
 
-  int8_t AccessIndex = (FPUSTACK_SZ + FPUStack.TOP + index) % FPUSTACK_SZ;
+  int8_t AccessIndex = (FPUSTACK_SZ + FPUStack.TOP + Index) % FPUSTACK_SZ;
 
   assert((AccessIndex < FPUSTACK_SZ) && (AccessIndex >= 0) &&
          "Incorrect FPU Register Stack index computed in FPU register access");
 
-  FPUStack.Regs[AccessIndex] = val;
+  FPUStack.Regs[AccessIndex] = Val;
 }
 
-Value *X86MachineInstructionRaiser::FPURegisterStackTop() {
-  return FPURegisterStackGetValueAt(0);
+Value *X86MachineInstructionRaiser::topFPURegisterStack() {
+  return getFPURegisterStackValueAt(0);
 }
 
 unsigned int
@@ -692,7 +692,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
           auto SymbOrErr = Elf64LEObjFile->getSymbol(SymbImpl);
           assert(SymbOrErr && "PC-relative access: Dynamic symbol not found");
           // get symbol size
-          auto Symb = SymbOrErr.get();
+          auto *Symb = SymbOrErr.get();
           uint64_t SymbSize = Symb->st_size;
           GlobalValue::LinkageTypes Lnkg;
           switch (Symb->getBinding()) {
@@ -757,7 +757,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
           }
 
           Constant *GlobalInit;
-          if (IncludedFileInfo::IsExternalVariable(Symname->str())) {
+          if (IncludedFileInfo::isExternalVariable(Symname->str())) {
             GlobalInit = nullptr;
             Lnkg = GlobalValue::ExternalLinkage;
           } else {
@@ -766,7 +766,7 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
                              : nullptr;
           }
 
-          auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
+          auto *GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                               false /* isConstant */, Lnkg,
                                               GlobalInit, Symname->data());
           // Don't use symbSize as it was modified.
@@ -804,12 +804,12 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
         // which is most likely global.
 
         llvm::LLVMContext &Ctx(MF.getFunction().getContext());
-        DataRefImpl symbImpl = TextReloc->getSymbol()->getRawDataRefImpl();
+        DataRefImpl SymbImpl = TextReloc->getSymbol()->getRawDataRefImpl();
         // get symbol
-        auto SymbOrErr = Elf64LEObjFile->getSymbol(symbImpl);
+        auto SymbOrErr = Elf64LEObjFile->getSymbol(SymbImpl);
         assert(SymbOrErr && "PC-relative access: Relocation symbol not found");
         // get symbol size
-        auto Symb = SymbOrErr.get();
+        auto *Symb = SymbOrErr.get();
         uint64_t SymSize = Symb->st_size;
         GlobalValue::LinkageTypes Lnkg;
         switch (Symb->getBinding()) {
@@ -878,14 +878,14 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
         }
 
         Constant *GlobalInit;
-        if (IncludedFileInfo::IsExternalVariable(Symname->str())) {
+        if (IncludedFileInfo::isExternalVariable(Symname->str())) {
           GlobalInit = nullptr;
           Lnkg = GlobalValue::ExternalLinkage;
         } else {
           GlobalInit = ConstantInt::get(GlobalValTy, SymInitVal);
         }
 
-        auto GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
+        auto *GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
                                             false /* isConstant */, Lnkg,
                                             GlobalInit, Symname->data());
         // Don't use symSize as it was modified.
@@ -939,9 +939,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
     StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
   } else if (ReachingValue->getType()->isFloatingPointTy() ||
              ReachingValue->getType()->isVectorTy()) {
-    assert(
-        StackLocSzInBits == 128 &&
-        "Expected FP types and vectors to be stored in 128 bit stack location");
+    assert(StackLocSzInBits == 128 &&
+           "Expected FP types and vectors to be stored in 128 bit stack location");
     StackLocTy = VectorType::get(Type::getInt32Ty(Ctxt), 4, false);
   } else {
     llvm_unreachable("Unhandled type");
@@ -987,19 +986,19 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
     return StInst;
 
   MachineDominatorTree MDT(MF);
-  auto DefiningMBB = MF.getBlockNumbered(DefiningMBBNo);
+  auto *DefiningMBB = MF.getBlockNumbered(DefiningMBBNo);
   // Construct instructions that use ReachingValue and are in a basic block
   // other than DefiningMBB.
-  for (auto U : ReachingValue->users()) {
-    if (auto I = dyn_cast<Instruction>(U)) {
+  for (auto *U : ReachingValue->users()) {
+    if (auto *I = dyn_cast<Instruction>(U)) {
       if (I->getParent() == ReachingBB)
         continue;
 
       // find MBB number from which the instruction was raised
       auto InstMBBNo =
           std::find_if(std::begin(mbbToBBMap), std::end(mbbToBBMap),
-                       [&](const std::pair<unsigned int, BasicBlock *> &pair) {
-                         return pair.second == I->getParent();
+                       [&](const std::pair<unsigned int, BasicBlock *> &Pair) {
+                         return Pair.second == I->getParent();
                        });
 
       // Only replace I with LdInst, if StInst dominates I
@@ -1012,7 +1011,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
 
   // Replace all uses of ReachingValue with that loaded from stack location at
   // which ReachingValue is stored.
-  for (auto I : UsageInstList) {
+  for (auto *I : UsageInstList) {
     LoadInst *LdFromStkSlot = new LoadInst(
         Alloca->getType()->getPointerElementType(), Alloca, "ld-stk-prom", I);
     I->replaceUsesOfWith(ReachingValue, LdFromStkSlot);
@@ -1034,7 +1033,7 @@ static bool isStackLocation(Value *Val) {
       int NumUseOps = BinaryOp->getNumOperands();
       assert((NumUseOps == 2) && "Unexpected operands of binary operands");
       for (int i = 0; i < NumUseOps; i++) {
-        auto Op = BinaryOp->getOperand(i);
+        auto *Op = BinaryOp->getOperand(i);
         if (isa<CastInst>(Op)) {
           CastInst *P = dyn_cast<CastInst>(Op);
           V = P->getOperand(0);
@@ -1072,9 +1071,9 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
 
 // Check for unterminated basic blocks.
 bool X86MachineInstructionRaiser::handleUnterminatedBlocks() {
-  auto raisedFunction = getRaisedFunction();
-  LLVMContext &Ctx(raisedFunction->getContext());
-  for (auto &BB : *raisedFunction) {
+  auto *RaisedFunction = getRaisedFunction();
+  LLVMContext &Ctx(RaisedFunction->getContext());
+  for (auto &BB : *RaisedFunction) {
     if (!BB.empty() && (BB.getTerminator() == nullptr)) {
       // If the last instruction of a basic block is a call instruction
       // convert it into a tail call and insert an unreachable instruction
@@ -1109,11 +1108,11 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
   // If there are stack objects allocated
   if (ShadowStackIndexedByOffset.size() > 1) {
     MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
-    const DataLayout &dataLayout = MR->getModule()->getDataLayout();
-    unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
+    const DataLayout &DL = MR->getModule()->getDataLayout();
+    unsigned AllocaAddrSpace = DL.getAllocaAddrSpace();
 
     std::map<int64_t, int>::iterator StackOffsetToIndexMapIter;
-    LLVMContext &llvmContext(MF.getFunction().getContext());
+    LLVMContext &Context(MF.getFunction().getContext());
     StackOffsetToIndexMapIter = ShadowStackIndexedByOffset.begin();
     // The first non-spill alloca in StackOffsetToIndexMapIter map record
     // represents the alloca corresponding to the top-of-stack offset. Get stack
@@ -1140,27 +1139,27 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
         MFrameInfo.getObjectAllocation(StackTopObjIndex));
     Type *TOSAllocaOrigType = TOSAlloca->getType();
     auto TOSSzInBytes =
-        TOSAlloca->getAllocationSizeInBits(dataLayout).getValue() / 8;
+        TOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
     // Get stack bottom offset and index
     int64_t StackBottomOffset = ShadowStackIndexedByOffset.rbegin()->first;
     int StackBottomObjIndex = ShadowStackIndexedByOffset.rbegin()->second;
     const AllocaInst *BOSAlloca =
         MFrameInfo.getObjectAllocation(StackBottomObjIndex);
     auto BOSSzInBytes =
-        BOSAlloca->getAllocationSizeInBits(dataLayout).getValue() / 8;
+        BOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
     // Get stack frame size. Note that stack grows down on x86-64. Need to
     // ensure that stack frame size includes the size of the bottom most
     // object as well.
     int StackFrameSize = StackBottomOffset - StackTopOffset + BOSSzInBytes;
     assert(StackFrameSize > 0 && "Unexpected stack frame size");
     Value *StackFreameSizeVal =
-        ConstantInt::get(llvmContext, APInt(32, StackFrameSize));
+        ConstantInt::get(Context, APInt(32, StackFrameSize));
     // Construct new alloca corresponding to TOS offset with size
     // StackFrameSize bytes and insert it before TOSAlloca (which will be
     // replaced later by the cast of this alloca).
-    Type *ByteTy = Type::getInt8Ty(llvmContext);
+    Type *ByteTy = Type::getInt8Ty(Context);
     AllocaInst *StackFrameAlloca =
-        new AllocaInst(ByteTy, allocaAddrSpace, StackFreameSizeVal, Align(),
+        new AllocaInst(ByteTy, AllocaAddrSpace, StackFreameSizeVal, Align(),
                        "stktop_" + std::to_string(TOSSzInBytes), TOSAlloca);
     // Cast the StackFrameAlloca instruction to the type of TOSAlloca
     Instruction *CastStackFrameAlloca =
@@ -1192,7 +1191,7 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
     ReplaceInstWithInst(dyn_cast<Instruction>(TOSAlloca), CastStackFrameAlloca);
     // Cast StackFrameAlloca as int and insert it before StackObjAlloca,
     // which will be replaced later
-    Type *Int64Ty = Type::getInt64Ty(llvmContext);
+    Type *Int64Ty = Type::getInt64Ty(Context);
     Instruction *StackFrameAllocaAddr = CastInst::Create(
         CastInst::getCastOpcode(StackFrameAlloca, false, Int64Ty, false),
         StackFrameAlloca, Int64Ty, "tos", CastStackFrameAlloca->getNextNode());
@@ -1263,7 +1262,7 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
 
 Value *X86MachineInstructionRaiser::getStackAllocatedValue(
     const MachineInstr &MI, X86AddressMode &MemRef, bool IsStackPointerAdjust) {
-  unsigned int stackFrameIndex;
+  unsigned int StackFrameIndex;
 
   assert((MemRef.BaseType == X86AddressMode::RegBase) &&
          "Register type operand expected for stack allocated value lookup");
@@ -1272,40 +1271,39 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
          "Stack or base pointer expected for stack allocated value lookup");
   Value *CurSPVal = getRegOrArgValue(PReg, MI.getParent()->getNumber());
   Type *MemOpTy = nullptr;
-  LLVMContext &llvmContext(MF.getFunction().getContext());
-  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
-  unsigned allocaAddrSpace = dataLayout.getAllocaAddrSpace();
-  unsigned stackObjectSize = getInstructionMemOpSize(MI.getOpcode());
-  if (IsStackPointerAdjust && (stackObjectSize == 0)) {
-    stackObjectSize = 8;
+  LLVMContext &Context(MF.getFunction().getContext());
+  const DataLayout &DL = MR->getModule()->getDataLayout();
+  unsigned AllocaAddrSpace = DL.getAllocaAddrSpace();
+  unsigned StackObjectSize = getInstructionMemOpSize(MI.getOpcode());
+  if (IsStackPointerAdjust && (StackObjectSize == 0)) {
+    StackObjectSize = 8;
   }
   InstructionKind InstrKind = getInstructionKind(MI.getOpcode());
   bool SSE2MemOp = ((InstrKind == InstructionKind::SSE_MOV_FROM_MEM) ||
                     (InstrKind == InstructionKind::SSE_MOV_TO_MEM));
   if (SSE2MemOp) {
-    auto SSERegSzInBits = stackObjectSize * 8;
-    MemOpTy = getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits,
-                                                       llvmContext);
+    auto SSERegSzInBits = StackObjectSize * 8;
+    MemOpTy = getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Context);
   } else {
-    switch (stackObjectSize) {
+    switch (StackObjectSize) {
     case 8:
-      MemOpTy = Type::getInt64Ty(llvmContext);
+      MemOpTy = Type::getInt64Ty(Context);
       break;
     case 4:
-      MemOpTy = Type::getInt32Ty(llvmContext);
+      MemOpTy = Type::getInt32Ty(Context);
       break;
     case 2:
-      MemOpTy = Type::getInt16Ty(llvmContext);
+      MemOpTy = Type::getInt16Ty(Context);
       break;
     case 1:
-      MemOpTy = Type::getInt8Ty(llvmContext);
+      MemOpTy = Type::getInt8Ty(Context);
       break;
     default:
       llvm_unreachable("Unexpected access size of memory ref instruction");
     }
   }
 
-  assert(stackObjectSize != 0 && MemOpTy != nullptr &&
+  assert(StackObjectSize != 0 && MemOpTy != nullptr &&
          "Unknown type of operand in memory referencing instruction");
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
@@ -1364,10 +1362,10 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   // If this is a stack pinter adjustment, find the corresponding adjustment
   // slot and return it. There is no need for a new slot to be created.
   if (IsStackPointerAdjust) {
-    auto SSIter = ShadowStackIndexedByOffset.find(-MIStackOffset);
-    if (SSIter != ShadowStackIndexedByOffset.end())
+    auto Iter = ShadowStackIndexedByOffset.find(-MIStackOffset);
+    if (Iter != ShadowStackIndexedByOffset.end())
       return const_cast<AllocaInst *>(
-          MFrameInfo.getObjectAllocation(SSIter->second));
+          MFrameInfo.getObjectAllocation(Iter->second));
   }
 
   // Find if there exists a stack slot that includes the offset MIStackSlot
@@ -1384,7 +1382,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
       assert(Stride > 0 && "Unexpected stack slot stride");
       // Convert pointer to int with size of the source binary ISA pointer
       Type *PtrCastIntTy =
-          Type::getIntNTy(llvmContext, dataLayout.getPointerSizeInBits());
+          Type::getIntNTy(Context, DL.getPointerSizeInBits());
 
       PtrToIntInst *AllocaAsInt =
           new PtrToIntInst(StackSlotAllocaInst, PtrCastIntTy, "", RaisedBB);
@@ -1401,26 +1399,26 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
   std::string SPStr = (MIStackOffset < 0) ? BaseName + "N." : BaseName + "P.";
   auto ByteAlign = Align();
   // Create alloca instruction to allocate stack slot
-  AllocaInst *alloca =
-      new AllocaInst(MemOpTy, allocaAddrSpace, 0, ByteAlign,
+  AllocaInst *Alloca =
+      new AllocaInst(MemOpTy, AllocaAddrSpace, 0, ByteAlign,
                      SPStr + std::to_string(std::abs(MIStackOffset)));
 
   // Create a stack slot associated with the alloca instruction
-  stackFrameIndex = MF.getFrameInfo().CreateStackObject(
-      stackObjectSize, ByteAlign, false /* isSpillSlot */, alloca);
+  StackFrameIndex = MF.getFrameInfo().CreateStackObject(
+      StackObjectSize, ByteAlign, false /* isSpillSlot */, Alloca);
 
   // Set MIStackOffset as the offset for stack frame object created.
-  MF.getFrameInfo().setObjectOffset(stackFrameIndex, MIStackOffset);
+  MF.getFrameInfo().setObjectOffset(StackFrameIndex, MIStackOffset);
 
   // Add the alloca instruction to entry block
-  insertAllocaInEntryBlock(alloca, MIStackOffset, stackFrameIndex);
+  insertAllocaInEntryBlock(Alloca, MIStackOffset, StackFrameIndex);
 
-  return alloca;
+  return Alloca;
 }
 
 // Return the Function * referenced by the PLT entry at offset
 Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
-    const MachineInstr &mi, uint64_t pltEntOff) {
+    const MachineInstr &MI, uint64_t PltEntOff) {
   Function *CalledFunc = nullptr;
   const ELF64LEObjectFile *Elf64LEObjFile =
       dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
@@ -1432,7 +1430,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
   for (section_iterator SecIter : Elf64LEObjFile->sections()) {
     uint64_t SecStart = SecIter->getAddress();
     uint64_t SecEnd = SecStart + SecIter->getSize();
-    if ((SecStart <= pltEntOff) && (SecEnd > pltEntOff)) {
+    if ((SecStart <= PltEntOff) && (SecEnd > PltEntOff)) {
       StringRef SecName;
       if (auto NameOrErr = SecIter->getName())
         SecName = *NameOrErr;
@@ -1448,10 +1446,10 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
                               SecData.size());
       // Disassemble the first instruction at the offset
       MCInst Inst;
-      uint64_t jmpInstSz;
-      uint64_t jmpInstOff = pltEntOff;
+      uint64_t JmpInstSz;
+      uint64_t JmpInstOff = PltEntOff;
       bool Success = MR->getMCDisassembler()->getInstruction(
-          Inst, jmpInstSz, Bytes.slice(jmpInstOff - SecStart), pltEntOff,
+          Inst, JmpInstSz, Bytes.slice(JmpInstOff - SecStart), PltEntOff,
           nulls());
       assert(Success && "Failed to disassemble instruction in PLT");
       unsigned int Opcode = Inst.getOpcode();
@@ -1459,9 +1457,9 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       // instructions used for Indirect Branch Tracking - get to the next
       // instruction that is expected to be the jump to target.
       if ((Opcode == X86::ENDBR32) || (Opcode == X86::ENDBR64)) {
-        jmpInstOff += jmpInstSz;
+        JmpInstOff += JmpInstSz;
         Success = MR->getMCDisassembler()->getInstruction(
-            Inst, jmpInstSz, Bytes.slice(jmpInstOff - SecStart), jmpInstOff,
+            Inst, JmpInstSz, Bytes.slice(JmpInstOff - SecStart), JmpInstOff,
             nulls());
         assert(Success && "Failed to disassemble instruction in PLT");
         Opcode = Inst.getOpcode();
@@ -1533,7 +1531,7 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       //    a) offset of jmp instruction + size of the instruction
       //    (representing pc-related addressing) b) jmp target offset in the
       //    instruction
-      uint64_t GotPltRelocOffset = jmpInstOff + jmpInstSz + PCOffset;
+      uint64_t GotPltRelocOffset = JmpInstOff + JmpInstSz + PCOffset;
       const RelocationRef *GotPltReloc =
           MR->getDynRelocAtOffset(GotPltRelocOffset);
       assert(GotPltReloc != nullptr &&
@@ -1586,7 +1584,7 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
       dyn_cast<ELF64LEObjectFile>(MR->getObjectFile());
   assert(Elf64LEObjFile != nullptr &&
          "Only 64-bit ELF binaries supported at present.");
-  LLVMContext &llvmContext(MF.getFunction().getContext());
+  LLVMContext &Context(MF.getFunction().getContext());
   // Check if this is an address in .rodata
   for (section_iterator SecIter : Elf64LEObjFile->sections()) {
     uint64_t SecStart = SecIter->getAddress();
@@ -1617,8 +1615,8 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
                                             MR->getObjectFile()->getFileName());
           unsigned DataSize = SecIter->getSize();
           auto DataStr = makeArrayRef(SecData.bytes_begin(), DataSize);
-          Constant *StrConstant = ConstantDataArray::get(llvmContext, DataStr);
-          auto GlobalStrConstVal = new GlobalVariable(
+          Constant *StrConstant = ConstantDataArray::get(Context, DataStr);
+          auto *GlobalStrConstVal = new GlobalVariable(
               *(MR->getModule()), StrConstant->getType(), true /* isConstant */,
               GlobalValue::PrivateLinkage, StrConstant, RODataSecValueName);
           GlobalStrConstVal->setAlignment(MaybeAlign(SecIter->getAlignment()));
@@ -1632,9 +1630,9 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
         unsigned DataOffset = (Offset - SecStart);
         // Construct index array for a GEP instruction that accesses
         // byte array
-        Value *Zero32Value = ConstantInt::get(Type::getInt32Ty(llvmContext), 0);
+        Value *Zero32Value = ConstantInt::get(Type::getInt32Ty(Context), 0);
         Value *DataOffsetIndex =
-            ConstantInt::get(Type::getInt32Ty(llvmContext), DataOffset);
+            ConstantInt::get(Type::getInt32Ty(Context), DataOffset);
         Constant *GetElem = ConstantExpr::getInBoundsGetElementPtr(
             RODataSecValue->getType()->getPointerElementType(), RODataSecValue,
             {Zero32Value, DataOffsetIndex});
@@ -1684,7 +1682,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         auto SymSize = Symbol.getSize();
 
         if (!SymAddr)
-          report_error(SymAddr.takeError(),
+          reportError(SymAddr.takeError(),
                        "Failed to lookup symbol for global address");
         uint64_t SymAddrVal = SymAddr.get();
         // We have established that Offset is not negative above. So, OK to
@@ -1717,7 +1715,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       // variable.
       Expected<StringRef> GlobalDataSymName = GlobalSymRef.getName();
       if (!GlobalDataSymName)
-        report_error(GlobalDataSymName.takeError(),
+        reportError(GlobalDataSymName.takeError(),
                      "Failed to find global symbol name.");
       // Find if a global value associated with symbol name is already
       // created
@@ -1759,7 +1757,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         // get symbol
         auto SymbOrErr = Elf64LEObjFile->getSymbol(SymbImpl);
         assert(SymbOrErr && "Global symbol not found");
-        auto Symb = SymbOrErr.get();
+        auto *Symb = SymbOrErr.get();
         // get symbol size
         uint64_t SymbSize = Symb->st_size;
         // If symbol size is less than symbol section size, set alignment to
@@ -1802,7 +1800,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         // In executable and shared object files, st_value holds a virtual
         // address.
         SmallVector<Constant *, 32> ConstantVec;
-        bool isBSSSymbol = false;
+        bool IsBSSSymbol = false;
         for (section_iterator SecIter : Elf64LEObjFile->sections()) {
           uint64_t SecStart = SecIter->getAddress();
           uint64_t SecEnd = SecStart + SecIter->getSize();
@@ -1811,12 +1809,12 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
             // Else, symVal is already initialized to 0.
             if (SecIter->isBSS()) {
               Lnkg = GlobalValue::CommonLinkage;
-              isBSSSymbol = true;
+              IsBSSSymbol = true;
             } else {
               StringRef SecData = unwrapOrError(
                   SecIter->getContents(), MR->getObjectFile()->getFileName());
               unsigned Index = SymVirtualAddr - SecStart;
-              const char *beg =
+              const char *Beg =
                   reinterpret_cast<const char *>(SecData.bytes_begin() + Index);
 
               // Symbol size should at least be the same as memory access size
@@ -1826,7 +1824,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
                   "Inconsistent values of memory access size and symbol size");
               // Read MemAccesssSize number of bytes and check if they represent
               // addresses in .rodata.
-              StringRef SymbolBytes(beg, SymbSize);
+              StringRef SymbolBytes(Beg, SymbSize);
               unsigned BytesRead = 0;
               // Symbol represents addresses into .rodata section.
               bool SymHasRODataAddrs = false;
@@ -1874,8 +1872,8 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
 
         // Check for consistency of the types of symbol data.
         if (ConstantVec.size()) {
-          auto Ty = ConstantVec[0]->getType();
-          for (auto V : ConstantVec) {
+          auto *Ty = ConstantVec[0]->getType();
+          for (auto *V : ConstantVec) {
             assert((V->getType() == Ty) &&
                    "Inconsistent types in constant array of global variable.");
           }
@@ -1897,7 +1895,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
           } else {
             // This is an aggregate array whose size is symbSize bytes,
             // initialized by BSS.
-            assert(isBSSSymbol && "Unexpected non-BSS symbol encountered");
+            assert(IsBSSSymbol && "Unexpected non-BSS symbol encountered");
             Type *ByteType = Type::getInt8Ty(Ctx);
             Type *GlobalArrValTy = ArrayType::get(ByteType, SymbSize);
             GlobalInit = ConstantAggregateZero::get(GlobalArrValTy);
@@ -1940,14 +1938,14 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
 
         // Declare external global variables as external and don't initalize
         // them
-        if (IncludedFileInfo::IsExternalVariable(
+        if (IncludedFileInfo::isExternalVariable(
                 GlobalDataSymNameIndexStrRef.str())) {
           Lnkg = GlobalValue::ExternalLinkage;
           GlobalInit = nullptr;
         }
 
         // Now, create the global variable for the symbol at given Offset.
-        auto GlobalVal = new GlobalVariable(
+        auto *GlobalVal = new GlobalVariable(
             *(MR->getModule()), GlobalValTy, false /* isConstant */, Lnkg,
             GlobalInit, GlobalDataSymNameIndexStrRef);
         GlobalVal->setAlignment(MaybeAlign(GlobDataSymAlignment));
@@ -2157,7 +2155,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                   // Construct index array for a GEP instruction that accesses
                   // byte array
                   std::vector<Value *> ByteAccessGEPIdxArr;
-                  for (auto IdxIter = GlobGEP->idx_begin();
+                  for (auto *IdxIter = GlobGEP->idx_begin();
                        IdxIter != GlobGEP->idx_end(); IdxIter++) {
                     Value *IdxVal = IdxIter->get();
                     // Special case for index value of 0
@@ -2272,31 +2270,31 @@ Value *X86MachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
 
   // Just return the value associated with PReg, if one exists.
   if (PRegValue == nullptr) {
-    int pos = getArgumentNumber(PReg);
+    int Pos = getArgumentNumber(PReg);
 
     // If PReg is an argument register, get its value from function
     // argument list.
-    if (pos > 0) {
+    if (Pos > 0) {
       // Get the value only if the function has an argument at
       // pos.
-      if (pos <= (int)raisedFunction->arg_size()) {
-        bool isRegFloatingPointType = isSSE2Reg(PReg);
-        int actualPos = 0; // SSE regs and int regs are scrambled
+      if (Pos <= (int)RaisedFunction->arg_size()) {
+        bool IsRegFloatingPointType = isSSE2Reg(PReg);
+        int ActualPos = 0; // SSE regs and int regs are scrambled
         int i = 0;
 
-        while (actualPos < (int)raisedFunction->arg_size() && i < pos) {
-          bool isArgFloatingPointType =
-              raisedFunction->getArg(i)->getType()->isFloatingPointTy();
+        while (ActualPos < (int)RaisedFunction->arg_size() && i < Pos) {
+          bool IsArgFloatingPointType =
+              RaisedFunction->getArg(i)->getType()->isFloatingPointTy();
 
-          if (isArgFloatingPointType == isRegFloatingPointType) {
+          if (IsArgFloatingPointType == IsRegFloatingPointType) {
             i++;
           }
-          actualPos++;
+          ActualPos++;
         }
 
-        Function::arg_iterator argIter =
-            raisedFunction->arg_begin() + actualPos - 1;
-        PRegValue = argIter;
+        Function::arg_iterator ArgIter =
+            RaisedFunction->arg_begin() + ActualPos - 1;
+        PRegValue = ArgIter;
       }
     }
   }
@@ -2355,12 +2353,12 @@ Value *X86MachineInstructionRaiser::getPhysRegValue(const MachineInstr &MI,
          "Expect physical register to get SSA value");
   unsigned SrcOpSize = getPhysRegSizeInBits(PReg);
   Value *SrcOpValue = getRegOrArgValue(PReg, MI.getParent()->getNumber());
-  const DataLayout &dataLayout = MR->getModule()->getDataLayout();
+  const DataLayout &DL = MR->getModule()->getDataLayout();
 
   if (SrcOpValue) {
     // Generate the appropriate cast instruction if the sizes of the current
     // source value and that of the source register do not match.
-    uint64_t SrcValueSize = dataLayout.getTypeSizeInBits(SrcOpValue->getType());
+    uint64_t SrcValueSize = DL.getTypeSizeInBits(SrcOpValue->getType());
     if (SrcOpSize != SrcValueSize) {
       // Get the BasicBlock corresponding to MachineBasicBlock of MI.
       BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
@@ -2381,19 +2379,19 @@ Value *X86MachineInstructionRaiser::getPhysRegValue(const MachineInstr &MI,
 }
 
 // Find the index of the first memory reference operand.
-int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &mi) {
-  const MCInstrDesc &Desc = mi.getDesc();
-  int memOperandNo = X86II::getMemoryOperandNo(Desc.TSFlags);
-  if (memOperandNo >= 0)
-    memOperandNo += X86II::getOperandBias(Desc);
-  return memOperandNo;
+int X86MachineInstructionRaiser::getMemoryRefOpIndex(const MachineInstr &MI) {
+  const MCInstrDesc &Desc = MI.getDesc();
+  int MemOperandNo = X86II::getMemoryOperandNo(Desc.TSFlags);
+  if (MemOperandNo >= 0)
+    MemOperandNo += X86II::getOperandBias(Desc);
+  return MemOperandNo;
 }
 
 // Insert a newly created alloca instruction representing stack location at
 // offset StackOffset and with MachineFrame index MFIndex. It is assumed that
 // MachineFrameInfo of Machine function already has the stack slot created for
 // offset StackOffset at MFIndex
-bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
+bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *Alloca,
                                                            int StackOffset,
                                                            int MFIndex) {
   // Avoid using BasicBlock InstrList iterators so that the tool can use LLVM
@@ -2418,7 +2416,7 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
   // If this insertion point is at the beginning of the map, insert the alloca
   // instruction at the beginning of the block.
   if (InsertAtIter == ShadowStackIndexedByOffset.begin()) {
-    InstList.push_front(alloca);
+    InstList.push_front(Alloca);
   } else {
     // Insert alloca after the alloca instruction corresponding to the prior
     // stack slot.
@@ -2426,7 +2424,7 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *alloca,
     InsertAtIter--;
     AllocaInst *Inst = const_cast<AllocaInst *>(
         MFInfo.getObjectAllocation(InsertAtIter->second));
-    InstList.insertAfter(Inst->getIterator(), alloca);
+    InstList.insertAfter(Inst->getIterator(), Alloca);
   }
 
   return true;
@@ -2517,8 +2515,8 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
 }
 
 bool X86MachineInstructionRaiser::instrNameStartsWith(const MachineInstr &MI,
-                                                      StringRef name) const {
-  return x86InstrInfo->getName(MI.getOpcode()).startswith(name);
+                                                      StringRef Name) const {
+  return x86InstrInfo->getName(MI.getOpcode()).startswith(Name);
 }
 
 #undef DEBUG_TYPE

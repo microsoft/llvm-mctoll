@@ -168,22 +168,22 @@ protected:
   bool InfoSet;
 };
 
-bool isSupportedArch(Triple::ArchType arch);
-ModuleRaiser *getModuleRaiser(const TargetMachine *tm);
-void registerModuleRaiser(ModuleRaiser *m);
+bool isSupportedArch(Triple::ArchType Arch);
+ModuleRaiser *getModuleRaiser(const TargetMachine *TM);
+void registerModuleRaiser(ModuleRaiser *M);
 
 // error functions used from main and from raisers libs
 extern StringRef ToolName;
 
-void error(std::error_code ec);
+void error(std::error_code EC);
 void error(Error E);
 [[noreturn]] void error(Twine Message);
-[[noreturn]] void report_error(StringRef File, Twine Message);
-[[noreturn]] void report_error(Error E, StringRef File);
-[[noreturn]] void report_error(Error E, StringRef FileName,
+[[noreturn]] void reportError(StringRef File, Twine Message);
+[[noreturn]] void reportError(Error E, StringRef File);
+[[noreturn]] void reportError(Error E, StringRef FileName,
                                StringRef ArchiveName,
                                StringRef ArchitectureName = StringRef());
-[[noreturn]] void report_error(Error E, StringRef ArchiveName,
+[[noreturn]] void reportError(Error E, StringRef ArchiveName,
                                const object::Archive::Child &C,
                                StringRef ArchitectureName = StringRef());
 
@@ -191,7 +191,7 @@ template <typename T, typename... Ts>
 T unwrapOrError(Expected<T> EO, Ts &&...Args) {
   if (EO)
     return std::move(*EO);
-  report_error(EO.takeError(), std::forward<Ts>(Args)...);
+  reportError(EO.takeError(), std::forward<Ts>(Args)...);
 }
 
 } // end namespace mctoll

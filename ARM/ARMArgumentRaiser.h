@@ -29,23 +29,23 @@ class ARMArgumentRaiser : public ARMRaiserBase {
 public:
   static char ID;
 
-  ARMArgumentRaiser(ARMModuleRaiser &mr);
+  ARMArgumentRaiser(ARMModuleRaiser &MR);
   ~ARMArgumentRaiser() override;
-  void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
+  void init(MachineFunction *MF = nullptr, Function *RF = nullptr) override;
   bool raiseArgs();
-  bool runOnMachineFunction(MachineFunction &mf) override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
   /// Change all return relative register operands to stack 0.
-  void updateReturnRegister(MachineFunction &mf);
+  void updateReturnRegister(MachineFunction &MF);
   /// Change all function arguments of registers into stack elements with
   /// same indexes of arguments.
-  void updateParameterRegister(unsigned reg, MachineBasicBlock &mbb);
+  void updateParameterRegister(unsigned Reg, MachineBasicBlock &MBB);
   /// Change rest of function arguments on stack frame into stack elements.
-  void updateParameterFrame(MachineFunction &mf);
+  void updateParameterFrame(MachineFunction &MF);
   /// Using newly created stack elements replace relative operands in
   /// MachineInstr.
-  void updateParameterInstr(MachineFunction &mf);
+  void updateParameterInstr(MachineFunction &MF);
   /// Move arguments which are passed by ARM registers(R0 - R3) from function
   /// arg.x to corresponding registers in entry block.
   void moveArgumentToRegister(unsigned Reg, MachineBasicBlock &PMBB);

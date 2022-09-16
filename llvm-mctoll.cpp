@@ -302,9 +302,9 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
       TargetRegistry::lookupTarget(mctoll::ArchName, TheTriple, Error);
   if (!TheTarget) {
     if (Obj)
-      report_error(Obj->getFileName(), "Support for raising " +
-                                           TheTriple.getArchName() +
-                                           " not included");
+      reportError(Obj->getFileName(), "Support for raising " +
+                                          TheTriple.getArchName() +
+                                          " not included");
     else
       error("Unsupported target " + TheTriple.getArchName());
   }
@@ -557,25 +557,25 @@ static uint8_t getElfSymbolType(const ObjectFile *Obj, const SymbolRef &Sym) {
   if (auto *Elf32LEObj = dyn_cast<ELF32LEObjectFile>(Obj)) {
     auto SymbOrErr = Elf32LEObj->getSymbol(SymbImpl);
     if (!SymbOrErr)
-      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
     return SymbOrErr.get()->getType();
   }
   if (auto *Elf64LEObj = dyn_cast<ELF64LEObjectFile>(Obj)) {
     auto SymbOrErr = Elf64LEObj->getSymbol(SymbImpl);
     if (!SymbOrErr)
-      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
     return SymbOrErr.get()->getType();
   }
   if (auto *Elf32BEObj = dyn_cast<ELF32BEObjectFile>(Obj)) {
     auto SymbOrErr = Elf32BEObj->getSymbol(SymbImpl);
     if (!SymbOrErr)
-      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
     return SymbOrErr.get()->getType();
   }
   if (auto *Elf64BEObj = cast<ELF64BEObjectFile>(Obj)) {
     auto SymbOrErr = Elf64BEObj->getSymbol(SymbImpl);
     if (!SymbOrErr)
-      report_error(SymbOrErr.takeError(), "ELF32 symbol not found");
+      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
     return SymbOrErr.get()->getType();
   }
   llvm_unreachable("Unsupported binary format");
@@ -594,18 +594,18 @@ addDynamicElfSymbols(const ELFObjectFile<ELFT> *Obj,
 
     Expected<uint64_t> AddressOrErr = Symbol.getAddress();
     if (!AddressOrErr)
-      report_error(AddressOrErr.takeError(), Obj->getFileName());
+      reportError(AddressOrErr.takeError(), Obj->getFileName());
     uint64_t Address = *AddressOrErr;
 
     Expected<StringRef> Name = Symbol.getName();
     if (!Name)
-      report_error(Name.takeError(), Obj->getFileName());
+      reportError(Name.takeError(), Obj->getFileName());
     if (Name->empty())
       continue;
 
     Expected<section_iterator> SectionOrErr = Symbol.getSection();
     if (!SectionOrErr)
-      report_error(SectionOrErr.takeError(), Obj->getFileName());
+      reportError(SectionOrErr.takeError(), Obj->getFileName());
     section_iterator SecI = *SectionOrErr;
     if (SecI == Obj->section_end())
       continue;
@@ -716,25 +716,25 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   std::unique_ptr<const MCRegisterInfo> MRI(
       TheTarget->createMCRegInfo(TripleName));
   if (!MRI)
-    report_error(Obj->getFileName(),
-                 "no register info for target " + TripleName);
+    reportError(Obj->getFileName(),
+                "no register info for target " + TripleName);
 
   MCTargetOptions MCOptions;
   // Set up disassembler.
   std::unique_ptr<const MCAsmInfo> AsmInfo(
       TheTarget->createMCAsmInfo(*MRI, TripleName, MCOptions));
   if (!AsmInfo)
-    report_error(Obj->getFileName(),
-                 "no assembly info for target " + TripleName);
+    reportError(Obj->getFileName(),
+                "no assembly info for target " + TripleName);
   std::unique_ptr<const MCSubtargetInfo> STI(
       TheTarget->createMCSubtargetInfo(TripleName, MCPU, Features.getString()));
   if (!STI)
-    report_error(Obj->getFileName(),
-                 "no subtarget info for target " + TripleName);
+    reportError(Obj->getFileName(),
+                "no subtarget info for target " + TripleName);
   std::unique_ptr<const MCInstrInfo> MII(TheTarget->createMCInstrInfo());
   if (!MII)
-    report_error(Obj->getFileName(),
-                 "no instruction info for target " + TripleName);
+    reportError(Obj->getFileName(),
+                "no instruction info for target " + TripleName);
   MCObjectFileInfo MOFI;
   MCContext Ctx(Triple(TripleName), AsmInfo.get(), MRI.get(), STI.get());
   // FIXME: for now initialize MCObjectFileInfo with default values
@@ -743,8 +743,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   std::unique_ptr<MCDisassembler> DisAsm(
       TheTarget->createMCDisassembler(*STI, Ctx));
   if (!DisAsm)
-    report_error(Obj->getFileName(),
-                 "no disassembler for target " + TripleName);
+    reportError(Obj->getFileName(), "no disassembler for target " + TripleName);
 
   std::unique_ptr<const MCInstrAnalysis> MIA(
       TheTarget->createMCInstrAnalysis(MII.get()));
@@ -753,8 +752,8 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   std::unique_ptr<MCInstPrinter> IP(TheTarget->createMCInstPrinter(
       Triple(TripleName), AsmPrinterVariant, *AsmInfo, *MII, *MRI));
   if (!IP)
-    report_error(Obj->getFileName(),
-                 "no instruction printer for target " + TripleName);
+    reportError(Obj->getFileName(),
+                "no instruction printer for target " + TripleName);
   IP->setPrintImmHex(PrintImmHex);
   PrettyPrinter &PIP = selectPrettyPrinter(Triple(TripleName));
 
@@ -806,18 +805,18 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   for (const SymbolRef &Symbol : Obj->symbols()) {
     Expected<uint64_t> AddressOrErr = Symbol.getAddress();
     if (!AddressOrErr)
-      report_error(AddressOrErr.takeError(), Obj->getFileName());
+      reportError(AddressOrErr.takeError(), Obj->getFileName());
     uint64_t Address = *AddressOrErr;
 
     Expected<StringRef> Name = Symbol.getName();
     if (!Name)
-      report_error(Name.takeError(), Obj->getFileName());
+      reportError(Name.takeError(), Obj->getFileName());
     if (Name->empty())
       continue;
 
     Expected<section_iterator> SectionOrErr = Symbol.getSection();
     if (!SectionOrErr)
-      report_error(SectionOrErr.takeError(), Obj->getFileName());
+      reportError(SectionOrErr.takeError(), Obj->getFileName());
     section_iterator SecI = *SectionOrErr;
     if (SecI == Obj->section_end())
       continue;
@@ -1402,7 +1401,7 @@ static void DumpArchive(const Archive *a) {
     Expected<std::unique_ptr<Binary>> ChildOrErr = C.getAsBinary();
     if (!ChildOrErr) {
       if (auto E = isNotObjectErrorInvalidFileType(ChildOrErr.takeError()))
-        report_error(std::move(E), a->getFileName(), C);
+        reportError(std::move(E), a->getFileName(), C);
       continue;
     }
     if (ObjectFile *o = dyn_cast<ObjectFile>(&*ChildOrErr.get()))
@@ -1410,11 +1409,11 @@ static void DumpArchive(const Archive *a) {
     else if (COFFImportFile *I = dyn_cast<COFFImportFile>(&*ChildOrErr.get()))
       DumpObject(I, a);
     else
-      report_error(errorCodeToError(object_error::invalid_file_type),
+      reportError(errorCodeToError(object_error::invalid_file_type),
                    a->getFileName());
   }
   if (Err)
-    report_error(std::move(Err), a->getFileName());
+    reportError(std::move(Err), a->getFileName());
 }
 
 /// @brief Open file and figure out how to dump it.
@@ -1430,7 +1429,7 @@ static void DumpInput(StringRef file) {
   // Attempt to open the binary.
   Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(file);
   if (!BinaryOrErr)
-    report_error(BinaryOrErr.takeError(), file);
+    reportError(BinaryOrErr.takeError(), file);
   Binary &Binary = *BinaryOrErr.get().getBinary();
 
   if (Archive *a = dyn_cast<Archive>(&Binary))
@@ -1462,7 +1461,7 @@ static void DumpInput(StringRef file) {
       exit(1);
     }
   } else
-    report_error(errorCodeToError(object_error::invalid_file_type), file);
+    reportError(errorCodeToError(object_error::invalid_file_type), file);
 }
 
 [[noreturn]] static void reportCmdLineError(const Twine &Message) {

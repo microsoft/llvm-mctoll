@@ -45,13 +45,13 @@ void mctoll::error(Error E) {
   exit(1);
 }
 
-[[noreturn]] void mctoll::report_error(StringRef File, Twine Message) {
+[[noreturn]] void mctoll::reportError(StringRef File, Twine Message) {
   WithColor::error(errs(), ToolName)
       << "'" << File << "': " << Message << ".\n";
   exit(1);
 }
 
-[[noreturn]] void mctoll::report_error(Error E, StringRef File) {
+[[noreturn]] void mctoll::reportError(Error E, StringRef File) {
   assert(E);
   std::string Buf;
   raw_string_ostream OS(Buf);
@@ -61,7 +61,7 @@ void mctoll::error(Error E) {
   exit(1);
 }
 
-[[noreturn]] void mctoll::report_error(Error E, StringRef ArchiveName,
+[[noreturn]] void mctoll::reportError(Error E, StringRef ArchiveName,
                                        StringRef FileName,
                                        StringRef ArchitectureName) {
   assert(E);
@@ -80,7 +80,7 @@ void mctoll::error(Error E) {
   exit(1);
 }
 
-[[noreturn]] void mctoll::report_error(Error E, StringRef ArchiveName,
+[[noreturn]] void mctoll::reportError(Error E, StringRef ArchiveName,
                                        const object::Archive::Child &C,
                                        StringRef ArchitectureName) {
   Expected<StringRef> NameOrErr = C.getName();
@@ -89,41 +89,41 @@ void mctoll::error(Error E) {
   // archive instead of "???" as the name.
   if (!NameOrErr) {
     consumeError(NameOrErr.takeError());
-    report_error(std::move(E), ArchiveName, "???", ArchitectureName);
+    reportError(std::move(E), ArchiveName, "???", ArchitectureName);
   } else
-    report_error(std::move(E), ArchiveName, NameOrErr.get(), ArchitectureName);
+    reportError(std::move(E), ArchiveName, NameOrErr.get(), ArchitectureName);
 }
 
 // raiser registry context
 static SmallVector<ModuleRaiser *, 4> ModuleRaiserRegistry;
 
-bool mctoll::isSupportedArch(Triple::ArchType arch) {
-  for (auto m : ModuleRaiserRegistry)
-    if (m->getArchType() == arch)
+bool mctoll::isSupportedArch(Triple::ArchType Arch) {
+  for (auto *M : ModuleRaiserRegistry)
+    if (M->getArchType() == Arch)
       return true;
 
   return false;
 }
 
-ModuleRaiser *mctoll::getModuleRaiser(const TargetMachine *tm) {
-  ModuleRaiser *mr = nullptr;
-  auto arch = tm->getTargetTriple().getArch();
-  for (auto m : ModuleRaiserRegistry)
-    if (m->getArchType() == arch) {
-      mr = m;
+ModuleRaiser *mctoll::getModuleRaiser(const TargetMachine *TM) {
+  ModuleRaiser *MR = nullptr;
+  auto Arch = TM->getTargetTriple().getArch();
+  for (auto *M : ModuleRaiserRegistry)
+    if (M->getArchType() == Arch) {
+      MR = M;
       break;
     }
-  assert(nullptr != mr && "This arch has not yet supported for raising!\n");
-  return mr;
+  assert(nullptr != MR && "This arch has not yet supported for raising!\n");
+  return MR;
 }
 
-void mctoll::registerModuleRaiser(ModuleRaiser *m) {
-  ModuleRaiserRegistry.push_back(m);
+void mctoll::registerModuleRaiser(ModuleRaiser *M) {
+  ModuleRaiserRegistry.push_back(M);
 }
 
 Function *ModuleRaiser::getRaisedFunctionAt(uint64_t Index) const {
   int64_t TextSecAddr = getTextSectionAddress();
-  for (auto MFR : mfRaiserVector)
+  for (auto *MFR : mfRaiserVector)
     if ((MFR->getMCInstRaiser()->getFuncStart() + TextSecAddr) == Index)
       return MFR->getRaisedFunction();
 
@@ -167,7 +167,7 @@ Function *ModuleRaiser::getCalledFunctionUsingTextReloc(uint64_t Loc,
   if (TextReloc != nullptr) {
     Expected<StringRef> Sym = TextReloc->getSymbol()->getName();
     assert(Sym && "Failed to find call target symbol");
-    for (auto MFR : mfRaiserVector) {
+    for (auto *MFR : mfRaiserVector) {
       Function *F = MFR->getRaisedFunction();
       assert(F && "Unexpected null function pointer encountered");
       if (Sym->equals(F->getName()))
@@ -180,7 +180,7 @@ Function *ModuleRaiser::getCalledFunctionUsingTextReloc(uint64_t Loc,
 bool ModuleRaiser::runMachineFunctionPasses() {
   bool Success = true;
 
-  for (auto MFR : mfRaiserVector) {
+  for (auto *MFR : mfRaiserVector) {
     LLVM_DEBUG(dbgs() << "Function: "
                       << MFR->getMachineFunction().getName().data() << "\n");
     LLVM_DEBUG(dbgs() << "Parsed MCInst List\n");
@@ -188,7 +188,7 @@ bool ModuleRaiser::runMachineFunctionPasses() {
   }
 
   // For each of the functions, run passes to set up for instruction raising.
-  for (auto MFR : mfRaiserVector) {
+  for (auto *MFR : mfRaiserVector) {
     // 1. Build CFG
     MCInstRaiser *MCIR = MFR->getMCInstRaiser();
     // Populates the MachineFunction with CFG.
@@ -205,7 +205,7 @@ bool ModuleRaiser::runMachineFunctionPasses() {
   const int IterCount = 2;
   for (int i = 0; i < IterCount; i++) {
     AllPrototypesConstructed = true;
-    for (auto MFR : mfRaiserVector) {
+    for (auto *MFR : mfRaiserVector) {
       LLVM_DEBUG(dbgs() << "Build Prototype for : "
                         << MFR->getMachineFunction().getName().data() << "\n");
       Function *RF = MFR->getRaisedFunction();
@@ -224,7 +224,7 @@ bool ModuleRaiser::runMachineFunctionPasses() {
   }
   assert(AllPrototypesConstructed && "Failed to construct all prototypes");
   // Run instruction raiser passes.
-  for (auto MFR : mfRaiserVector)
+  for (auto *MFR : mfRaiserVector)
     Success |= MFR->runRaiserPasses();
 
   return Success;
@@ -259,13 +259,13 @@ bool ModuleRaiser::collectTextSectionRelocs(const SectionRef &TextSec) {
       // If the corresponding relocated section is TextSec, CandRelocSection
       // is the section with relocation information for TextSec.
       if (RelocatedSecIter->getIndex() == (uint64_t)TextSectionIndex) {
-        for (const RelocationRef &reloc : CandRelocSection.relocations())
-          TextRelocs.push_back(reloc);
+        for (const RelocationRef &Reloc : CandRelocSection.relocations())
+          TextRelocs.push_back(Reloc);
 
         // Sort the relocations
         std::sort(TextRelocs.begin(), TextRelocs.end(),
-                  [](const RelocationRef &a, const RelocationRef &b) -> bool {
-                    return a.getOffset() < b.getOffset();
+                  [](const RelocationRef &A, const RelocationRef &B) -> bool {
+                    return A.getOffset() < B.getOffset();
                   });
         break;
       }
@@ -299,7 +299,7 @@ bool ModuleRaiser::changeRaisedFunctionReturnType(Function *TargetFunc,
 
   // Get the MachineFunction of TargetFunc
   MachineFunctionRaiser *TargetFuncMFRaiser = nullptr;
-  for (auto MIR : mfRaiserVector) {
+  for (auto *MIR : mfRaiserVector) {
     if (MIR->getRaisedFunction() == TargetFunc) {
       TargetFuncMFRaiser = MIR;
       break;
@@ -377,7 +377,7 @@ bool ModuleRaiser::changeRaisedFunctionReturnType(Function *TargetFunc,
           LLVMContext &Ctx(TargetFunc->getContext());
           Function *TgtFuncCallerFunc = TgtFuncCall->getParent()->getParent();
           for (BasicBlock &BB : *TgtFuncCallerFunc) {
-            if (auto RI = dyn_cast<ReturnInst>(BB.getTerminator())) {
+            if (auto *RI = dyn_cast<ReturnInst>(BB.getTerminator())) {
               Value *NewRetVal = (NewRetTy->isVoidTy()) ? nullptr : TgtFuncCall;
               // If NewRetTy is void, NewRetVal is void else it is OrigCall
               // create and insert a new return instruction returning NewRetVal

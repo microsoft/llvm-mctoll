@@ -29,30 +29,30 @@ Function *RuntimeFunction::getOrCreateSecOffsetCalcFunction(Module &M) {
     Type *Int64Ty = Type::getInt64Ty(Ctx);
     Value *Zero64BitValue = ConstantInt::get(Int64Ty, 0, false /* isSigned */);
 
-    SmallVector<Type *, 4> argTypes = {
+    SmallVector<Type *, 4> ArgTypes = {
         Int64Ty /* RODAddr */,
         Int64Ty /* SecStAddr */,
         Int64Ty /*SecSize */,
         Int64Ty /* Runtime ROData GV */,
     };
-    ArrayRef<Type *> argTypeVector(argTypes);
+    ArrayRef<Type *> ArgTypeVector(ArgTypes);
 
     FunctionType *FuncType =
-        FunctionType::get(Int64Ty, argTypeVector, false /* isVarArg*/);
+        FunctionType::get(Int64Ty, ArgTypeVector, false /* isVarArg*/);
 
     // Create function
     Func =
         Function::Create(FuncType, GlobalValue::ExternalLinkage, FuncName, M);
     Func->setCallingConv(CallingConv::C);
 
-    Function::arg_iterator args = Func->arg_begin();
-    Value *InAddr = args++;
+    Function::arg_iterator Args = Func->arg_begin();
+    Value *InAddr = Args++;
     InAddr->setName("InAddr");
-    Value *SecBeg = args++;
+    Value *SecBeg = Args++;
     SecBeg->setName("SecBeg");
-    Value *SecSz = args++;
+    Value *SecSz = Args++;
     SecSz->setName("SecSz");
-    Value *RTGV = args++;
+    Value *RTGV = Args++;
     RTGV->setName("RTGV");
 
     // Create the entry basic block

@@ -27,40 +27,40 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
   //             create a new MBB
   //             set current instruction index as entry of current MBB
   //     b) add raised MachineInstr to current MBB.
-  auto targetIndicesEnd = targetIndices.end();
-  uint64_t curMBBEntryInstIndex;
+  auto TargetIndicesEnd = TargetIndices.end();
+  uint64_t CurMBBEntryInstIndex;
 
-  for (auto mcInstorDataIter = mcInstMap.begin();
-       mcInstorDataIter != mcInstMap.end(); mcInstorDataIter++) {
-    uint64_t mcInstIndex = mcInstorDataIter->first;
-    MCInstOrData mcInstorData = mcInstorDataIter->second;
+  for (auto MCInstorDataIter = InstMap.begin();
+       MCInstorDataIter != InstMap.end(); MCInstorDataIter++) {
+    uint64_t MCInstIndex = MCInstorDataIter->first;
+    MCInstOrData MCInstorData = MCInstorDataIter->second;
 
     // If the current mcInst is a target of some instruction,
     // i) record the target of previous instruction and fall-through as
     //    needed.
     // ii) start a new MachineBasicBlock
-    if (targetIndices.find(mcInstIndex) != targetIndicesEnd) {
+    if (TargetIndices.find(MCInstIndex) != TargetIndicesEnd) {
       // Create a map of curMBBEntryInstIndex to the current
       // MachineBasicBlock for use later to create control flow edges
       // - except when creating the first MBB.
       if (MF.size()) {
         // Find the target MCInst indices of the previous MCInst
-        uint64_t prevMCInstIndex = std::prev(mcInstorDataIter)->first;
-        MCInstOrData prevTextSecBytes = std::prev(mcInstorDataIter)->second;
-        std::vector<uint64_t> prevMCInstTargets;
+        uint64_t PrevMCInstIndex = std::prev(MCInstorDataIter)->first;
+        MCInstOrData PrevTextSecBytes = std::prev(MCInstorDataIter)->second;
+        std::vector<uint64_t> PrevMCInstTargets;
 
         // If handling a mcInst
-        if (mcInstorData.isMCInst()) {
-          MCInst mcInst = mcInstorData.getMCInst();
+        if (MCInstorData.isMCInst()) {
+          MCInst MCInstr = MCInstorData.getMCInst();
           // If this instruction is preceeded by mcInst
-          if (prevTextSecBytes.isMCInst()) {
-            MCInst prevMCInst = prevTextSecBytes.getMCInst();
+          if (PrevTextSecBytes.isMCInst()) {
+            MCInst PrevMCInst = PrevTextSecBytes.getMCInst();
             // If previous MCInst is a branch
-            if (MIA->isBranch(prevMCInst)) {
+            if (MIA->isBranch(PrevMCInst)) {
               uint64_t Target;
               // Get its target
-              if (MIA->evaluateBranch(prevMCInst, prevMCInstIndex,
-                                      (mcInstIndex - prevMCInstIndex),
+              if (MIA->evaluateBranch(PrevMCInst, PrevMCInstIndex,
+                                      (MCInstIndex - PrevMCInstIndex),
                                       Target)) {
                 // Record its target if it is within the function start
                 // and function end.  Branch instructions with such
@@ -69,13 +69,13 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
                 // TODO: How to handle any branches out of these bounds?
                 // Does such a situation exist?
                 if ((Target >= FuncStart) && (Target < FuncEnd)) {
-                  prevMCInstTargets.push_back(Target);
+                  PrevMCInstTargets.push_back(Target);
                   // If previous instruction is a conditional branch, the
                   // next instruction is also a target
-                  if (MIA->isConditionalBranch(prevMCInst)) {
-                    if ((mcInstIndex >= FuncStart) &&
-                        (mcInstIndex <= FuncEnd)) {
-                      prevMCInstTargets.push_back(mcInstIndex);
+                  if (MIA->isConditionalBranch(PrevMCInst)) {
+                    if ((MCInstIndex >= FuncStart) &&
+                        (MCInstIndex <= FuncEnd)) {
+                      PrevMCInstTargets.push_back(MCInstIndex);
                     }
                   }
                 }
@@ -83,36 +83,36 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
             }
             // Previous MCInst is not a branch. So, current instruction is a
             // target
-            else if ((mcInstIndex >= FuncStart) && (mcInstIndex <= FuncEnd))
-              prevMCInstTargets.push_back(mcInstIndex);
+            else if ((MCInstIndex >= FuncStart) && (MCInstIndex <= FuncEnd))
+              PrevMCInstTargets.push_back(MCInstIndex);
 
             // Add to MBB -> targets map
             MBBNumToMCInstTargetsMap.insert(
-                std::make_pair(MF.back().getNumber(), prevMCInstTargets));
-            mcInstToMBBNum.insert(
-                std::make_pair(curMBBEntryInstIndex, MF.back().getNumber()));
+                std::make_pair(MF.back().getNumber(), PrevMCInstTargets));
+            InstToMBBNum.insert(
+                std::make_pair(CurMBBEntryInstIndex, MF.back().getNumber()));
           } else {
             // This is preceded by data. Note that this mcInst is a target.
             // So need to start a new basic block
             // Add to MBB -> targets map
             MBBNumToMCInstTargetsMap.insert(
-                std::make_pair(MF.back().getNumber(), prevMCInstTargets));
-            mcInstToMBBNum.insert(
-                std::make_pair(curMBBEntryInstIndex, MF.back().getNumber()));
+                std::make_pair(MF.back().getNumber(), PrevMCInstTargets));
+            InstToMBBNum.insert(
+                std::make_pair(CurMBBEntryInstIndex, MF.back().getNumber()));
           }
         }
       }
 
       // Add the new MBB to MachineFunction
-      if (mcInstorData.isMCInst()) {
+      if (MCInstorData.isMCInst()) {
         MF.push_back(MF.CreateMachineBasicBlock());
-        curMBBEntryInstIndex = mcInstIndex;
+        CurMBBEntryInstIndex = MCInstIndex;
       }
     }
-    if (mcInstorData.isMCInst()) {
+    if (MCInstorData.isMCInst()) {
       // Add raised MachineInstr to current MBB.
       MF.back().push_back(
-          RaiseMCInst(*MII, MF, mcInstorData.getMCInst(), mcInstIndex));
+          RaiseMCInst(*MII, MF, MCInstorData.getMCInst(), MCInstIndex));
     }
   }
 
@@ -121,8 +121,8 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
     // If the terminating instruction of last MBB is a branch instruction,
     // ensure appropriate control flow edges are added.
     std::vector<uint64_t> termMCInstTargets;
-    auto mcIDMapIter = mcInstMap.rbegin();
-    if (mcIDMapIter != mcInstMap.rend()) {
+    auto mcIDMapIter = InstMap.rbegin();
+    if (mcIDMapIter != InstMap.rend()) {
       uint64_t termMCInstIndex = mcIDMapIter->first;
       auto termMCInst = mcIDMapIter->second.getMCInst();
       // The following code handles a situation where the text section ends with
@@ -156,33 +156,33 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
     }
     MBBNumToMCInstTargetsMap.insert(
         std::make_pair(MF.back().getNumber(), termMCInstTargets));
-    mcInstToMBBNum.insert(
-        std::make_pair(curMBBEntryInstIndex, MF.back().getNumber()));
+    InstToMBBNum.insert(
+        std::make_pair(CurMBBEntryInstIndex, MF.back().getNumber()));
   }
 
   // Walk all MachineBasicBlocks in MF to add control flow edges
-  unsigned mbbCount = MF.getNumBlockIDs();
-  for (unsigned mbbIndex = 0; mbbIndex < mbbCount; mbbIndex++) {
+  unsigned MBBCount = MF.getNumBlockIDs();
+  for (unsigned MBBIndex = 0; MBBIndex < MBBCount; MBBIndex++) {
     // Get the MBB
-    MachineBasicBlock *currentMBB = MF.getBlockNumbered(mbbIndex);
-    std::map<uint64_t, std::vector<uint64_t>>::iterator iter =
-        MBBNumToMCInstTargetsMap.find(mbbIndex);
-    assert(iter != MBBNumToMCInstTargetsMap.end());
-    std::vector<uint64_t> targetMCInstIndices = iter->second;
-    for (auto mbbMCInstTgt : targetMCInstIndices) {
-      std::map<uint64_t, uint64_t>::iterator tgtIter =
-          mcInstToMBBNum.find(mbbMCInstTgt);
+    MachineBasicBlock *CurrentMBB = MF.getBlockNumbered(MBBIndex);
+    std::map<uint64_t, std::vector<uint64_t>>::iterator Iter =
+        MBBNumToMCInstTargetsMap.find(MBBIndex);
+    assert(Iter != MBBNumToMCInstTargetsMap.end());
+    std::vector<uint64_t> TargetMCInstIndices = Iter->second;
+    for (auto MBBMCInstTgt : TargetMCInstIndices) {
+      std::map<uint64_t, uint64_t>::iterator TgtIter =
+          InstToMBBNum.find(MBBMCInstTgt);
       // If the target is not found, it could be outside the function
       // being constructed.
       // TODO: Need to keep track of all such targets and link them in
       // a later global pass over all MachineFunctions of the module.
-      if (tgtIter == mcInstToMBBNum.end()) {
+      if (TgtIter == InstToMBBNum.end()) {
         outs() << "**** Warning : Index ";
-        outs().write_hex(mbbMCInstTgt);
+        outs().write_hex(MBBMCInstTgt);
         outs() << " not found\n";
-      } else if (!MF.getBlockNumbered(mbbIndex)->isReturnBlock()) {
-        MachineBasicBlock *succ = MF.getBlockNumbered(tgtIter->second);
-        currentMBB->addSuccessorWithoutProb(succ);
+      } else if (!MF.getBlockNumbered(MBBIndex)->isReturnBlock()) {
+        MachineBasicBlock *Succ = MF.getBlockNumbered(TgtIter->second);
+        CurrentMBB->addSuccessorWithoutProb(Succ);
       }
     }
   }
@@ -193,48 +193,48 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
   LLVM_DEBUG(MF.dump());
 }
 
-static inline int64_t raiseSignedImm(int64_t val, const DataLayout &dl) {
-  if (dl.getPointerSize() == 4)
-    return static_cast<int32_t>(val);
+static inline int64_t raiseSignedImm(int64_t Val, const DataLayout &DL) {
+  if (DL.getPointerSize() == 4)
+    return static_cast<int32_t>(Val);
 
-  return val;
+  return Val;
 }
 
-MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
-                                        MachineFunction &machineFunction,
-                                        MCInst mcInst, uint64_t mcInstIndex) {
+MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &InstrInfo,
+                                        MachineFunction &MF,
+                                        MCInst Inst, uint64_t InstIndex) {
   // Construct MachineInstr that is the raised abstraction of MCInstr
-  const MCInstrDesc &mcInstrDesc = mcInstrInfo.get(mcInst.getOpcode());
-  DebugLoc *debugLoc = new DebugLoc();
-  MachineInstrBuilder builder =
-      BuildMI(machineFunction, *debugLoc, mcInstrDesc);
+  const MCInstrDesc &InstrDesc = InstrInfo.get(Inst.getOpcode());
+  DebugLoc *DL = new DebugLoc();
+  MachineInstrBuilder Builder =
+      BuildMI(MF, *DL, InstrDesc);
 
   // Get the number of declared MachineOperands for this
   // MachineInstruction and add them to the MachineInstr being
   // constructed. Any implicitDefs or implicitDefs would already have
   // been added while MachineInstr is created during the construction
   // of builder object above.
-  const unsigned int defCount = mcInstrDesc.getNumDefs();
-  const unsigned int numOperands = mcInstrDesc.getNumOperands();
-  for (unsigned int indx = 0; indx < numOperands; indx++) {
+  const unsigned int DefCount = InstrDesc.getNumDefs();
+  const unsigned int NumOperands = InstrDesc.getNumOperands();
+  for (unsigned int Indx = 0; Indx < NumOperands; Indx++) {
     // Raise operand
-    MCOperand mcOperand = mcInst.getOperand(indx);
-    if (mcOperand.isImm()) {
-      builder.addImm(
-          raiseSignedImm(mcOperand.getImm(), machineFunction.getDataLayout()));
-    } else if (mcOperand.isReg()) {
+    MCOperand Operand = Inst.getOperand(Indx);
+    if (Operand.isImm()) {
+      Builder.addImm(
+          raiseSignedImm(Operand.getImm(), MF.getDataLayout()));
+    } else if (Operand.isReg()) {
       // The first defCount operands are defines (i.e., out operands).
-      if (indx < defCount)
-        builder.addDef(mcOperand.getReg());
+      if (Indx < DefCount)
+        Builder.addDef(Operand.getReg());
       else
-        builder.addUse(mcOperand.getReg());
+        Builder.addUse(Operand.getReg());
     } else {
       outs() << "**** Unhandled Operand : ";
-      LLVM_DEBUG(mcOperand.dump());
+      LLVM_DEBUG(Operand.dump());
     }
   }
 
-  LLVMContext &C = machineFunction.getFunction().getContext();
+  LLVMContext &C = MF.getFunction().getContext();
   // Creation of MDNode representing Metadata with mcInstIndex may be done
   // using the following couple of lines of code. But I just wanted to spell
   // it out for better understanding.
@@ -248,57 +248,57 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &mcInstrInfo,
 
   // Create arbitrary precision
   // integer
-  llvm::APInt ArbPrecInt(64, mcInstIndex, false);
+  llvm::APInt ArbPrecInt(64, InstIndex, false);
   // Create ConstantAsMetadata
   ConstantAsMetadata *CMD =
       ConstantAsMetadata::get(ConstantInt::get(C, ArbPrecInt));
   MDNode *N = MDNode::get(C, CMD);
-  builder.addMetadata(N);
-  return builder.getInstr();
+  Builder.addMetadata(N);
+  return Builder.getInstr();
 }
 
 void MCInstRaiser::dump() const {
-  for (auto in : mcInstMap) {
-    uint64_t mcInstIndex = in.first;
-    MCInstOrData mcInstorData = in.second;
-    LLVM_DEBUG(dbgs() << "0x" << format("%016" PRIx64, mcInstIndex) << ": ");
-    LLVM_DEBUG(mcInstorData.dump());
+  for (auto In : InstMap) {
+    uint64_t InstIndex = In.first;
+    MCInstOrData InstorData = In.second;
+    LLVM_DEBUG(dbgs() << "0x" << format("%016" PRIx64, InstIndex) << ": ");
+    LLVM_DEBUG(InstorData.dump());
   }
 }
 
-bool MCInstRaiser::adjustFuncEnd(uint64_t n) {
+bool MCInstRaiser::adjustFuncEnd(uint64_t N) {
   // NOTE: At present it appears that we only need it to increase the function
   // end index.
-  if (FuncEnd > n)
+  if (FuncEnd > N)
     return false;
 
-  FuncEnd = n;
+  FuncEnd = N;
   return true;
 }
 
-void MCInstRaiser::addMCInstOrData(uint64_t index, MCInstOrData mcInst) {
+void MCInstRaiser::addMCInstOrData(uint64_t Index, MCInstOrData Inst) {
   // Set dataInCode flag as appropriate
-  if (mcInst.isData() && !dataInCode)
-    dataInCode = true;
+  if (Inst.isData() && !DataInCode)
+    DataInCode = true;
 
-  mcInstMap.insert(std::make_pair(index, mcInst));
+  InstMap.insert(std::make_pair(Index, Inst));
 }
 
 int64_t MCInstRaiser::getMBBNumberOfMCInstOffset(uint64_t Offset,
                                                  MachineFunction &MF) const {
   if ((Offset < FuncStart) || (Offset > FuncEnd))
     return -1;
-  auto iter = mcInstToMBBNum.find(Offset);
-  if (iter != mcInstToMBBNum.end())
-    return (*iter).second;
+  auto Iter = InstToMBBNum.find(Offset);
+  if (Iter != InstToMBBNum.end())
+    return (*Iter).second;
 
   // MBBNo not found. Check to see if the Offset corresponds to a non-leading
   // instruction of any of the blocks. Such a situation may occur when this
   // function is called before noops are deleted.
-  for (auto N : mcInstToMBBNum) {
+  for (auto N : InstToMBBNum) {
     uint64_t CurMBBStartOffset = N.first;
     uint64_t CurMBBNo = N.second;
-    auto CurMBB = MF.getBlockNumbered(CurMBBNo);
+    auto *CurMBB = MF.getBlockNumbered(CurMBBNo);
     unsigned CurMBBSizeinBytes = 0;
     for (const MachineInstr &I : CurMBB->instrs()) {
       CurMBBSizeinBytes += getMCInstSize(getMCInstIndex(I));
@@ -312,18 +312,18 @@ int64_t MCInstRaiser::getMBBNumberOfMCInstOffset(uint64_t Offset,
 }
 
 int64_t MCInstRaiser::getMCInstOffsetOfMBBNumber(uint64_t MBBNum) const {
-  auto iter =
-      std::find_if(mcInstToMBBNum.begin(), mcInstToMBBNum.end(),
-                   [MBBNum](auto &&item) { return item.second == MBBNum; });
+  auto Iter =
+      std::find_if(InstToMBBNum.begin(), InstToMBBNum.end(),
+                   [MBBNum](auto &&Item) { return Item.second == MBBNum; });
 
-  if (iter != mcInstToMBBNum.end())
-    return iter->first;
+  if (Iter != InstToMBBNum.end())
+    return Iter->first;
   return -1;
 }
 
 uint64_t MCInstRaiser::getMCInstSize(uint64_t Offset) const {
-  const_mcinst_iter Iter = mcInstMap.find(Offset);
-  const_mcinst_iter End = mcInstMap.end();
+  const_mcinst_iter Iter = InstMap.find(Offset);
+  const_mcinst_iter End = InstMap.end();
   assert(Iter != End && "Attempt to find MCInst at non-existent offset");
 
   if (Iter.operator++() != End) {

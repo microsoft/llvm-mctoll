@@ -21,7 +21,7 @@
 namespace llvm {
 namespace mctoll {
 
-/// This is a extention of SelectionDAG. It contains additional information
+/// This is a extension of SelectionDAG. It contains additional information
 /// of DAG which is used by llvm-mctoll.
 class DAGRaisingInfo {
 public:

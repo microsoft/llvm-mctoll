@@ -63,7 +63,7 @@ public:
   // Return type of the floating point physical register
   Type *getPhysSSERegType(unsigned int PhysReg, uint8_t BitPrecision);
 
-  bool insertAllocaInEntryBlock(Instruction *alloca, int StackOffset,
+  bool insertAllocaInEntryBlock(Instruction *Alloca, int StackOffset,
                                 int MFIndex);
   BasicBlock *getRaisedBasicBlock(const MachineBasicBlock *);
   bool recordDefsToPromote(unsigned PhysReg, unsigned MBBNo, Value *Alloca);
@@ -71,7 +71,7 @@ public:
                                        int MBBNo, Instruction *Alloca);
   int getArgumentNumber(unsigned PReg) override;
   auto getRegisterInfo() const { return x86RegisterInfo; }
-  bool instrNameStartsWith(const MachineInstr &MI, StringRef name) const;
+  bool instrNameStartsWith(const MachineInstr &MI, StringRef Name) const;
   X86RaisedValueTracker *getRaisedValues() { return raisedValues; }
 
 private:
@@ -176,14 +176,14 @@ private:
   // Raise Machine Jumptable
   bool raiseMachineJumpTable();
 
-  Value *getSwitchCompareValue(MachineBasicBlock &mbb);
+  Value *getSwitchCompareValue(MachineBasicBlock &MBB);
 
   // FPU Stack access functions
-  void FPURegisterStackPush(Value *);
-  void FPURegisterStackPop();
-  Value *FPURegisterStackGetValueAt(int8_t);
-  void FPURegisterStackSetValueAt(int8_t, Value *);
-  Value *FPURegisterStackTop();
+  void pushFPURegisterStack(Value *Val);
+  void popFPURegisterStack();
+  Value *getFPURegisterStackValueAt(int8_t);
+  void setFPURegisterStackValueAt(int8_t, Value *);
+  Value *topFPURegisterStack();
 
   int getMemoryRefOpIndex(const MachineInstr &);
   Value *getGlobalVariableValueAt(const MachineInstr &, uint64_t);
@@ -192,7 +192,7 @@ private:
   Value *getMemoryAddressExprValue(const MachineInstr &);
   Value *createPCRelativeAccesssValue(const MachineInstr &);
 
-  bool changePhysRegToVirtReg(MachineInstr &);
+  bool changePhysRegToVirtReg(MachineInstr &MI);
 
   Value *getPhysRegValue(const MachineInstr &, unsigned);
 
@@ -201,7 +201,7 @@ private:
   Type *getReturnTypeFromMBB(const MachineBasicBlock &MBB, bool &HasCall);
   Function *getTargetFunctionAtPLTOffset(const MachineInstr &, uint64_t);
   Value *getStackAllocatedValue(const MachineInstr &, X86AddressMode &, bool);
-  Value *getRegOperandValue(const MachineInstr &mi, unsigned OperandIndex);
+  Value *getRegOperandValue(const MachineInstr &MI, unsigned OperandIndex);
 
   bool handleUnpromotedReachingDefs();
   bool handleUnterminatedBlocks();
@@ -222,7 +222,7 @@ private:
   bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
 
-  std::vector<JumpTableInfo> jtList;
+  std::vector<JumpTableInfo> JTList;
 };
 
 } // end namespace mctoll

@@ -92,27 +92,27 @@ static inline uint8_t getInstructionBitPrecision(uint64_t TSFlags) {
   // Instructions using prefix to indicate precision
   if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XS) {
     return 32;
-  } else if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XD) {
+  }
+  if ((TSFlags & llvm::X86II::OpPrefixMask) == llvm::X86II::XD) {
     return 64;
-  } else {
-    // Instructions operating on packed values
-    auto Domain = (TSFlags >> llvm::X86II::SSEDomainShift) & 3;
-    // X64BaseInfo.h does not define enums. X86InstrFormats.td specified
-    // GenericDomain = 0 (non-SSE instruction)
-    // SSEPackedSingle = 1
-    // SSEPackedSouble = 2
-    // SSEPackedInt = 3
-    switch (Domain) {
-    case 1:
-    case 3:
-      return 32;
-    case 2:
-      return 64;
-    case 0:
-      return 0;
-    default:
-      llvm_unreachable("Unknown precision in instruction encoding");
-    }
+  }
+  // Instructions operating on packed values
+  auto Domain = (TSFlags >> llvm::X86II::SSEDomainShift) & 3;
+  // X64BaseInfo.h does not define enums. X86InstrFormats.td specified
+  // GenericDomain = 0 (non-SSE instruction)
+  // SSEPackedSingle = 1
+  // SSEPackedSouble = 2
+  // SSEPackedInt = 3
+  switch (Domain) {
+  case 1:
+  case 3:
+    return 32;
+  case 2:
+    return 64;
+  case 0:
+    return 0;
+  default:
+    llvm_unreachable("Unknown precision in instruction encoding");
   }
 }
 

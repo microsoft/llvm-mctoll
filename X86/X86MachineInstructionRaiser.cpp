@@ -2393,7 +2393,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
         CastInst::getCastOpcode(LdInst, true, FloatTy, true), LdInst, FloatTy);
     RaisedBB->getInstList().push_back(CInst);
     // Push value to top of FPU register stack
-    FPURegisterStackPush(CInst);
+    pushFPURegisterStack(CInst);
   } break;
   case X86::LD_F32m:
   case X86::LD_F64m: {
@@ -2403,7 +2403,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
         CastInst::getCastOpcode(LdInst, true, FloatTy, true), LdInst, FloatTy);
     RaisedBB->getInstList().push_back(CInst);
     // Push value to top of FPU register stack
-    FPURegisterStackPush(CInst);
+    pushFPURegisterStack(CInst);
   }
   }
   return true;
@@ -2493,7 +2493,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
   } break;
   case X86::ST_FP32m:
   case X86::ST_FP64m: {
-    Value *ST0Val = FPURegisterStackTop();
+    Value *ST0Val = topFPURegisterStack();
     Type *SrcTy = ST0Val->getType();
     // The value in ST0 is converted to single-precision or double precision
     // floating-point format. So, cast the memRefValue to the PointerType of
@@ -2511,7 +2511,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
     new StoreInst(ST0Val, MemRefValue, RaisedBB);
 
     // Pop value to top of FPU register stack
-    FPURegisterStackPop();
+    popFPURegisterStack();
   }
   }
   return true;
@@ -4483,7 +4483,7 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
     const MachineJumpTableInfo *MJT = MF.getJumpTableInfo();
 
     // Get the case value
-    MachineBasicBlock *cdMBB = jtList[jtIndex].conditionMBB;
+    MachineBasicBlock *cdMBB = JTList[jtIndex].conditionMBB;
     Value *cdi = getSwitchCompareValue(*cdMBB);
     assert(cdi != nullptr && "Failed to get switch compare value.");
     Type *caseValTy = cdi->getType();
@@ -4498,7 +4498,7 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
 
     // Create the Switch Instruction
     unsigned int numCases = JTCases.size();
-    auto intr_df = mbbToBBMap.find(jtList[jtIndex].df_MBB->getNumber());
+    auto intr_df = mbbToBBMap.find(JTList[jtIndex].df_MBB->getNumber());
 
     BasicBlock *df_bb = intr_df->second;
     SwitchInst *Inst = SwitchInst::Create(cdi, df_bb, numCases);
@@ -4905,7 +4905,7 @@ bool X86MachineInstructionRaiser::raiseGenericMachineInstr(
 // Raise a return instruction.
 bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
     const MachineInstr &MI) {
-  Type *RetType = raisedFunction->getReturnType();
+  Type *RetType = RaisedFunction->getReturnType();
   Value *RetValue = nullptr;
 
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
@@ -4973,12 +4973,12 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   // Make sure that the return type of raisedFunction is void. Else change it to
   // void type as reaching definition computation is more accurate than that
   // deduced earlier just looking at the per-basic block definitions.
-  Type *RaisedFuncReturnTy = raisedFunction->getReturnType();
+  Type *RaisedFuncReturnTy = RaisedFunction->getReturnType();
   if (RetValue == nullptr) {
     if (!RaisedFuncReturnTy->isVoidTy()) {
       ModuleRaiser *NonConstMR = const_cast<ModuleRaiser *>(MR);
       NonConstMR->changeRaisedFunctionReturnType(
-          raisedFunction, Type::getVoidTy(MF.getFunction().getContext()));
+          RaisedFunction, Type::getVoidTy(MF.getFunction().getContext()));
     }
   }
 
@@ -4987,7 +4987,7 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
 
 bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
   LLVM_DEBUG(outs() << "CFG : Before Raising Terminator Instructions\n");
-  LLVM_DEBUG(raisedFunction->dump());
+  LLVM_DEBUG(RaisedFunction->dump());
 
   // Raise branch instructions with control transfer records
   bool success = true;
@@ -5056,7 +5056,7 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
     }
   }
   LLVM_DEBUG(outs() << "CFG : After Raising Terminator Instructions\n");
-  LLVM_DEBUG(raisedFunction->dump());
+  LLVM_DEBUG(RaisedFunction->dump());
 
   return true;
 }
@@ -5075,7 +5075,7 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
   case X86::ADD_FPrST0:
   case X86::MUL_FPrST0:
   case X86::DIV_FPrST0: {
-    Value *St0Val = FPURegisterStackGetValueAt(0);
+    Value *St0Val = getFPURegisterStackValueAt(0);
     assert((St0Val != nullptr) && "Failed to get ST(0) value");
     Type *St0ValTy = St0Val->getType();
     assert(St0ValTy->isFloatingPointTy() &&
@@ -5089,7 +5089,7 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
     int8_t FPRegIndex = StRegOp.getReg() - X86::ST0;
     assert((FPRegIndex >= 0) && (FPRegIndex < FPUSTACK_SZ) &&
            "Unexpected FPU register stack index computed");
-    Value *StVal = FPURegisterStackGetValueAt(FPRegIndex);
+    Value *StVal = getFPURegisterStackValueAt(FPRegIndex);
     assert((StVal != nullptr) && "Failed to get value of FPU register");
     if (StVal->getType() != St0ValTy) {
       CastInst *CInst = CastInst::Create(
@@ -5109,9 +5109,9 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
     }
     RaisedBB->getInstList().push_back(FPRegOpInstr);
     // Update the FP register FPRegIndex with FPRegOpInstr
-    FPURegisterStackSetValueAt(FPRegIndex, FPRegOpInstr);
+    setFPURegisterStackValueAt(FPRegIndex, FPRegOpInstr);
     // Pop FPU register stack
-    FPURegisterStackPop();
+    popFPURegisterStack();
   } break;
   default: {
     assert(false && "Unhandled FPU instruction");
@@ -5408,7 +5408,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       else {
         RetInstr = ReturnInst::Create(Ctx, callInst);
         ModuleRaiser *NonConstMR = const_cast<ModuleRaiser *>(MR);
-        NonConstMR->changeRaisedFunctionReturnType(raisedFunction,
+        NonConstMR->changeRaisedFunctionReturnType(RaisedFunction,
                                                    callInst->getType());
       }
       RaisedBB->getInstList().push_back(RetInstr);
@@ -5671,7 +5671,7 @@ bool X86MachineInstructionRaiser::raise() {
   if (Success) {
     // Delete empty basic blocks with no predecessors
     SmallVector<BasicBlock *, 4> UnConnectedBEmptyBs;
-    for (BasicBlock &BB : *raisedFunction) {
+    for (BasicBlock &BB : *RaisedFunction) {
       if (BB.hasNPredecessors(0) && BB.size() == 0)
         UnConnectedBEmptyBs.push_back(&BB);
     }
@@ -5681,7 +5681,7 @@ bool X86MachineInstructionRaiser::raise() {
     // Unify all exit nodes of the raised function
     legacy::PassManager PM;
     PM.add(createUnifyFunctionExitNodesPass());
-    PM.run(*(raisedFunction->getParent()));
+    PM.run(*(RaisedFunction->getParent()));
   }
   return Success;
 }

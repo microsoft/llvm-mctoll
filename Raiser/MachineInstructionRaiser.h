@@ -26,7 +26,7 @@ namespace mctoll {
 // transfer (i.e., branch) instructions during a post-processing
 // phase.
 
-typedef struct ControlTransferInfo_t {
+struct ControlTransferInfo {
   BasicBlock *CandidateBlock;
   // This is the MachineInstr that needs to be raised
   const MachineInstr *CandidateMachineInstr;
@@ -39,14 +39,14 @@ typedef struct ControlTransferInfo_t {
   std::vector<Value *> RegValues;
   // Flag to indicate that CandidateMachineInstr has been raised
   bool Raised;
-} ControlTransferInfo;
+};
 
 class MachineInstructionRaiser {
 public:
   MachineInstructionRaiser() = delete;
-  MachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
-                           MCInstRaiser *mcir = nullptr)
-      : MF(machFunc), raisedFunction(nullptr), mcInstRaiser(mcir), MR(mr) {}
+  MachineInstructionRaiser(MachineFunction &TheMF, const ModuleRaiser *TheMR,
+                           MCInstRaiser *TheMCIR = nullptr)
+      : MF(TheMF), RaisedFunction(nullptr), InstRaiser(TheMCIR), MR(TheMR) {}
   virtual ~MachineInstructionRaiser(){};
 
   virtual bool raise() { return true; };
@@ -56,9 +56,9 @@ public:
   virtual bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                                       std::vector<Type *> &) = 0;
 
-  Function *getRaisedFunction() { return raisedFunction; }
-  void setRaisedFunction(Function *F) { raisedFunction = F; }
-  MCInstRaiser *getMCInstRaiser() { return mcInstRaiser; }
+  Function *getRaisedFunction() { return RaisedFunction; }
+  void setRaisedFunction(Function *F) { RaisedFunction = F; }
+  MCInstRaiser *getMCInstRaiser() { return InstRaiser; }
   MachineFunction &getMF() { return MF; };
   const ModuleRaiser *getModuleRaiser() { return MR; }
 
@@ -71,8 +71,8 @@ protected:
   // This is the Function object that holds the raised abstraction of MF.
   // Note that the function associated with MF should not be referenced or
   // updated. It was created just to enable the creation of MF.
-  Function *raisedFunction;
-  MCInstRaiser *mcInstRaiser;
+  Function *RaisedFunction;
+  MCInstRaiser *InstRaiser;
   const ModuleRaiser *MR;
 
   // A vector of information to be used for raising of control transfer

@@ -10,8 +10,8 @@
 // RUN: %t-gcc-noopt-dis 2>&1 | FileCheck %s
 
 // CHECK: 20  + 5 = 25
-// CHECK_NEXT: 20  - 5 = 15
-// CHECK_NEXT: 20  * 5 = 100
+// CHECK-NEXT: 20  - 5 = 15
+// CHECK-NEXT: 20  * 5 = 100
 
 #include <stdio.h>
 

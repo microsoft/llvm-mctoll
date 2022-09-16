@@ -364,7 +364,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
     MBB->eraseFromParent();
   }
 
-  LLVM_DEBUG(outs() << "CFG : After Raising Jump Tables\n");
+  LLVM_DEBUG(dbgs() << "CFG : After Raising Jump Tables\n");
   LLVM_DEBUG(MF.dump());
   return true;
 }

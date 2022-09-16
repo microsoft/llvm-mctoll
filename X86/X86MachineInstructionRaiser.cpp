@@ -3028,7 +3028,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
   LLVMContext &Ctx(MF.getFunction().getContext());
 
-  unsigned int MemAlignment = getInstructionMemOpSize(MI.getOpcode());
+  unsigned int MemOpSize = getInstructionMemOpSize(MI.getOpcode());
 
   // Note that not instruction with memory operand loads from MemrefVal,
   // computes not operation on the loaded value and stores it back in the
@@ -3036,10 +3036,11 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
 
   // Load the value from memory location of memRefValue.
   Type *SrcTy = MemRefVal->getType();
+  Type *DataTy = Type::getIntNTy(Ctx, MemOpSize * 8);
   // Get the pointer type of data stored by the instruction
-  Type *MemPtrTy = Type::getIntNPtrTy(Ctx, MemAlignment * 8);
+  Type *MemPtrTy = DataTy->getPointerTo();
   // If Cast the value to pointer type of size memAlignment
-  if (!SrcTy->isPointerTy() || (SrcTy != MemPtrTy)) {
+  if (!SrcTy->isPointerTy() || (SrcTy != DataTy)) {
     CastInst *CInst = CastInst::Create(
         CastInst::getCastOpcode(MemRefVal, false, MemPtrTy, false), MemRefVal,
         MemPtrTy);
@@ -3054,7 +3055,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   // Load the value from memory location
   // OpaquePointer hack
   Instruction *SrcValue =
-      new LoadInst(getIntTypeByPtr(SrcTy), MemRefVal, "memload", false,
+      new LoadInst(DataTy, MemRefVal, "memload", false,
                    Align(), RaisedBB);
 
   switch (MI.getOpcode()) {
@@ -3078,7 +3079,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   RaisedBB->getInstList().push_back(SrcValue);
 
   // Store the result back in MemRefVal
-  new StoreInst(SrcValue, MemRefVal, false, Align(MemAlignment), RaisedBB);
+  new StoreInst(SrcValue, MemRefVal, false, Align(MemOpSize), RaisedBB);
   return true;
 }
 
@@ -3460,10 +3461,10 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
         MemRefValue->getPointerAlignment(MR->getModule()->getDataLayout());
     // OpaquePointer hack
     LoadInst *LoadInstr =
-        new LoadInst(getIntTypeByPtr(MemRefValue->getType()),
-                     MemRefValue, "", false, PtrAlign, RaisedBB);
+        new LoadInst(NonMemRefOpTy, MemRefValue,
+                     "", false, PtrAlign, RaisedBB);
     // save it at the appropriate index of operand value array
-    if (MemoryRefOpIndex == 0) {
+    if (MemRefOpIndex == 0) {
       OpValues[0] = LoadInstr;
     } else {
       OpValues[1] = LoadInstr;
@@ -3475,9 +3476,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
       NonMemRefVal = getRegOrArgValue(NonMemRefOp->getReg(), MBBNo);
     } else if (NonMemRefOp->isImm()) {
       // OpaquePointer hack
-      NonMemRefVal =
-          ConstantInt::get(getIntTypeByPtr(MemRefValue->getType()),
-                           NonMemRefOp->getImm());
+      NonMemRefVal = ConstantInt::get(NonMemRefOpTy, NonMemRefOp->getImm());
     } else {
       LLVM_DEBUG(MI.dump());
       assert(false && "Unhandled first operand type in compare instruction");
@@ -5055,7 +5054,7 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
 }
 
 bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
-  LLVM_DEBUG(outs() << "CFG : Before Raising Terminator Instructions\n");
+  LLVM_DEBUG(dbgs() << "CFG : Before Raising Terminator Instructions\n");
   LLVM_DEBUG(RaisedFunction->dump());
 
   // Raise branch instructions with control transfer records
@@ -5125,7 +5124,7 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
       }
     }
   }
-  LLVM_DEBUG(outs() << "CFG : After Raising Terminator Instructions\n");
+  LLVM_DEBUG(dbgs() << "CFG : After Raising Terminator Instructions\n");
   LLVM_DEBUG(RaisedFunction->dump());
 
   return true;

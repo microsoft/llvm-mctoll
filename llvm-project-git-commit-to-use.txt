@@ -5,8 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit d9756fa723be7907afdceb933644a2dc00d6e5af
-Author: Philip Reames <listmail@philipreames.com>
-Date:   Fri Mar 25 09:02:23 2022 -0700
+commit b73d2c8c720a8c8e6e73b11be4e27afa6cb75bdf (HEAD, tag: llvmorg-15.0.1)
+Author: Florian Hahn <flo@fhahn.com>
+Date:   Mon Sep 19 18:14:34 2022 +0100
 
-    [slp] Factor out a lambda to avoid uplicating code a third time in upcoming patch [nfc]
+    [LV] Keep track of cost-based ScalarAfterVec in VPWidenPointerInd.

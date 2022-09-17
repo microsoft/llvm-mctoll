@@ -231,9 +231,11 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
     // instruction, as needed.
     MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
     // Load the value from memory location
-    Type *LdTy = MemRefValue->getType()->getPointerElementType();
+    // OpaquePointer hack - LdTy always equal SrcTy
+    // Type *LdTy = MemRefValue->getType()->getPointerElementType();
+    // assert(SrcTy == LdTy && "Error types");
     LoadInst *LdInst =
-        new LoadInst(LdTy, MemRefValue, "memload", false, Align());
+        new LoadInst(SrcTy, MemRefValue, "memload", false, Align());
     LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
     RaisedBB->getInstList().push_back(LdInst);
 
@@ -931,8 +933,10 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
          "Unexpected physical register size of reaching definition ");
   // This could simply be set to 64 because the stack slot allocated is
   // a 64-bit value.
+  auto *AllocaI = dyn_cast<AllocaInst>(Alloca);
+  assert(AllocaI && "Alloca Not an AllocaInst");
   int StackLocSzInBits =
-      Alloca->getType()->getPointerElementType()->getPrimitiveSizeInBits();
+      AllocaI->getAllocatedType()->getPrimitiveSizeInBits();
   Type *StackLocTy;
   if (ReachingValue->getType()->isIntOrPtrTy()) {
     // Cast the current value to int64 if needed
@@ -1013,7 +1017,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   // which ReachingValue is stored.
   for (auto *I : UsageInstList) {
     LoadInst *LdFromStkSlot = new LoadInst(
-        Alloca->getType()->getPointerElementType(), Alloca, "ld-stk-prom", I);
+        AllocaI->getAllocatedType(), Alloca, "ld-stk-prom", I);
     I->replaceUsesOfWith(ReachingValue, LdFromStkSlot);
   }
 
@@ -1604,7 +1608,7 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
         }
 
         RODataSecValueName.append("_").append(std::to_string(SecIndex));
-        Constant *RODataSecValue = MR->getModule()->getGlobalVariable(
+        GlobalVariable *RODataSecValue = MR->getModule()->getGlobalVariable(
             RODataSecValueName, true /* AllowInternal */);
         // If ROData Value representing the contents of this section was not
         // materialized yet, create one.
@@ -1634,8 +1638,8 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
         Value *DataOffsetIndex =
             ConstantInt::get(Type::getInt32Ty(Context), DataOffset);
         Constant *GetElem = ConstantExpr::getInBoundsGetElementPtr(
-            RODataSecValue->getType()->getPointerElementType(), RODataSecValue,
-            {Zero32Value, DataOffsetIndex});
+                RODataSecValue->getValueType(),
+            RODataSecValue, {Zero32Value, DataOffsetIndex});
         RODataValue = GetElem;
       }
       break;
@@ -1822,7 +1826,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
               assert(
                   MemAccessSizeInBytes <= SymbSize &&
                   "Inconsistent values of memory access size and symbol size");
-              // Read MemAccesssSize number of bytes and check if they represent
+              // Read MemAccessSize number of bytes and check if they represent
               // addresses in .rodata.
               StringRef SymbolBytes(Beg, SymbSize);
               unsigned BytesRead = 0;
@@ -1954,20 +1958,17 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       }
       assert(GlobalVariableValue->getType()->isPointerTy() &&
              "Unexpected non-pointer type value in global data offset access");
-
+      auto *GlobVal = dyn_cast<GlobalVariable>(GlobalVariableValue);
+      assert(GlobVal && "Not an GlobalVariable");
       // If the global variable is of array type, ensure its type is correct.
-      if (GlobalVariableValue->getType()
-              ->getPointerElementType()
-              ->isArrayTy()) {
+      auto *GlobTy = GlobVal->getValueType();
+      if (GlobTy->isArrayTy()) {
         // First index - is 0
         Value *FirstIndex =
             ConstantInt::get(MF.getFunction().getContext(), APInt(32, 0));
         // Find the size of array element
-        size_t ArrayElemByteSz = GlobalVariableValue->getType()
-                                     ->getPointerElementType()
-                                     ->getArrayElementType()
-                                     ->getScalarSizeInBits() /
-                                 8;
+        size_t ArrayElemByteSz = GlobTy->getArrayElementType()
+                                       ->getScalarSizeInBits() / 8;
 
         unsigned ScaledOffset = GlobalSymOffset / MemAccessSizeInBytes;
 
@@ -1979,15 +1980,13 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
         if (MemAccessSizeInBytes != ArrayElemByteSz) {
           // Note the scaled offset is already calculated appropriately.
           // Get the size of global array
-          uint64_t GlobalArraySize = GlobalVariableValue->getType()
-                                         ->getPointerElementType()
-                                         ->getArrayNumElements();
+          uint64_t GlobalArraySize = GlobTy->getArrayNumElements();
           // Construct integer type of size memAccessSize bytes. Note that It
           // has been asserted that array element is of integral type.
-          PointerType *CastToArrTy = PointerType::get(
-              ArrayType::get(Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8),
-                             GlobalArraySize / MemAccessSizeInBytes),
-              0);
+          auto *ElementTy = ArrayType::get(
+              Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8),
+                              GlobalArraySize / MemAccessSizeInBytes);
+          PointerType *CastToArrTy = PointerType::get(ElementTy, 0);
 
           CastInst *CInst = CastInst::Create(
               CastInst::getCastOpcode(GlobalVariableValue, false, CastToArrTy,
@@ -1995,12 +1994,17 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
               GlobalVariableValue, CastToArrTy);
           RaisedBB->getInstList().push_back(CInst);
           GlobalVariableValue = CInst;
+          Instruction *GetElem = GetElementPtrInst::CreateInBounds(
+              ElementTy, GlobalVariableValue,
+              {FirstIndex, OffsetIndex}, "", RaisedBB);
+          GlobalVariableValue = GetElem;
+        } else {
+          // Get the element
+          Instruction *GetElem = GetElementPtrInst::CreateInBounds(
+              GlobVal->getValueType(), GlobalVariableValue,
+              {FirstIndex, OffsetIndex}, "", RaisedBB);
+          GlobalVariableValue = GetElem;
         }
-        // Get the element
-        Instruction *GetElem = GetElementPtrInst::CreateInBounds(
-            GlobalVariableValue->getType()->getPointerElementType(),
-            GlobalVariableValue, {FirstIndex, OffsetIndex}, "", RaisedBB);
-        GlobalVariableValue = GetElem;
       }
     }
   }
@@ -2060,7 +2064,17 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   if (IndexReg != X86::NoRegister) {
     Value *IndexRegVal = getPhysRegValue(MI, IndexReg);
     if (IndexRegVal->getType()->isPointerTy()) {
-      Type *LdTy = IndexRegVal->getType()->getPointerElementType();
+      // OpaquePointer calculate MatchTy without call getPointerElementType()
+      Type *LdTy;
+      if (isa<AllocaInst>(IndexRegVal)) {
+        LdTy = dyn_cast<AllocaInst>(IndexRegVal)->getAllocatedType();
+      } else if (isa<GlobalValue>(IndexRegVal)) {
+        LdTy = dyn_cast<GlobalValue>(IndexRegVal)->getValueType();
+      } else if (isa<CastInst>(IndexRegVal)) {
+        LdTy = dyn_cast<CastInst>(IndexRegVal)->getSrcTy();
+      } else {
+        assert(false && "Unknown IndexRegVal type for OpaquePointer type calculation");
+      }
       LoadInst *LdInst =
           new LoadInst(LdTy, IndexRegVal, "memload", false, Align());
       RaisedBB->getInstList().push_back(LdInst);
@@ -2209,12 +2223,18 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
             }
           }
         } else if (GV->getType()->isPointerTy()) {
-          // Global value is expected to be an pointer type to an integer
+          // Global value is expected to be a pointer type to an integer
           // type. Cast GV in accordance with the type of MemrefValue to
           // facilitate the addition performed later to construct the address
           // expression.
-          if (GV->getType()->getPointerElementType()->isIntegerTy()) {
 
+          // OpaquePointer hack - check pointer isIntegerTy()
+          Type *PTy = GV->getType();
+          if (PTy == Type::getInt64PtrTy(Ctx) ||
+              PTy == Type::getInt32PtrTy(Ctx) ||
+              PTy == Type::getInt16PtrTy(Ctx) ||
+              PTy == Type::getInt8PtrTy(Ctx) ||
+              PTy == Type::getInt1PtrTy(Ctx)) {
             DispValue = getRaisedValues()->castValue(GV, MemrefValue->getType(),
                                                      RaisedBB);
           } else {

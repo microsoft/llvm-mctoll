@@ -156,7 +156,7 @@ X86RaisedValueTracker::getGlobalReachingDefs(unsigned int PhysReg, int MBBNo,
     // reach tree.
     bool RDFound = true;
     for (auto *P : CurMBB->predecessors()) {
-      // Initialize a bit vector tracking visited bacic blocks.
+      // Initialize a bit vector tracking visited basic blocks.
       BitVector BlockVisited(MF.getNumBlockIDs(), false);
       SmallVector<MachineBasicBlock *, 8> WorkList;
 
@@ -314,7 +314,7 @@ unsigned X86RaisedValueTracker::getInBlockPhysRegSize(unsigned int PhysReg,
 // the register is promoted to a stack slot. In other words, a stack slot is
 // created, all the reaching definitions are stored in the basic blocks that
 // define them. In the current basic block, use of this register is raised
-// as load from the the stack slot. If AllPreds is true (default is false),
+// as load from the stack slot. If AllPreds is true (default is false),
 // perform the stack promotions only if PhysReg is reachable along all
 // predecessors of MBBNo or is defined in MBBNo. If AnySubReg is false (which is
 // the default), the return value is ensured to be of type with size of PhysReg.
@@ -348,7 +348,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     bool HasUnknownReachingDef = false;
     for (auto RD : ReachingDefs) {
       if (RD.second == nullptr) {
-        // we might not have found a incoming edge that tells us if we're
+        // we might not have found an incoming edge that tells us if we're
         // dealing with int or floating point types -> continue for now
         HasUnknownReachingDef = true;
         continue;
@@ -370,7 +370,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
       }
     }
 
-    // if we have an unknown reaching def and we don't already have a value
+    // if we have an unknown reaching def, and we don't already have a value
     // that's greater than the largest int value
     if (HasUnknownReachingDef &&
         (AllocTy == nullptr || AllocTy->getPrimitiveSizeInBits() < 64)) {
@@ -458,7 +458,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     }
     // 3. load from the stack slot for use in current block
     Instruction *LdReachingVal = new LoadInst(
-        Alloca->getType()->getPointerElementType(), Alloca, "", false, Align());
+        Alloca->getAllocatedType(), Alloca, "", false, Align());
     LdReachingVal =
         setInstMetadataRODataContent(dyn_cast<LoadInst>(LdReachingVal));
     // Insert load instruction
@@ -1108,7 +1108,7 @@ Value *X86RaisedValueTracker::castValue(Value *SrcValue, Type *DstTy,
   return SrcValue;
 }
 
-// Reinterpret a SSE register value to another type
+// Reinterpret an SSE register value to another type
 // This function does not modify any bits, it only zero-extends or truncates
 // passed values
 // Example inputs:
@@ -1343,7 +1343,7 @@ X86RaisedValueTracker::setInstMetadataRODataContent(LoadInst *LdInst) {
         ModSrcValue = castValue(ModSrcValue, LdPtrTy, RaisedBB);
         // NOTE: Do not insert the new instruction as the caller of this
         // function is expected to do so.
-        NewLdInst = new LoadInst(LdPtrTy->getPointerElementType(), ModSrcValue,
+        NewLdInst = new LoadInst(LdInst->getType(), ModSrcValue,
                                  "rodata-reloc", LdInst->isVolatile(),
                                  Align(LdInst->getAlignment()));
         // Copy metadata of the new load instruction to indicate that the loaded
@@ -1394,10 +1394,10 @@ Value *X86RaisedValueTracker::getRelocOffsetForRODataAddress(
     MDNode *RaisedRODataInstMD =
         RaisedRODataAddrAsInst->getMetadata(RODATA_CONTENT_MD_STR);
     assert(RaisedRODataInstMD != nullptr &&
-           "Expect metadata assocated with rodata - not found");
+           "Expect metadata associated with rodata - not found");
     assert(RaisedRODataInstMD->getNumOperands() == 1 &&
            "Expect one operand of rodata metadata");
-    // Get the metadata as MetadataAsvalue
+    // Get the metadata as MetadataAsValue
     auto *RaisedRODataMDAsVal =
         MetadataAsValue::get(RaisedRODataAddrAsInst->getContext(),
                              RaisedRODataInstMD->getOperand(0).get());

@@ -48,12 +48,15 @@ bool PeepholeOptimizationPass::runOnFunction(Function &F) {
 
               IRBuilder<> Builder(&I);
 
+              auto *ElementTy = IntegerType::get(F.getContext(), 8);
               auto *BytePtrTy =
-                  PointerType::getUnqual(IntegerType::get(F.getContext(), 8));
+                  PointerType::getUnqual(ElementTy);
               auto *BytePtr = Builder.CreatePointerCast(Ptr, BytePtrTy);
-
+              // OpaquePointer hack
+              // assert(ElementTy == BytePtr->getType()->getScalarType()->getPointerElementType()
+              //       && "check types peephole");
               auto *GEP = Builder.CreateGEP(
-                  BytePtr->getType()->getScalarType()->getPointerElementType(),
+                  ElementTy,
                   BytePtr, GEPIdx);
 
               auto *FinalPtr = Builder.CreatePointerCast(GEP, I2P->getType());

@@ -593,8 +593,8 @@ bool ARMMIRevising::runOnMachineFunction(MachineFunction &MF) {
 #undef DEBUG_TYPE
 
 extern "C" FunctionPass *createARMMIRevising(ARMModuleRaiser &MR,
-                                                 MachineFunction *MF,
-                                                 Function *RF,
-                                                 MCInstRaiser *MCIR) {
+                                             MachineFunction *MF,
+                                             Function *RF,
+                                             MCInstRaiser *MCIR) {
   return new ARMMIRevising(MR, MF, RF, MCIR);
 }

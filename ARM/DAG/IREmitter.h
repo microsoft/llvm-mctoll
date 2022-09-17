@@ -83,12 +83,26 @@ private:
   PointerType *getPointerType() {
     return Type::getIntNPtrTy(*CTX, DLT->getPointerSizeInBits());
   }
-  Type *getIntTypeByPtr(Type *Ty);
+  Type *getIntTypeByPtr(Type *PTy);
   Value *getIRValue(SDValue Val);
   // Wrapper to call new  Create*Load APIs
-  LoadInst *callCreateAlignedLoad(Value *ValPtr,
+//  LoadInst *callCreateAlignedLoad(Value *ValPtr,
+//                                  MaybeAlign Align = MaybeAlign()) {
+//    return IRB.CreateAlignedLoad(ValPtr->getType()->getPointerElementType(),
+//                                 ValPtr, Align, "");
+//  }
+  LoadInst *callCreateAlignedLoad(Type *Ty, Value *ValPtr,
                                   MaybeAlign Align = MaybeAlign()) {
-    return IRB.CreateAlignedLoad(ValPtr->getType()->getPointerElementType(),
+    return IRB.CreateAlignedLoad(Ty, ValPtr, Align, "");
+  }
+  LoadInst *callCreateAlignedLoad(AllocaInst *ValPtr,
+                                  MaybeAlign Align = MaybeAlign()) {
+    return IRB.CreateAlignedLoad(ValPtr->getAllocatedType(),
+                                 ValPtr, Align, "");
+  }
+  LoadInst *callCreateAlignedLoad(GlobalValue *ValPtr,
+                                  MaybeAlign Align = MaybeAlign()) {
+    return IRB.CreateAlignedLoad(ValPtr->getValueType(),
                                  ValPtr, Align, "");
   }
 };

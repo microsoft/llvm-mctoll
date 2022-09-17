@@ -88,7 +88,7 @@ public:
   Value *reinterpretSSERegValue(Value *SrcVal, Type *DstTy,
                                 BasicBlock *InsertBlock = nullptr,
                                 Instruction *InsertBefore = nullptr);
-  // Returns the type of an SSE instruction
+  // Returns the type of SSE instruction
   Type *getSSEInstructionType(const MachineInstr &MI,
                               unsigned int SSERegSzInBits, LLVMContext &Ctx);
 

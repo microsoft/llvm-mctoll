@@ -222,6 +222,8 @@ private:
   bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
 
+  Type *getIntTypeByPtr(Type *PTy);
+
   std::vector<JumpTableInfo> JTList;
 };
 

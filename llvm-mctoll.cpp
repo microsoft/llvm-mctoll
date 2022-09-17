@@ -10,13 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm-mctoll.h"
 #include "EmitRaisedOutputPass.h"
 #include "PeepholeOptimizationPass.h"
 #include "Raiser/IncludedFileInfo.h"
 #include "Raiser/MCInstOrData.h"
 #include "Raiser/MachineFunctionRaiser.h"
 #include "Raiser/ModuleRaiser.h"
+#include "llvm-mctoll.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -169,6 +169,7 @@ static bool HasStartAddressFlag;
 static uint64_t StopAddress = UINT64_MAX;
 static bool HasStopAddressFlag;
 
+/// String vector of include files to parse for external definitions
 std::vector<std::string> mctoll::IncludeFileNames;
 std::string mctoll::CompilationDBDir;
 
@@ -735,10 +736,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (!MII)
     reportError(Obj->getFileName(),
                 "no instruction info for target " + TripleName);
-  MCObjectFileInfo MOFI;
   MCContext Ctx(Triple(TripleName), AsmInfo.get(), MRI.get(), STI.get());
-  // FIXME: for now initialize MCObjectFileInfo with default values
-  MOFI.initMCObjectFileInfo(Ctx, /*PIC=*/false);
 
   std::unique_ptr<MCDisassembler> DisAsm(
       TheTarget->createMCDisassembler(*STI, Ctx));
@@ -799,7 +797,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       SectionRelocMap[*Sec2].push_back(Section);
   }
 
-  // Create a mapping from virtual address to symbol name.  This is used to
+  // Create a mapping from virtual address to symbol name. This is used to
   // pretty print the symbols while disassembling.
   std::map<SectionRef, SectionSymbolsTy> AllSymbols;
   for (const SymbolRef &Symbol : Obj->symbols()) {
@@ -837,7 +835,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   array_pod_sort(SectionAddresses.begin(), SectionAddresses.end());
 
   // Linked executables (.exe and .dll files) typically don't include a real
-  // symbol table but they might contain an export table.
+  // symbol table, but they might contain an export table.
   if (const auto *COFFObj = dyn_cast<COFFObjectFile>(Obj)) {
     for (const auto &ExportEntry : COFFObj->export_directories()) {
       StringRef Name;
@@ -906,30 +904,6 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::sort(DataMappingSymsAddr.begin(), DataMappingSymsAddr.end());
     std::sort(TextMappingSymsAddr.begin(), TextMappingSymsAddr.end());
 
-    if (Obj->isELF() && Obj->getArch() == Triple::amdgcn) {
-      // AMDGPU disassembler uses symbolizer for printing labels
-      std::unique_ptr<MCRelocationInfo> RelInfo(
-          TheTarget->createMCRelocationInfo(TripleName, Ctx));
-      if (RelInfo) {
-        std::unique_ptr<MCSymbolizer> Symbolizer(TheTarget->createMCSymbolizer(
-            TripleName, nullptr, nullptr, &Symbols, &Ctx, std::move(RelInfo)));
-        DisAsm->setSymbolizer(std::move(Symbolizer));
-      }
-    }
-
-    // Make a list of all the relocations for this section.
-    std::vector<RelocationRef> Rels;
-    if (InlineRelocs) {
-      for (const SectionRef &RelocSec : SectionRelocMap[Section]) {
-        for (const RelocationRef &Reloc : RelocSec.relocations()) {
-          Rels.push_back(Reloc);
-        }
-      }
-    }
-
-    // Sort relocations by address.
-    std::sort(Rels.begin(), Rels.end(), RelocAddressLess);
-
     // If the section has no symbol at the start, just insert a dummy one.
     StringRef DummyName;
     if (Symbols.empty() || Symbols[0].Addr != 0) {
@@ -966,7 +940,8 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     std::set<uint64_t> BranchTargetSet;
     MachineFunctionRaiser *CurMFRaiser = nullptr;
 
-    // Disassemble symbol by symbol.
+    // Disassemble symbol by symbol and fill MR->MFRaiserVector by
+    // MachineFunctionRaiser for each function
     LLVM_DEBUG(dbgs() << "BEGIN Disassembly of Functions in Section : "
                       << SectionName.data() << "\n");
     for (unsigned SI = 0, SSize = Symbols.size(); SI != SSize; ++SI) {
@@ -1374,7 +1349,6 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     outs() << ToolName << "run system pass!\n";
   }
 
-  cl::PrintOptionValues();
   PM.run(M);
 }
 
@@ -1585,13 +1559,6 @@ int main(int argc, char **argv) {
       "https://github.com/microsoft/llvm-mctoll"
       "\n*** along with a back trace and a reproducer, if possible.\n");
 
-  // Create a string vector of include files to parse for external definitions
-  std::vector<string> IncludeFNames;
-
-  for (auto FName : IncludeFileNames) {
-    IncludeFNames.emplace_back(FName);
-  }
-
   // Create a string vector with copy of input file as positional arguments
   // that would be erased as part of include file parsing done by
   // clang::tooling::CommonOptionsParser invoked in
@@ -1606,9 +1573,10 @@ int main(int argc, char **argv) {
   // getExternalFunctionPrototype().
   auto OF = OutputFilename;
 
-  if (!IncludeFNames.empty()) {
-    if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFNames,
-                                                        TargetName, SysRoot)) {
+  if (!IncludeFileNames.empty()) {
+    if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFileNames,
+                                                        TargetName,
+                                                        SysRoot)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }

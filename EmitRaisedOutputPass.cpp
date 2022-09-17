@@ -14,7 +14,7 @@ bool EmitRaisedOutputPass::runOnModule(Module &M) {
   ModuleAnalysisManager DummyMAM;
   // Save current data layout of the module
   auto DL = M.getDataLayout();
-  // Set data layout to prevent emiting of architecture-specific information in
+  // Set data layout to prevent emitting of architecture-specific information in
   // the output.
   M.setDataLayout("");
   // Call the appropriate printer

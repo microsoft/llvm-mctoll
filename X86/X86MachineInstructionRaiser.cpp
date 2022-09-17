@@ -5619,7 +5619,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
 
     // Construct call instruction.
     CallInst *CallInst = CallInst::Create(
-        cast<FunctionType>(Func->getType()->getNonOpaquePointerElementType()),
+        FT,
+        //cast<FunctionType>(Func->getType()->getNonOpaquePointerElementType()),
         Func, ArrayRef<Value *>(ArgValueVector));
     RaisedBB->getInstList().push_back(CallInst);
 

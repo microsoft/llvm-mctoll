@@ -586,8 +586,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       Function *ValueOF =
           Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
       CallInst *GetOF = CallInst::Create(
-          cast<FunctionType>(
-              ValueOF->getType()->getNonOpaquePointerElementType()),
+          ValueOF->getFunctionType(),
+          //cast<FunctionType>(
+          //    ValueOF->getType()->getNonOpaquePointerElementType()),
           ValueOF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set it
@@ -605,8 +606,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       Function *ValueOF =
           Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
       CallInst *GetOF = CallInst::Create(
-          cast<FunctionType>(
-              ValueOF->getType()->getNonOpaquePointerElementType()),
+          ValueOF->getFunctionType(),
+          //cast<FunctionType>(
+          //    ValueOF->getType()->getNonOpaquePointerElementType()),
           ValueOF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set it
@@ -806,8 +808,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       Function *ValueCF = Intrinsic::getDeclaration(
           M, Intrinsic::usub_with_overflow, TestArg[0]->getType());
       CallInst *GetCF = CallInst::Create(
-          cast<FunctionType>(
-              ValueCF->getType()->getNonOpaquePointerElementType()),
+          ValueCF->getFunctionType(),
+          //cast<FunctionType>(
+          //    ValueCF->getType()->getNonOpaquePointerElementType()),
           ValueCF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetCF);
       // Extract flag-bit
@@ -826,8 +829,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       Function *ValueCF = Intrinsic::getDeclaration(
           M, Intrinsic::uadd_with_overflow, TestArg[0]->getType());
       CallInst *GetCF = CallInst::Create(
-          cast<FunctionType>(
-              ValueCF->getType()->getNonOpaquePointerElementType()),
+          ValueCF->getFunctionType(),
+          //cast<FunctionType>(
+          //    ValueCF->getType()->getNonOpaquePointerElementType()),
           ValueCF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetCF);
       // Extract flag-bit
@@ -1022,8 +1026,9 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       Function *ValueOF = Intrinsic::getDeclaration(
           M, Intrinsic::smul_with_overflow, TestArg[0]->getType());
       CallInst *GetOF = CallInst::Create(
-          cast<FunctionType>(
-              ValueOF->getType()->getNonOpaquePointerElementType()),
+          ValueOF->getFunctionType(),
+          //cast<FunctionType>(
+          //    ValueOF->getType()->getNonOpaquePointerElementType()),
           ValueOF, ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set both OF and CF to the same value

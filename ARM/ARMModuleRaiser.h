@@ -21,8 +21,9 @@ namespace  mctoll {
 
 class ARMModuleRaiser : public ModuleRaiser {
 public:
-  static bool classof(const ModuleRaiser *mr) {
-    return mr->getArch() == Triple::arm;
+  // support LLVM-style RTTI dyn_cast
+  static bool classof(const ModuleRaiser *MR) {
+    return MR->getArch() == Triple::arm;
   }
   ARMModuleRaiser() : ModuleRaiser() { Arch = Triple::arm; }
 

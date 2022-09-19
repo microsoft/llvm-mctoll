@@ -1,7 +1,23 @@
-#include "IncludedFileInfo.h"
-#include "RISCV32ModuleRaiser.h"
+//===-- RISCV32MachineInstructionRaiser.cpp ---------------------*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file contains the implementation of RISCV32ModuleRaiser class
+// for use by llvm-mctoll.
+//
+//===----------------------------------------------------------------------===//
+
+#include "Raiser/IncludedFileInfo.h"
+#include "RISCVModuleRaiser.h"
 #include "Raiser/MachineFunctionRaiser.h"
 #include "llvm-mctoll.h"
+
+using namespace llvm;
+using namespace llvm::mctoll;
 
 // NOTE : The following RISCV32ModuleRaiser class function is defined here as
 // they reference MachineFunctionRaiser class that has a forward declaration
@@ -19,6 +35,6 @@ MachineFunctionRaiser *RISCV32ModuleRaiser::CreateAndAddMachineFunctionRaiser(
   //MFR->setMachineInstrRaiser(new X86MachineInstructionRaiser(
   //  MFR->getMachineFunction(), MR, MFR->getMCInstRaiser()));
 
-  mfRaiserVector.push_back(MFR);
+  MFRaiserVector.push_back(MFR);
   return MFR;
 }

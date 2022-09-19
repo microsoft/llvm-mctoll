@@ -22,8 +22,8 @@ namespace mctoll {
 class ARMMachineInstructionRaiser : public MachineInstructionRaiser {
 public:
   ARMMachineInstructionRaiser() = delete;
-  ARMMachineInstructionRaiser(MachineFunction &machFunc, const ModuleRaiser *mr,
-                              MCInstRaiser *mcir);
+  ARMMachineInstructionRaiser(MachineFunction &MF, const ModuleRaiser *MR,
+                              MCInstRaiser *MCIR);
   bool raise() override;
   FunctionType *getRaisedFunctionPrototype() override;
   int getArgumentNumber(unsigned PReg) override;
@@ -31,12 +31,12 @@ public:
   bool buildFuncArgTypeVector(const std::set<MCPhysReg> &,
                               std::vector<Type *> &) override;
 
-  std::vector<JumpTableInfo> jtList;
+  std::vector<JumpTableInfo> JTList;
 
 private:
   bool raiseMachineFunction();
   // Commonly used LLVM data structures during this phase
-  MachineRegisterInfo &machRegInfo;
+  MachineRegisterInfo &MachineRegInfo;
 };
 
 } // end namespace mctoll

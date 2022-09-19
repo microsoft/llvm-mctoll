@@ -37,11 +37,11 @@ class IREmitter {
   ARMModuleRaiser *MR;
   IRBuilder<> IRB;
 
-  std::vector<JumpTableInfo> jtList;
+  std::vector<JumpTableInfo> JTList;
 
 public:
-  IREmitter(BasicBlock *bb, DAGRaisingInfo *dagInfo,
-            FunctionRaisingInfo *funcInfo);
+  IREmitter(BasicBlock *Block, DAGRaisingInfo *DagInfo,
+            FunctionRaisingInfo *FuncInfo);
   /// Generate SDNode code for a node and needed dependencies.
   void emitNode(SDNode *Node) {
     if (!Node->isMachineOpcode())
@@ -50,12 +50,12 @@ public:
       emitSpecialNode(Node);
   }
   BasicBlock *getBlock() { return BB; }
-  void setBlock(BasicBlock *bb) { BB = bb; }
+  void setBlock(BasicBlock *Block) { BB = Block; }
   /// Return the current basic block.
   BasicBlock *getCurBlock() { return CurBB; }
 
   bool setjtList(std::vector<JumpTableInfo> &List) {
-    jtList = List;
+    JTList = List;
     return true;
   }
 
@@ -83,10 +83,10 @@ private:
   PointerType *getPointerType() {
     return Type::getIntNPtrTy(*CTX, DLT->getPointerSizeInBits());
   }
-  Type *getIntTypeByPtr(Type *pty);
-  Value *getIRValue(SDValue val);
+  Type *getIntTypeByPtr(Type *Ty);
+  Value *getIRValue(SDValue Val);
   // Wrapper to call new  Create*Load APIs
-  LoadInst *CallCreateAlignedLoad(Value *ValPtr,
+  LoadInst *callCreateAlignedLoad(Value *ValPtr,
                                   MaybeAlign Align = MaybeAlign()) {
     return IRB.CreateAlignedLoad(ValPtr->getType()->getPointerElementType(),
                                  ValPtr, Align, "");

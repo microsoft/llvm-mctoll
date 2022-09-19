@@ -20,8 +20,19 @@ char ARMSelectionDAGISel::ID = 0;
 
 #define DEBUG_TYPE "mctoll"
 
-ARMSelectionDAGISel::ARMSelectionDAGISel(ARMModuleRaiser &mr)
-    : ARMRaiserBase(ID, mr) {}
+ARMSelectionDAGISel::ARMSelectionDAGISel(ARMModuleRaiser &CurrMR,
+                                         MachineFunction *CurrMF,
+                                         Function *CurrRF)
+    : ARMRaiserBase(ID, CurrMR) {
+  MF = CurrMF;
+  RF = CurrRF;
+  ORE = make_unique<OptimizationRemarkEmitter>(getRaisedFunction());
+  FuncInfo = new FunctionRaisingInfo();
+  CurDAG = new SelectionDAG(*MR->getTargetMachine(), CodeGenOpt::None);
+  DAGInfo = new DAGRaisingInfo(*CurDAG);
+  SDB = new DAGBuilder(*DAGInfo, *FuncInfo);
+  SLT = new InstSelector(*DAGInfo, *FuncInfo);
+}
 
 ARMSelectionDAGISel::~ARMSelectionDAGISel() {
   delete SLT;
@@ -29,17 +40,6 @@ ARMSelectionDAGISel::~ARMSelectionDAGISel() {
   delete DAGInfo;
   delete CurDAG;
   delete FuncInfo;
-}
-
-void ARMSelectionDAGISel::init(MachineFunction *mf, Function *rf) {
-  ARMRaiserBase::init(mf, rf);
-
-  ORE = make_unique<OptimizationRemarkEmitter>(getCRF());
-  FuncInfo = new FunctionRaisingInfo();
-  CurDAG = new SelectionDAG(*MR->getTargetMachine(), CodeGenOpt::None);
-  DAGInfo = new DAGRaisingInfo(*CurDAG);
-  SDB = new DAGBuilder(*DAGInfo, *FuncInfo);
-  SLT = new InstSelector(*DAGInfo, *FuncInfo);
 }
 
 void ARMSelectionDAGISel::selectBasicBlock() {
@@ -80,7 +80,7 @@ void ARMSelectionDAGISel::doInstructionSelection() {
 
 void ARMSelectionDAGISel::emitDAG() {
   IREmitter imt(BB, DAGInfo, FuncInfo);
-  imt.setjtList(jtList);
+  imt.setjtList(JTList);
   SelectionDAG::allnodes_iterator ISelPosition = CurDAG->allnodes_begin();
   while (ISelPosition != CurDAG->allnodes_end()) {
     SDNode *Node = &*ISelPosition++;
@@ -89,26 +89,26 @@ void ARMSelectionDAGISel::emitDAG() {
 }
 
 void ARMSelectionDAGISel::initEntryBasicBlock() {
-  BasicBlock *bb = &RF->getEntryBlock();
+  BasicBlock *BB = &RF->getEntryBlock();
   for (unsigned i = 0; i < 4; i++) {
     Align MALG(32);
     AllocaInst *Alloc = new AllocaInst(Type::getInt1Ty(RF->getContext()), 0,
-                                       nullptr, MALG, "", bb);
+                                       nullptr, MALG, "", BB);
     FuncInfo->AllocaMap[i] = Alloc;
-    new StoreInst(ConstantInt::getFalse(RF->getContext()), Alloc, bb);
+    new StoreInst(ConstantInt::getFalse(RF->getContext()), Alloc, BB);
   }
 }
 
 bool ARMSelectionDAGISel::doSelection() {
   LLVM_DEBUG(dbgs() << "ARMSelectionDAGISel start.\n");
 
-  MachineFunction &mf = *MF;
-  CurDAG->init(mf, *ORE.get(), this, nullptr, nullptr, nullptr, nullptr);
-  FuncInfo->set(*MR, *getCRF(), mf, CurDAG);
+  //MachineFunction &mf = *MF;
+  CurDAG->init(*MF, *ORE.get(), this, nullptr, nullptr, nullptr, nullptr);
+  FuncInfo->set(*MR, *getRaisedFunction(), *MF, CurDAG);
 
   initEntryBasicBlock();
-  for (MachineBasicBlock &mbb : mf) {
-    MBB = &mbb;
+  for (MachineBasicBlock &Block : *MF) {
+    MBB = &Block;
     BB = FuncInfo->getOrCreateBasicBlock(MBB);
     selectBasicBlock();
   }
@@ -142,26 +142,17 @@ bool ARMSelectionDAGISel::doSelection() {
 }
 
 bool ARMSelectionDAGISel::setjtList(std::vector<JumpTableInfo> &List) {
-  jtList = List;
+  JTList = List;
   return true;
 }
 
-bool ARMSelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
-  bool rtn = false;
+bool ARMSelectionDAGISel::runOnMachineFunction(MachineFunction &MF) {
   init();
-  rtn = doSelection();
-  return rtn;
-}
-#undef DEBUG_TYPE
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-FunctionPass *InitializeARMSelectionDAGISel(ARMModuleRaiser &mr) {
-  return new ARMSelectionDAGISel(mr);
+  return doSelection();
 }
 
-#ifdef __cplusplus
+extern "C" FunctionPass *createARMSelectionDAGISel(ARMModuleRaiser &MR,
+                                                   MachineFunction *MF,
+                                                   Function *RF) {
+  return new ARMSelectionDAGISel(MR, MF, RF);
 }
-#endif

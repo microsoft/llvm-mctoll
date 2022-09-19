@@ -1,7 +1,9 @@
+
+#include "MCTargetDesc/RISCVMCTargetDesc.h"
 #include "RISCVCallingConvention.h"
 
-
-using namespace RISCV;
+using namespace llvm;
+using namespace llvm::RISCV;
 
 void
 RISCVCallingConvention::addIntRegs8() {

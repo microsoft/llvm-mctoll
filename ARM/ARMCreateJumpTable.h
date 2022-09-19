@@ -25,22 +25,22 @@ class ARMCreateJumpTable : public ARMRaiserBase {
 public:
   static char ID;
 
-  ARMCreateJumpTable(ARMModuleRaiser &mr);
+  ARMCreateJumpTable(ARMModuleRaiser &MR, MachineFunction *MF, Function *RF,
+                     MCInstRaiser *NewMCIR);
   ~ARMCreateJumpTable() override;
-  void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
+
   bool create();
-  bool runOnMachineFunction(MachineFunction &mf) override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
   bool getJTlist(std::vector<JumpTableInfo> &List);
-  void setMCInstRaiser(MCInstRaiser *PMCIR);
 
 private:
   unsigned int getARMCPSR(unsigned int PhysReg);
   bool raiseMaichineJumpTable(MachineFunction &MF);
   /// Get the MachineBasicBlock to add the jumptable instruction.
   MachineBasicBlock *checkJumptableBB(MachineFunction &MF);
-  bool UpdatetheBranchInst(MachineBasicBlock &MBB);
+  bool updatetheBranchInst(MachineBasicBlock &MBB);
 
-  std::vector<JumpTableInfo> jtList;
+  std::vector<JumpTableInfo> JTList;
   MCInstRaiser *MCIR;
 };
 

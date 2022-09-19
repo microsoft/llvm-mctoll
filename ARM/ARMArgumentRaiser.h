@@ -29,9 +29,9 @@ class ARMArgumentRaiser : public ARMRaiserBase {
 public:
   static char ID;
 
-  ARMArgumentRaiser(ARMModuleRaiser &MR);
+  ARMArgumentRaiser(ARMModuleRaiser &MR, MachineFunction *MF, Function *RF);
   ~ARMArgumentRaiser() override;
-  void init(MachineFunction *MF = nullptr, Function *RF = nullptr) override;
+
   bool raiseArgs();
   bool runOnMachineFunction(MachineFunction &MF) override;
 

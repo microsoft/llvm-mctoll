@@ -27,7 +27,6 @@ namespace mctoll {
 class FunctionRaisingInfo : public FunctionLoweringInfo {
 public:
   ARMModuleRaiser *MR;
-  BasicBlock *BB;
   /// The mapped return Value;
   SDValue RetValue;
   /// The map of physical register with related IR Value. It is used to convert
@@ -45,14 +44,14 @@ public:
 
   /// Record the latest value of ARM::R0, if the current function has return
   /// value.
-  void setRetValue(SDValue retVal) { RetValue = retVal; }
+  void setRetValue(SDValue RetVal) { RetValue = RetVal; }
   SDValue getValueByRegister(unsigned Reg);
   void setValueByRegister(unsigned Reg, SDValue Val);
   SDValue getValFromRegMap(SDValue Val);
   /// Initialize this FunctionRaisingInfo with the given Function and its
   /// associated MachineFunction.
-  void set(ARMModuleRaiser &mr, Function &fn, MachineFunction &mf,
-           SelectionDAG *DAG);
+  void set(ARMModuleRaiser &MRVal, Function &FNVal, MachineFunction &MFVal,
+           SelectionDAG *DAGVal);
   /// Clear out all the function-specific state. This returns this
   /// FunctionRasisingInfo to an empty state, ready to be used for a
   /// different function.
@@ -61,22 +60,22 @@ public:
   Function *getCRF() { return const_cast<Function *>(Fn); }
   /// Get the corresponding BasicBlock of given
   /// MachineBasicBlock.
-  BasicBlock *getBasicBlock(MachineBasicBlock &mbb);
+  BasicBlock *getBasicBlock(MachineBasicBlock &MBB);
   /// Get the corresponding BasicBlock of given MachineBasicBlock. If does not
   /// give a MachineBasicBlock, it will create a new BasicBlock on current
   /// Function, and returns it.
-  BasicBlock *getOrCreateBasicBlock(MachineBasicBlock *mbb = nullptr);
+  BasicBlock *getOrCreateBasicBlock(MachineBasicBlock *MBB = nullptr);
   /// Check the stack slot index is represented return element or not.
-  bool isReturnIndex(int frameIndex) { return frameIndex == 0; }
+  bool isReturnIndex(int FrameIndex) { return FrameIndex == 0; }
   /// Check the stack slot index is represented argument or not.
-  bool isArgumentIndex(int frameIndex) {
-    assert(frameIndex >= 0 && "The stack frame index must be larger than 0.");
-    return frameIndex > 0 && (unsigned)frameIndex <= Fn->arg_size();
+  bool isArgumentIndex(int FrameIndex) {
+    assert(FrameIndex >= 0 && "The stack frame index must be larger than 0.");
+    return FrameIndex > 0 && (unsigned)FrameIndex <= Fn->arg_size();
   }
   /// Check the index is stack slot index or not.
-  bool isStackIndex(int frameIndex) {
-    assert(frameIndex >= 0 && "The stack frame index must be larger than 0.");
-    return (unsigned)frameIndex > Fn->arg_size();
+  bool isStackIndex(int FrameIndex) {
+    assert(FrameIndex >= 0 && "The stack frame index must be larger than 0.");
+    return (unsigned)FrameIndex > Fn->arg_size();
   }
 
   Type *getDefaultType() { return DefaultType; }

@@ -1,15 +1,7 @@
-#ifdef __cplusplus
-extern "C" {
-#endif
 
-extern void InitializeRISCV32ModuleRaiser();
-extern void InitializeRISCV64ModuleRaiser();
+#include "RISCVModuleRaiser.h"
 
-void InitializeRISCVModuleRaiser() {
-  InitializeRISCV32ModuleRaiser();
-  InitializeRISCV64ModuleRaiser();
+void registerRISCVModuleRaiser() {
+  registerRISCV32ModuleRaiser();
+  registerRISCV64ModuleRaiser();
 }
-
-#ifdef __cplusplus
-}
-#endif

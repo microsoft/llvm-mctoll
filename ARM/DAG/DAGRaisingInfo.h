@@ -26,7 +26,7 @@ namespace mctoll {
 class DAGRaisingInfo {
 public:
   DAGRaisingInfo() = delete;
-  DAGRaisingInfo(SelectionDAG &dag);
+  DAGRaisingInfo(SelectionDAG &DAG);
   void clear();
   /// Gets corresponding SelectionDAG object.
   SelectionDAG &getCurDAG() { return DAG; }

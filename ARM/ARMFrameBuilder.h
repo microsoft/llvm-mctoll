@@ -41,21 +41,21 @@ private:
 public:
   static char ID;
 
-  ARMFrameBuilder(ARMModuleRaiser &mr);
+  ARMFrameBuilder(ARMModuleRaiser &MR, MachineFunction *MF, Function *RF);
   ~ARMFrameBuilder() override;
-  void init(MachineFunction *mf = nullptr, Function *rf = nullptr) override;
+
   bool build();
   bool runOnMachineFunction(MachineFunction &mf) override;
 
 private:
   unsigned getBitCount(unsigned opcode);
-  Type *getStackType(unsigned size);
+  Type *getStackType(unsigned Size);
   /// Replace common regs assigned by SP to SP.
-  bool replaceNonSPBySP(MachineInstr &mi);
+  bool replaceNonSPBySP(MachineInstr &MI);
   /// Analyze frame index of stack operands.
-  int64_t identifyStackOp(const MachineInstr &mi);
+  int64_t identifyStackOp(const MachineInstr &MI);
   /// Find out all of frame relative operands, and update them.
-  void searchStackObjects(MachineFunction &mf);
+  void searchStackObjects(MachineFunction &MF);
 
   /// Records of assigned common registers by sp.
   SmallVector<unsigned, 16> RegAssignedBySP;

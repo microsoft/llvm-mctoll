@@ -27,15 +27,15 @@ public:
   SelectionDAG &DAG;
   /// FuncInfo - Information about the function as a whole.
   FunctionRaisingInfo &FuncInfo;
-  DAGBuilder(DAGRaisingInfo &dagInfo, FunctionRaisingInfo &funcInfo)
-      : DAGInfo(dagInfo), DAG(dagInfo.getCurDAG()), FuncInfo(funcInfo) {}
+  DAGBuilder(DAGRaisingInfo &DagInfo, FunctionRaisingInfo &FuncInfo)
+      : DAGInfo(DagInfo), DAG(DagInfo.getCurDAG()), FuncInfo(FuncInfo) {}
   /// visit - Collects the information of each MI to create SDNodes.
-  void visit(const MachineInstr &mi);
+  void visit(const MachineInstr &MI);
 
 private:
   /// Analyzes CPSR register information of MI to collect conditional code
   /// properties.
-  void visitCC(const MachineInstr &mi, MachineSDNode *mnode);
+  void visitCC(const MachineInstr &MI, MachineSDNode *MNode);
 };
 
 } // end namespace mctoll

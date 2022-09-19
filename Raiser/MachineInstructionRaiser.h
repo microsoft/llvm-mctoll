@@ -22,10 +22,9 @@
 namespace llvm {
 namespace mctoll {
 
-// Structure holding all necessary information to raise control
-// transfer (i.e., branch) instructions during a post-processing
-// phase.
-
+/// Structure holding all necessary information to raise control
+/// transfer (i.e., branch) instructions during a post-processing
+/// phase.
 struct ControlTransferInfo {
   BasicBlock *CandidateBlock;
   // This is the MachineInstr that needs to be raised
@@ -57,7 +56,7 @@ public:
                                       std::vector<Type *> &) = 0;
 
   Function *getRaisedFunction() { return RaisedFunction; }
-  void setRaisedFunction(Function *F) { RaisedFunction = F; }
+  void setRaisedFunction(Function *RF) { RaisedFunction = RF; }
   MCInstRaiser *getMCInstRaiser() { return InstRaiser; }
   MachineFunction &getMF() { return MF; };
   const ModuleRaiser *getModuleRaiser() { return MR; }

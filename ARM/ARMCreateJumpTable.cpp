@@ -85,8 +85,8 @@ MachineBasicBlock *ARMCreateJumpTable::checkJumptableBB(MachineFunction &MF) {
       }
     }
 
-    for (unsigned int i = 0; i < Instrs.size(); i++) {
-      MBB->erase(Instrs[i]);
+    for (unsigned int Idx = 0; Idx < Instrs.size(); Idx++) {
+      MBB->erase(Instrs[Idx]);
     }
   }
   return JumpTableBB;
@@ -103,16 +103,16 @@ bool ARMCreateJumpTable::updatetheBranchInst(MachineBasicBlock &MBB) {
     MachineInstr &CurMI = (*MIIter);
 
     if (CurMI.getOpcode() == ARM::Bcc) {
-      for (unsigned int i = 0; i < CurMI.getNumOperands(); i++) {
-        LLVM_DEBUG(CurMI.getOperand(i).dump());
+      for (unsigned int Idx = 0; Idx < CurMI.getNumOperands(); Idx++) {
+        LLVM_DEBUG(CurMI.getOperand(Idx).dump());
       }
       BuildMI(&MBB, DebugLoc(), TII->get(ARM::B)).add(CurMI.getOperand(0));
       Instrs.push_back(&CurMI);
     }
   }
 
-  for (unsigned int i = 0; i < Instrs.size(); i++) {
-    MBB.erase(Instrs[i]);
+  for (unsigned int Idx = 0; Idx < Instrs.size(); Idx++) {
+    MBB.erase(Instrs[Idx]);
   }
   return true;
 }
@@ -122,8 +122,8 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
   // A vector to record MBBs that need to be erased upon jump table creation.
   std::vector<MachineBasicBlock *> MBBsToBeErased;
 
-  std::map<uint64_t, MCInstOrData> mcInstMapData;
-  MCInstRaiser::const_mcinst_iter iter_in;
+  std::map<uint64_t, MCInstOrData> MCInstMapData;
+  MCInstRaiser::const_mcinst_iter IterIn;
 
   // Save the ADDri and Calculate the start address of data.
   for (MachineBasicBlock &JmpTblBaseCalcMBB : MF) {
@@ -156,10 +156,10 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
         assert(
             MCIR != nullptr &&
             "Current function machine instruction raiser wasn't initialized!");
-        for (iter_in = MCIR->const_mcinstr_begin();
-             iter_in != MCIR->const_mcinstr_end(); iter_in++) {
-          MCInstOrData mcInstorData = iter_in->second;
-          if (mcInstorData.isData() && mcInstorData.getData() > 0) {
+        for (IterIn = MCIR->const_mcinstr_begin();
+             IterIn != MCIR->const_mcinstr_end(); IterIn++) {
+          MCInstOrData MCInstorData = IterIn->second;
+          if (MCInstorData.isData() && MCInstorData.getData() > 0) {
             // The 16 is 8 + 8. The first 8 is the PC offset, the second 8 is
             // the immediate of current instruction.
             // If the current library is position-independent, the offset should
@@ -167,9 +167,9 @@ bool ARMCreateJumpTable::raiseMaichineJumpTable(MachineFunction &MF) {
             // If the current library is not position-independent, the offset
             // should be CASE VALUE - text section address.
             uint64_t Offset =
-                IsFPIC ? (mcInstorData.getData() +
+                IsFPIC ? (MCInstorData.getData() +
                           MCIR->getMCInstIndex(JmpTblOffsetCalcMI) + 16)
-                       : (mcInstorData.getData() - MR->getTextSectionAddress());
+                       : (MCInstorData.getData() - MR->getTextSectionAddress());
             auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(Offset, MF);
             if (MBBNo != -1) {
               MachineBasicBlock *MBB = MF.getBlockNumbered(MBBNo);

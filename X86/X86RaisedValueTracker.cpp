@@ -72,8 +72,8 @@ X86RaisedValueTracker::X86RaisedValueTracker(
       // Look at all defs - explicit and implicit.
       unsigned NumDefs = MI.getNumDefs();
 
-      for (unsigned i = 0, E = MI.getNumOperands(); NumDefs && i != E; ++i) {
-        MachineOperand &MO = MI.getOperand(i);
+      for (unsigned Idx = 0, E = MI.getNumOperands(); NumDefs && Idx != E; ++Idx) {
+        MachineOperand &MO = MI.getOperand(Idx);
         if (!MO.isReg() || !MO.isDef())
           continue;
 

@@ -203,7 +203,7 @@ bool ModuleRaiser::runMachineFunctionPasses() {
   // that might call those whose prototypes were not yet constructed.
   bool AllPrototypesConstructed;
   const int IterCount = 2;
-  for (int i = 0; i < IterCount; i++) {
+  for (int Idx = 0; Idx < IterCount; Idx++) {
     AllPrototypesConstructed = true;
     for (auto *MFR : MFRaiserVector) {
       LLVM_DEBUG(dbgs() << "Build Prototype for : "

@@ -14,18 +14,20 @@
 ///
 //===----------------------------------------------------------------------===//
 
+// NOLINTBEGIN
+
 #include "llvm-mctoll.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/COFFImportFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/Win64EH.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstring>
 #include <system_error>
-#include "Raiser/ModuleRaiser.h"
 
 using namespace llvm;
 using namespace llvm::mctoll;
@@ -732,3 +734,5 @@ void mctoll::printCOFFSymbolTable(const COFFObjectFile *coff) {
     }
   }
 }
+
+// NOLINTEND

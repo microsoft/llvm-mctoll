@@ -120,11 +120,11 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
   if (MF.size()) {
     // If the terminating instruction of last MBB is a branch instruction,
     // ensure appropriate control flow edges are added.
-    std::vector<uint64_t> termMCInstTargets;
-    auto mcIDMapIter = InstMap.rbegin();
-    if (mcIDMapIter != InstMap.rend()) {
-      uint64_t termMCInstIndex = mcIDMapIter->first;
-      auto termMCInst = mcIDMapIter->second.getMCInst();
+    std::vector<uint64_t> TermMCInstTargets;
+    auto MCIDMapIter = InstMap.rbegin();
+    if (MCIDMapIter != InstMap.rend()) {
+      uint64_t TermMCInstIndex = MCIDMapIter->first;
+      auto TermMCInst = MCIDMapIter->second.getMCInst();
       // The following code handles a situation where the text section ends with
       // an unconditional branch. In such situations, no fall-through target is
       // recorded in targetIndices since offset after the branch is not within
@@ -133,15 +133,15 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
       // to add them for the last MBB with a branch. If the function were padded
       // with noop, this would not trigger and the case would be naturally
       // handled in the above loop.
-      if (MIA->isBranch(termMCInst)) {
+      if (MIA->isBranch(TermMCInst)) {
         uint64_t Target;
         // Get its target
-        assert(!MIA->isConditionalBranch(termMCInst) &&
+        assert(!MIA->isConditionalBranch(TermMCInst) &&
                "Unexpected conditional branch at the end of text section");
         // Since this instruction is the last one, its size is
         // (FuncEnd - termMCInstIndex).
-        if (MIA->evaluateBranch(termMCInst, termMCInstIndex,
-                                (FuncEnd - termMCInstIndex), Target)) {
+        if (MIA->evaluateBranch(TermMCInst, TermMCInstIndex,
+                                (FuncEnd - TermMCInstIndex), Target)) {
           // Record its target if it is within the function start
           // and function end.  Branch instructions with such
           // targets are - for now - treated not to be instructions
@@ -149,13 +149,13 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
           // TODO: How to handle any branches out of these bounds?
           // Does such a situation exist?
           if ((Target >= FuncStart) && (Target < FuncEnd)) {
-            termMCInstTargets.push_back(Target);
+            TermMCInstTargets.push_back(Target);
           }
         }
       }
     }
     MBBNumToMCInstTargetsMap.insert(
-        std::make_pair(MF.back().getNumber(), termMCInstTargets));
+        std::make_pair(MF.back().getNumber(), TermMCInstTargets));
     InstToMBBNum.insert(
         std::make_pair(CurMBBEntryInstIndex, MF.back().getNumber()));
   }

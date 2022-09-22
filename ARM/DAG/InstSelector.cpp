@@ -511,17 +511,17 @@ void InstSelector::selectCode(SDNode *N) {
   case ARM::tCMPi8:
   case ARM::t2CMPrr:
   case ARM::tCMPr: {
-    SDValue cmpl = N->getOperand(0);
-    SDValue cmph = N->getOperand(1);
-    if (RegisterSDNode::classof(cmph.getNode()))
-      cmph = FuncInfo->getValFromRegMap(N->getOperand(1));
-    cmpl = FuncInfo->getValFromRegMap(cmpl);
+    SDValue Cmpl = N->getOperand(0);
+    SDValue Cmph = N->getOperand(1);
+    if (RegisterSDNode::classof(Cmph.getNode()))
+      Cmph = FuncInfo->getValFromRegMap(N->getOperand(1));
+    Cmpl = FuncInfo->getValFromRegMap(Cmpl);
 
     // Create condition SDValuleR
     // TODO: It should be verified why this type node can not be added Metadata
     // Operand.
     SDNode *Node = CurDAG
-                       ->getNode(ISD::SETCC, Dl, getDefaultEVT(), cmpl, cmph
+                       ->getNode(ISD::SETCC, Dl, getDefaultEVT(), Cmpl, Cmph
                                  /* , getMDOperand(N) */)
                        .getNode();
 

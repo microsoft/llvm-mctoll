@@ -16,7 +16,7 @@
 using namespace llvm;
 using namespace llvm::mctoll;
 
-DAGRaisingInfo::DAGRaisingInfo(SelectionDAG &dag) : DAG(dag) {}
+DAGRaisingInfo::DAGRaisingInfo(SelectionDAG &Dag) : DAG(Dag) {}
 
 /// Gets the related IR Value of given SDNode.
 Value *DAGRaisingInfo::getRealValue(SDNode *Node) {

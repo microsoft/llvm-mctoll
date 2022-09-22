@@ -19,7 +19,7 @@
 using namespace llvm;
 using namespace llvm::mctoll;
 
-static constexpr const_addl_instr_info::value_type mapdata[] = {
+static constexpr const_addl_instr_info::value_type MapData[] = {
     {X86::AAA, {0, Unknown}},
     {X86::AAD8i8, {0, Unknown}},
     {X86::AAM8i8, {0, Unknown}},
@@ -13935,5 +13935,5 @@ static constexpr const_addl_instr_info::value_type mapdata[] = {
     {X86::XSTORE, {0, Unknown}},
     {X86::XTEST, {0, Unknown}}};
 
-const const_addl_instr_info mctoll::X86AddlInstrInfo(std::begin(mapdata),
-                                             std::end(mapdata));
+const const_addl_instr_info mctoll::X86AddlInstrInfo(std::begin(MapData),
+                                                     std::end(MapData));

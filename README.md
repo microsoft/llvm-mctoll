@@ -55,6 +55,9 @@ git checkout <hash from llvm-project-git-commit-to-use.txt>
 ```sh
 cmake -S llvm -B <build-dir> -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=<build-type>
 ```
+
+`clang-tidy` checks can be enabled for the `llvm-mctoll` project sources by using the additional cmake option `-DMCTOLL_CLANG_TIDY`.
+
 5. Build `llvm-mctoll`
 ```sh
 cmake --build  <build-dir> -- llvm-mctoll

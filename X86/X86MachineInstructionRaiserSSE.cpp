@@ -12,15 +12,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "IncludedFileInfo.h"
+
+#include "llvm-mctoll.h"
+
+#include "X86InstrBuilder.h"
 #include "X86MachineInstructionRaiser.h"
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
-#include "llvm-mctoll.h"
+#include "X86Subtarget.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include <X86InstrBuilder.h>
-#include <X86Subtarget.h>
 #include <iterator>
 
 using namespace llvm;
@@ -34,7 +36,8 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
   int MBBNo = MI.getParent()->getNumber();
   MCInstrDesc MCIDesc = MI.getDesc();
   assert((MCIDesc.getNumDefs() == 0 || MCIDesc.getNumDefs() == 1) &&
-         (MCIDesc.getNumOperands() == 2 || MCIDesc.getNumOperands() == 3 || MCIDesc.getNumOperands() == 4) &&
+         (MCIDesc.getNumOperands() == 2 || MCIDesc.getNumOperands() == 3 ||
+          MCIDesc.getNumOperands() == 4) &&
          "Unexpected operands found in SSE compare instruction");
 
   unsigned int Src1Idx, Src2Idx;
@@ -77,8 +80,10 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
       getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
 
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
-  CmpOpVal1 = getRaisedValues()->reinterpretSSERegValue(CmpOpVal1, OpType, RaisedBB);
-  CmpOpVal2 = getRaisedValues()->reinterpretSSERegValue(CmpOpVal2, OpType, RaisedBB);
+  CmpOpVal1 =
+      getRaisedValues()->reinterpretSSERegValue(CmpOpVal1, OpType, RaisedBB);
+  CmpOpVal2 =
+      getRaisedValues()->reinterpretSSERegValue(CmpOpVal2, OpType, RaisedBB);
 
   return raiseSSECompareMachineInstr(MI, CmpOpVal1, CmpOpVal2, false);
 }
@@ -154,7 +159,7 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
            CmpOpVal2->getType()->isVectorTy() &&
            "Expected operand types to be vector types");
 
-    auto Idx = ConstantInt::get(Type::getInt64Ty(Ctx), 0);
+    auto *Idx = ConstantInt::get(Type::getInt64Ty(Ctx), 0);
     CmpOpVal1 =
         ExtractElementInst::Create(CmpOpVal1, Idx, "cmp_operand_1", RaisedBB);
     CmpOpVal2 =
@@ -170,18 +175,18 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
     raisedValues->setEflagBoolean(EFLAGS::SF, MBBNo, false);
 
     // Unordered or Less-than
-    auto ULTCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_ULT,
-                               CmpOpVal1, CmpOpVal2);
+    auto *ULTCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_ULT,
+                                CmpOpVal1, CmpOpVal2);
     raisedValues->setEflagValue(EFLAGS::CF, MBBNo, ULTCmp);
 
     // Unordered or Equal
-    auto UEQCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_UEQ,
-                               CmpOpVal1, CmpOpVal2);
+    auto *UEQCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_UEQ,
+                                CmpOpVal1, CmpOpVal2);
     raisedValues->setEflagValue(EFLAGS::ZF, MBBNo, UEQCmp);
 
     // Unordered
-    auto UNOCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_UNO,
-                               CmpOpVal1, CmpOpVal2);
+    auto *UNOCmp = new FCmpInst(*RaisedBB, CmpInst::Predicate::FCMP_UNO,
+                                CmpOpVal1, CmpOpVal2);
     raisedValues->setEflagValue(EFLAGS::PF, MBBNo, UNOCmp);
   } break;
   case X86::CMPSDrr_Int:
@@ -230,13 +235,13 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
                              "CMPNEQ");
       break;
     case 5: { // CMPNLTSD
-      auto LTInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLT, CmpOpVal1,
-                                 CmpOpVal2, "CMPLT");
+      auto *LTInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLT, CmpOpVal1,
+                                  CmpOpVal2, "CMPLT");
       CmpInst = BinaryOperator::CreateNot(LTInst, "CMPNLT", RaisedBB);
     } break;
     case 6: { // CMPNLESD
-      auto LEInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLE, CmpOpVal1,
-                                 CmpOpVal2, "CMPLE");
+      auto *LEInst = new FCmpInst(*RaisedBB, CmpInst::FCMP_OLE, CmpOpVal1,
+                                  CmpOpVal2, "CMPLE");
       CmpInst = BinaryOperator::CreateNot(LEInst, "CMPNLE", RaisedBB);
     } break;
     case 7: // CMPORDSD
@@ -306,23 +311,30 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
       llvm_unreachable("Unhandled pcmp instruction");
     }
 
-    FixedVectorType *VecTy = FixedVectorType::get(Type::getIntNTy(Ctx, ElementSizeInBits), 128 / ElementSizeInBits);
+    FixedVectorType *VecTy = FixedVectorType::get(
+        Type::getIntNTy(Ctx, ElementSizeInBits), 128 / ElementSizeInBits);
     CmpOpVal1 = new BitCastInst(CmpOpVal1, VecTy, "", RaisedBB);
     CmpOpVal2 = new BitCastInst(CmpOpVal2, VecTy, "", RaisedBB);
 
-    auto IntNTy = IntegerType::getIntNTy(Ctx, VecTy->getElementType()->getPrimitiveSizeInBits());
+    auto *IntNTy = IntegerType::getIntNTy(
+        Ctx, VecTy->getElementType()->getPrimitiveSizeInBits());
     Value *BitmaskVal = ConstantInt::get(IntNTy, IntNTy->getBitMask());
     Value *ZeroVal = ConstantInt::get(IntNTy, 0);
 
     // compare each pair and insert the result in the resulting vector
     Value *Result = ConstantInt::get(VecTy, 0);
-    for (unsigned int i = 0; i < VecTy->getNumElements(); ++i) {
-      auto Index = ConstantInt::get(VecTy->getElementType(), i);
-      auto CmpSegment1 = ExtractElementInst::Create(CmpOpVal1, Index, "", RaisedBB);
-      auto CmpSegment2 = ExtractElementInst::Create(CmpOpVal2, Index, "", RaisedBB);
-      auto CmpInst = new ICmpInst(*RaisedBB, CmpInst::ICMP_EQ, CmpSegment1, CmpSegment2, "cmp_segment");
-      auto SelectInstr = SelectInst::Create(CmpInst, BitmaskVal, ZeroVal, "segment", RaisedBB);
-      Result = InsertElementInst::Create(Result, SelectInstr, Index, "", RaisedBB);
+    for (unsigned int Idx = 0; Idx < VecTy->getNumElements(); ++Idx) {
+      auto *Index = ConstantInt::get(VecTy->getElementType(), Idx);
+      auto *CmpSegment1 =
+          ExtractElementInst::Create(CmpOpVal1, Index, "", RaisedBB);
+      auto *CmpSegment2 =
+          ExtractElementInst::Create(CmpOpVal2, Index, "", RaisedBB);
+      auto *CmpInst = new ICmpInst(*RaisedBB, CmpInst::ICMP_EQ, CmpSegment1,
+                                   CmpSegment2, "cmp_segment");
+      auto *SelectInstr =
+          SelectInst::Create(CmpInst, BitmaskVal, ZeroVal, "segment", RaisedBB);
+      Result =
+          InsertElementInst::Create(Result, SelectInstr, Index, "", RaisedBB);
     }
 
     raisedValues->setPhysRegSSAValue(DstReg, MI.getParent()->getNumber(),
@@ -435,13 +447,12 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionMachineInstr(
         getRegisterInfo()->getRegSizeInBits(PReg, machineRegInfo);
     if (SrcTy == nullptr) {
       // re-interpret value as expected source value
-      SrcTy =
-        getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
+      SrcTy = getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Ctx);
     }
     SrcVal = getRaisedValues()->reinterpretSSERegValue(SrcVal, SrcTy, RaisedBB);
   }
 
-  auto CastToInst =
+  auto *CastToInst =
       CastInst::Create(CastInst::getCastOpcode(SrcVal, true, CastTy, true),
                        SrcVal, CastTy, "cvt", RaisedBB);
 
@@ -579,7 +590,7 @@ bool X86MachineInstructionRaiser::raiseSSEConvertPrecisionFromMemMachineInstr(
 
   Value *SrcVal = loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, SrcTy);
 
-  auto CastInst =
+  auto *CastInst =
       CastInst::Create(CastInst::getCastOpcode(SrcVal, true, CastTy, true),
                        SrcVal, CastTy, "cvt", RaisedBB);
   raisedValues->setPhysRegSSAValue(DstOp.getReg(), MI.getParent()->getNumber(),
@@ -602,7 +613,7 @@ bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
       "Expecting exactly two operands for sse move reg-to-reg "
       "instructions");
 
-  unsigned int DstPReg = MI.getOperand(DstIndex).getReg();
+  Register DstPReg = MI.getOperand(DstIndex).getReg();
 
   // Get source operand value
   Value *SrcValue;
@@ -656,7 +667,8 @@ bool X86MachineInstructionRaiser::raiseSSEMoveRegToRegMachineInstr(
       DstType = Type::getIntNTy(Ctx, DstPRegSize * 8);
     }
 
-    SrcValue = getRaisedValues()->reinterpretSSERegValue(SrcValue, DstType, RaisedBB);
+    SrcValue =
+        getRaisedValues()->reinterpretSSERegValue(SrcValue, DstType, RaisedBB);
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
   } break;
   default:

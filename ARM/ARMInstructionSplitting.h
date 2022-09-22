@@ -39,7 +39,118 @@ private:
   unsigned checkisShifter(unsigned Opcode);
   /// Get the shift opcode in MI.
   unsigned getShiftOpcode(ARM_AM::ShiftOpc SOpc, unsigned OffSet);
-  MachineInstr *splitLDRSTR(MachineBasicBlock &MBB, MachineInstr &MI);
+	/// Split LDRxxx/STRxxx<c><q> <Rd>, [<Rn>, +/-<Rm>{, <shift>}] to:
+	/// Rm shift #imm, but write result to VReg.
+	/// Add VReg, Rn, Rm
+	/// LDRxxx/STRxxx Rd, [VReg]
+	MachineInstr* splitLDRSTR(MachineBasicBlock &MBB, MachineInstr &MI) {
+		unsigned Simm = MI.getOperand(3).getImm();
+		unsigned SOffSet = ARM_AM::getAM2Offset(Simm);
+		ARM_AM::ShiftOpc SOpc = ARM_AM::getAM2ShiftOpc(Simm);
+		Register SVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+		Register AVReg = MRI->createVirtualRegister(&ARM::GPRnopcRegClass);
+		MachineOperand &Rd = MI.getOperand(0);
+		MachineOperand &Rn = MI.getOperand(1);
+		MachineOperand &Rm = MI.getOperand(2);
+		unsigned ShiftOpc = getShiftOpcode(SOpc, SOffSet);
+		// Get Metadata for the fisrt insturction.
+		ConstantAsMetadata *CMDFir = ConstantAsMetadata::get(
+				ConstantInt::get(*CTX, llvm::APInt(64, 0, false)));
+		MDNode *MDNFir = MDNode::get(*CTX, CMDFir);
+		// Get Metadata for the second insturction.
+		ConstantAsMetadata *CMDSec = ConstantAsMetadata::get(
+				ConstantInt::get(*CTX, llvm::APInt(64, 1, false)));
+		MDNode *MDNSec = MDNode::get(*CTX, CMDSec);
+		// Get Metadata for the third insturction.
+		ConstantAsMetadata *CMD_thd = ConstantAsMetadata::get(
+				ConstantInt::get(*CTX, llvm::APInt(64, 2, false)));
+		MDNode *N_thd = MDNode::get(*CTX, CMD_thd);
+		unsigned NewOpc = getLoadStoreOpcode(MI.getOpcode());
+		int Idx = MI.findRegisterUseOperandIdx(ARM::CPSR);
+		if (SOffSet > 0) {
+			// Split LDRxxx/STRxxx Rd, [Rn, Rm, shift]
+			MachineInstrBuilder Fst = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(ShiftOpc), SVReg);
+			addOperand(Fst, Rm);
+			Fst.addImm(SOffSet);
+			MachineInstrBuilder Sec = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(ARM::ADDrr), AVReg);
+			addOperand(Sec, Rn);
+			Sec.addReg(SVReg);
+			MachineInstrBuilder Thd = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(NewOpc));
+			if (MI.mayStore())
+				addOperand(Thd, Rd);
+			else
+				addOperand(Thd, Rd, true);
+
+			Thd.addReg(AVReg);
+			// Add CPSR if the MI has.
+			if (Idx != -1) {
+				Fst.addImm(MI.getOperand(Idx - 1).getImm());
+				addOperand(Fst, MI.getOperand(Idx));
+				Sec.addImm(MI.getOperand(Idx - 1).getImm());
+				addOperand(Sec, MI.getOperand(Idx));
+				Thd.addImm(MI.getOperand(Idx - 1).getImm());
+				addOperand(Thd, MI.getOperand(Idx));
+			}
+			Fst.addMetadata(MDNFir);
+			Sec.addMetadata(MDNSec);
+			Thd.addMetadata(N_thd);
+		} else if (ShiftOpc == ARM::RRX) {
+			// Split LDRxxx/STRxxx Rd, [Rn, Rm, rrx]
+			MachineInstrBuilder Fst = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(ShiftOpc), SVReg);
+			addOperand(Fst, Rm);
+			MachineInstrBuilder Sec = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(ARM::ADDrr), AVReg);
+			addOperand(Sec, Rn);
+			Sec.addReg(SVReg);
+			MachineInstrBuilder Thd = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(NewOpc));
+			if (MI.mayStore())
+				addOperand(Thd, Rd);
+			else
+				addOperand(Thd, Rd, true);
+
+			Thd.addReg(AVReg);
+			// Add CPSR if the MI has.
+			if (Idx != -1) {
+				Sec.addImm(MI.getOperand(Idx - 1).getImm());
+				addOperand(Sec, MI.getOperand(Idx));
+				Thd.addImm(MI.getOperand(Idx - 1).getImm());
+				addOperand(Thd, MI.getOperand(Idx));
+			}
+			Fst.addMetadata(MDNFir);
+			Sec.addMetadata(MDNSec);
+			Thd.addMetadata(N_thd);
+		} else {
+			// Split LDRxxx/STRxxx Rd, [Rn, Rm]
+			MachineInstrBuilder Fst = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(ARM::ADDrr), AVReg);
+			addOperand(Fst, Rn);
+			addOperand(Fst, Rm);
+			MachineInstrBuilder Sec = BuildMI(MBB, MI, MI.getDebugLoc(),
+					TII->get(NewOpc));
+			if (MI.mayStore())
+				addOperand(Sec, Rd);
+			else
+				addOperand(Sec, Rd, true);
+
+			Sec.addReg(AVReg);
+			// Add CPSR if the MI has.
+			if (Idx != -1) {
+				Fst.addImm(MI.getOperand(Idx - 1).getImm());
+				addOperand(Fst, MI.getOperand(Idx));
+				Sec.addImm(MI.getOperand(Idx - 1).getImm());
+				addOperand(Sec, MI.getOperand(Idx));
+			}
+			Fst.addMetadata(MDNFir);
+			Sec.addMetadata(MDNSec);
+		}
+
+		return &MI;
+	}
   MachineInstr *splitLDRSTRPre(MachineBasicBlock &MBB, MachineInstr &MI);
   MachineInstr *splitLDRSTRPreImm(MachineBasicBlock &MBB, MachineInstr &MI);
   MachineInstr *splitLDRSTRImm(MachineBasicBlock &MBB, MachineInstr &MI);

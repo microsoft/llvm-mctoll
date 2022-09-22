@@ -10,8 +10,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm-mctoll.h"
+// NOLINTBEGIN
+
 #include "llvm-c/Disassembler.h"
+#include "llvm-mctoll.h"
+#include "Raiser/ModuleRaiser.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
@@ -42,13 +45,12 @@
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/LEB128.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstring>
 #include <system_error>
-#include "Raiser/ModuleRaiser.h"
 
 #ifdef HAVE_LIBXAR
 extern "C" {
@@ -957,7 +959,7 @@ void mctoll::parseInputMachO(StringRef Filename) {
             } else if (auto E = isNotObjectErrorInvalidFileType(
                            ObjOrErr.takeError())) {
               reportError(std::move(E), Filename, StringRef(),
-                           ArchitectureName);
+                          ArchitectureName);
               continue;
             } else if (Expected<std::unique_ptr<Archive>> AOrErr =
                            I->getAsArchive()) {
@@ -3295,7 +3297,7 @@ static const char *GuessLiteralPointer(uint64_t ReferenceValue,
           auto SymOrErr = Symbol.getValue();
           if (!SymOrErr)
             reportError(SymOrErr.takeError(),
-                         Symbol.getObject()->getFileName());
+                        Symbol.getObject()->getFileName());
           ReferenceValue = *SymOrErr;
         }
       }
@@ -3874,7 +3876,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
       auto SymOrErr = Symbols[SymIdx].getValue();
       if (!SymOrErr)
         reportError(SymOrErr.takeError(),
-                     Symbols[SymIdx].getObject()->getFileName());
+                    Symbols[SymIdx].getObject()->getFileName());
       uint64_t Start = *SymOrErr;
       uint64_t SectionAddress = Sections[SectIdx].getAddress();
       Start -= SectionAddress;
@@ -3901,7 +3903,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
           auto SymOrErr = Symbols[NextSymIdx].getValue();
           if (!SymOrErr)
             reportError(SymOrErr.takeError(),
-                         Symbols[NextSymIdx].getObject()->getFileName());
+                        Symbols[NextSymIdx].getObject()->getFileName());
 
           NextSym = *SymOrErr;
           NextSym -= SectionAddress;
@@ -6125,3 +6127,4 @@ static const char *get_dyld_bind_info_symbolname(uint64_t ReferenceValue,
   auto name = info->bindtable->lookup(ReferenceValue);
   return !name.empty() ? name.data() : nullptr;
 }
+// NOLINTEND

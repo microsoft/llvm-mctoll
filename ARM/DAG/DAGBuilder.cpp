@@ -146,9 +146,9 @@ void DAGBuilder::visitCC(const MachineInstr &MI, MachineSDNode *MNode) {
         NodeInfo.Special = true;
       } else {
         // Pattern matching: addeq r0, r0, 0
-        for (int i = 1; i < NumOps; i++) {
-          if (MI.getOperand(Idx - i).isImm()) {
-            NodeInfo.Cond = MI.getOperand(Idx - i).getImm();
+        for (int OpIdx = 1; OpIdx < NumOps; OpIdx++) {
+          if (MI.getOperand(Idx - OpIdx).isImm()) {
+            NodeInfo.Cond = MI.getOperand(Idx - OpIdx).getImm();
             break;
           }
         }
@@ -156,10 +156,10 @@ void DAGBuilder::visitCC(const MachineInstr &MI, MachineSDNode *MNode) {
     } else {
       if (MI.getOperand(Idx - 1).isReg() &&
           MI.getOperand(Idx - 1).getReg() == ARM::CPSR) {
-        for (int i = 1; i < NumOps; i++) {
-          if (MI.getOperand(Idx - i).isImm()) {
+        for (int OpIdx = 1; OpIdx < NumOps; OpIdx++) {
+          if (MI.getOperand(Idx - OpIdx).isImm()) {
             NodeInfo.Special = true;
-            NodeInfo.Cond = MI.getOperand(Idx - i).getImm();
+            NodeInfo.Cond = MI.getOperand(Idx - OpIdx).getImm();
             break;
           }
         }

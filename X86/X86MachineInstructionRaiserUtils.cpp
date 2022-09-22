@@ -1032,8 +1032,8 @@ static bool isStackLocation(Value *Val) {
       BinaryOperator *BinaryOp = dyn_cast<BinaryOperator>(V);
       int NumUseOps = BinaryOp->getNumOperands();
       assert((NumUseOps == 2) && "Unexpected operands of binary operands");
-      for (int i = 0; i < NumUseOps; i++) {
-        auto *Op = BinaryOp->getOperand(i);
+      for (int Idx = 0; Idx < NumUseOps; Idx++) {
+        auto *Op = BinaryOp->getOperand(Idx);
         if (isa<CastInst>(Op)) {
           CastInst *P = dyn_cast<CastInst>(Op);
           V = P->getOperand(0);
@@ -2280,14 +2280,14 @@ Value *X86MachineInstructionRaiser::getRegOrArgValue(unsigned PReg, int MBBNo) {
       if (Pos <= (int)RaisedFunction->arg_size()) {
         bool IsRegFloatingPointType = isSSE2Reg(PReg);
         int ActualPos = 0; // SSE regs and int regs are scrambled
-        int i = 0;
+        int Idx = 0;
 
-        while (ActualPos < (int)RaisedFunction->arg_size() && i < Pos) {
+        while (ActualPos < (int)RaisedFunction->arg_size() && Idx < Pos) {
           bool IsArgFloatingPointType =
-              RaisedFunction->getArg(i)->getType()->isFloatingPointTy();
+              RaisedFunction->getArg(Idx)->getType()->isFloatingPointTy();
 
           if (IsArgFloatingPointType == IsRegFloatingPointType) {
-            i++;
+            Idx++;
           }
           ActualPos++;
         }
@@ -2490,9 +2490,9 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
     unsigned ImplUsesCount = MCID.getNumImplicitUses();
     if (ImplUsesCount > 0) {
       const MCPhysReg *ImplUses = MCID.getImplicitUses();
-      for (unsigned i = 0; i < ImplUsesCount; i++) {
+      for (unsigned Idx = 0; Idx < ImplUsesCount; Idx++) {
         // Get the reaching definition of the implicit use register.
-        if (ImplUses[i] == X86::EFLAGS) {
+        if (ImplUses[Idx] == X86::EFLAGS) {
           for (auto FlgBit : EFlagBits) {
             Value *Val = getRegOrArgValue(FlgBit, MI.getParent()->getNumber());
             assert((Val != nullptr) &&
@@ -2501,7 +2501,7 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
           }
         } else {
           Value *Val =
-              getRegOrArgValue(ImplUses[i], MI.getParent()->getNumber());
+              getRegOrArgValue(ImplUses[Idx], MI.getParent()->getNumber());
           assert((Val != nullptr) &&
                  "Unexpected null value of implicit defined registers");
           CurCTInfo->RegValues.push_back(Val);

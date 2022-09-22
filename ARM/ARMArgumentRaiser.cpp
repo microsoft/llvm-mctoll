@@ -163,7 +163,7 @@ bool ARMArgumentRaiser::raiseArgs() {
        ArgIter != ArgEnd; ++ArgIter)
     ArgIter->setName("arg." + std::to_string(ArgIdx++));
 
-  for (unsigned i = 0, End = RF->arg_size() + 1; i < End; ++i) {
+  for (unsigned Idx = 0, End = RF->arg_size() + 1; Idx < End; ++Idx) {
     Align ALG(32);
     MFI->CreateStackObject(32, ALG, false);
   }

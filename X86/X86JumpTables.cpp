@@ -169,13 +169,13 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
               size_t CurReadByteOffset = JmpTblBaseOffset;
 
               while (CurReadByteOffset < DataSize) {
-                ArrayRef<uint8_t> v(MemReadTargetByteSz);
+                ArrayRef<uint8_t> ARef(MemReadTargetByteSz);
 
                 if (CurReadByteOffset + MemReadTargetByteSz > DataSize)
                   break;
 
                 Error EC = SectionContent.readBytes(CurReadByteOffset,
-                                                    MemReadTargetByteSz, v);
+                                                    MemReadTargetByteSz, ARef);
                 // Eat the error; the section does not have jumptable data
                 if (EC) {
                   handleAllErrors(std::move(EC),
@@ -184,7 +184,7 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
                 }
 
                 uint64_t JmpTgtMemAddr =
-                    llvm::support::endian::read64le(v.data());
+                    llvm::support::endian::read64le(ARef.data());
                 // get MBB corresponding to file offset into text section of
                 // JmpTgtMemAddr
                 auto MBBNo = MCIR->getMBBNumberOfMCInstOffset(

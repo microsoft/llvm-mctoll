@@ -124,7 +124,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
       assert(OpdAddIP.isImm() && "Unexpected immediate for offset.");
       unsigned Bits = OpdAddIP.getImm() & 0xFF;
       unsigned Rot = (OpdAddIP.getImm() & 0xF00) >> 7;
-      int64_t P_Align = static_cast<int64_t>(ARM_AM::rotr32(Bits, Rot));
+      int64_t PAlign = static_cast<int64_t>(ARM_AM::rotr32(Bits, Rot));
 
       MCInst Inst;
       uint64_t InstSz;
@@ -144,7 +144,7 @@ uint64_t ARMMIRevising::getCalledFunctionAtPLTOffset(uint64_t PLTEndOff,
 
       uint64_t Index = Operand.getImm();
 
-      uint64_t GotPltRelocOffset = PLTEndOff + Index + P_Align + 8;
+      uint64_t GotPltRelocOffset = PLTEndOff + Index + PAlign + 8;
       const RelocationRef *GotPltReloc =
           MR->getDynRelocAtOffset(GotPltRelocOffset);
       assert(GotPltReloc != nullptr &&

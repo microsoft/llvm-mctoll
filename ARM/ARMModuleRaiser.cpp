@@ -38,25 +38,25 @@ bool ARMModuleRaiser::collectDynamicRelocations() {
 }
 
 // Get rodata instruction addr.
-uint64_t ARMModuleRaiser::getArgNumInstrAddr(uint64_t callAddr) {
+uint64_t ARMModuleRaiser::getArgNumInstrAddr(uint64_t CallAddr) {
   uint64_t InstArgCount = InstArgCollect.size();
   if (InstArgCount == 0)
     return InstArgCount;
-  for (uint64_t i = 0; i < InstArgCount; i++) {
-    if (InstArgCollect[i] > callAddr) {
-      return InstArgCollect[i - 1];
+  for (uint64_t Idx = 0; Idx < InstArgCount; Idx++) {
+    if (InstArgCollect[Idx] > CallAddr) {
+      return InstArgCollect[Idx - 1];
     }
   }
 
   return InstArgCollect[InstArgCount - 1];
 }
 
-uint64_t ARMModuleRaiser::getFunctionArgNum(uint64_t callAddr) {
-  uint64_t rodataAddr = getArgNumInstrAddr(callAddr);
+uint64_t ARMModuleRaiser::getFunctionArgNum(uint64_t CallAddr) {
+  uint64_t ROdataAddr = getArgNumInstrAddr(CallAddr);
 
-  if (rodataAddr == 0)
-    return rodataAddr;
-  return InstArgNumMap[rodataAddr];
+  if (ROdataAddr == 0)
+    return ROdataAddr;
+  return InstArgNumMap[ROdataAddr];
 }
 
 const Value *ARMModuleRaiser::getRODataValueAt(uint64_t Offset) const {

@@ -79,22 +79,22 @@ void ARMSelectionDAGISel::doInstructionSelection() {
 }
 
 void ARMSelectionDAGISel::emitDAG() {
-  IREmitter imt(BB, DAGInfo, FuncInfo);
-  imt.setjtList(JTList);
+  IREmitter Imt(BB, DAGInfo, FuncInfo);
+  Imt.setjtList(JTList);
   SelectionDAG::allnodes_iterator ISelPosition = CurDAG->allnodes_begin();
   while (ISelPosition != CurDAG->allnodes_end()) {
     SDNode *Node = &*ISelPosition++;
-    imt.emitNode(Node);
+    Imt.emitNode(Node);
   }
 }
 
 void ARMSelectionDAGISel::initEntryBasicBlock() {
   BasicBlock *BB = &RF->getEntryBlock();
-  for (unsigned i = 0; i < 4; i++) {
+  for (unsigned Idx = 0; Idx < 4; Idx++) {
     Align MALG(32);
     AllocaInst *Alloc = new AllocaInst(Type::getInt1Ty(RF->getContext()), 0,
                                        nullptr, MALG, "", BB);
-    FuncInfo->AllocaMap[i] = Alloc;
+    FuncInfo->AllocaMap[Idx] = Alloc;
     new StoreInst(ConstantInt::getFalse(RF->getContext()), Alloc, BB);
   }
 }

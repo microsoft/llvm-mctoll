@@ -21,7 +21,9 @@
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include <clang-c/Index.h>
+
 #include <memory>
 #include <sstream>
 #include <string>
@@ -201,8 +203,8 @@ Function *IncludedFileInfo::CreateFunction(StringRef &CFuncName,
       MR.getFunctionFilter()->getPrimitiveDataType(RetAndArgs.ReturnType);
   std::vector<Type *> ArgVec;
   for (StringRef Arg : RetAndArgs.Arguments) {
-    Type *argType = MR.getFunctionFilter()->getPrimitiveDataType(Arg);
-    ArgVec.push_back(argType);
+    Type *ArgType = MR.getFunctionFilter()->getPrimitiveDataType(Arg);
+    ArgVec.push_back(ArgType);
   }
 
   ArrayRef<Type *> Args(ArgVec);
@@ -247,7 +249,8 @@ bool IncludedFileInfo::getExternalFunctionPrototype(
 
   std::string ErrorMessage;
   std::unique_ptr<clang::tooling::CompilationDatabase> Compilations =
-      clang::tooling::FixedCompilationDatabase::loadFromCommandLine(ArgSz, ToolArgv, ErrorMessage);
+      clang::tooling::FixedCompilationDatabase::loadFromCommandLine(
+          ArgSz, ToolArgv, ErrorMessage);
   if (!ErrorMessage.empty())
     llvm::errs() << ErrorMessage.append("\n");
 

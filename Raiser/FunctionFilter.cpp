@@ -296,11 +296,12 @@ bool FunctionFilter::readFilterFunctionConfigFile(
         if (Grp[1].equals(sys::path::filename(M.getSourceFileName()))) {
           if (FFType == FunctionFilter::FILTER_EXCLUDE) {
             addExcludedFunction(Grp[2]);
-            continue;
           } else if (FFType == FunctionFilter::FILTER_INCLUDE) {
             addIncludedFunction(Grp[2]);
-            continue;
+          } else {
+            assert(false && "Unexpected function filter type");
           }
+          continue;
         }
       }
 

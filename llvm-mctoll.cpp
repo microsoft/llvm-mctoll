@@ -65,9 +65,9 @@
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
-#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/Host.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Signals.h"
@@ -95,9 +95,7 @@ namespace {
 
 using namespace llvm::opt; // for HelpHidden in Opts.inc
 // custom Flag for opt::DriverFlag defined in the llvm/Option/Option.h
-enum MyFlag {
-  HelpSkipped   = (1 << 4)
-};
+enum MyFlag { HelpSkipped = (1 << 4) };
 
 enum ID {
   OPT_INVALID = 0, // This is not an option ID.
@@ -180,7 +178,8 @@ namespace {
 static ManagedStatic<std::vector<std::string>> RunPassNames;
 
 struct RunPassOption {
-  void operator=(const std::string &Val) const {
+  // NOLINTNEXTLINE(misc-unconventional-assign-operator)
+  auto operator=(const std::string &Val) const {
     if (Val.empty())
       return;
     SmallVector<StringRef, 8> PassNames;
@@ -692,7 +691,8 @@ static bool isAFunctionSymbol(const ObjectFile *Obj, SymbolInfoTy &Symbol) {
   return false;
 }
 
-#define MODULE_RAISER(TargetName) extern "C" void register##TargetName##ModuleRaiser();
+#define MODULE_RAISER(TargetName)                                              \
+  extern "C" void register##TargetName##ModuleRaiser();
 #include "Raisers.def"
 
 static void initializeAllModuleRaisers() {
@@ -709,8 +709,8 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   // Package up features to be passed to target/subtarget
   SubtargetFeatures Features = Obj->getFeatures();
   if (MAttrs.size()) {
-    for (unsigned i = 0; i != MAttrs.size(); ++i)
-      Features.AddFeature(MAttrs[i]);
+    for (unsigned Idx = 0; Idx != MAttrs.size(); ++Idx)
+      Features.AddFeature(MAttrs[Idx]);
   }
 
   std::unique_ptr<const MCRegisterInfo> MRI(
@@ -778,9 +778,8 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   ModuleRaiser *MR = mctoll::getModuleRaiser(Target.get());
   assert((MR != nullptr) && "Failed to build module raiser");
   // Set data of module raiser
-  MR->setModuleRaiserInfo(&M, Target.get(),
-                                    &MachineModuleInfo->getMMI(), MIA.get(),
-                                    MII.get(), Obj, DisAsm.get());
+  MR->setModuleRaiserInfo(&M, Target.get(), &MachineModuleInfo->getMMI(),
+                          MIA.get(), MII.get(), Obj, DisAsm.get());
 
   // Collect dynamic relocations.
   MR->collectDynamicRelocations();
@@ -1085,8 +1084,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         BranchTargetSet.clear();
         // Create a new MachineFunction raiser
         CurMFRaiser =
-            MR->CreateAndAddMachineFunctionRaiser(
-            Func, MR, Start, End);
+            MR->CreateAndAddMachineFunctionRaiser(Func, MR, Start, End);
         LLVM_DEBUG(dbgs() << "\nFunction " << Symbols[SI].Name << ":\n");
       } else {
         // Continue using to the most recent MachineFunctionRaiser
@@ -1149,8 +1147,9 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                           Bytes.data() + Index);
                   Data = *Word;
                 } else {
-                  const auto *const Word = reinterpret_cast<const support::ubig32_t *>(
-                      Bytes.data() + Index);
+                  const auto *const Word =
+                      reinterpret_cast<const support::ubig32_t *>(Bytes.data() +
+                                                                  Index);
                   Data = *Word;
                 }
                 InstRaiser->addMCInstOrData(Index, Data);
@@ -1504,7 +1503,8 @@ commaSeparatedValues(const llvm::opt::InputArgList &InputArgs, int ID) {
 static void parseOptions(const llvm::opt::InputArgList &InputArgs) {
   llvm::DebugFlag = InputArgs.hasArg(OPT_debug);
   Disassemble = InputArgs.hasArg(OPT_raise);
-  FilterConfigFileName = InputArgs.getLastArgValue(OPT_filter_functions_file_EQ).str();
+  FilterConfigFileName =
+      InputArgs.getLastArgValue(OPT_filter_functions_file_EQ).str();
   MCPU = InputArgs.getLastArgValue(OPT_mcpu_EQ).str();
   MAttrs = commaSeparatedValues(InputArgs, OPT_mattr_EQ);
   FilterSections = InputArgs.getAllArgValues(OPT_section_EQ);
@@ -1521,7 +1521,8 @@ static void parseOptions(const llvm::opt::InputArgList &InputArgs) {
     reportCmdLineError("no input file");
 
   IncludeFileNames = InputArgs.getAllArgValues(OPT_include_file_EQ);
-  std::string IncludeFileNames2 = InputArgs.getLastArgValue(OPT_include_files_EQ).str();
+  std::string IncludeFileNames2 =
+      InputArgs.getLastArgValue(OPT_include_files_EQ).str();
   if (!IncludeFileNames2.empty()) {
     SmallVector<StringRef, 8> FNames;
     StringRef(IncludeFileNames2).split(FNames, ',', -1, false);
@@ -1531,10 +1532,10 @@ static void parseOptions(const llvm::opt::InputArgList &InputArgs) {
 
   if (const opt::Arg *A = InputArgs.getLastArg(OPT_output_format_EQ)) {
     OutputFormat = StringSwitch<OutputFormatTy>(A->getValue())
-                        .Case("ll", OF_LL)
-                        .Case("BC", OF_BC)
-                        .Case("Null", OF_Null)
-                        .Default(OF_Unknown);
+                       .Case("ll", OF_LL)
+                       .Case("BC", OF_BC)
+                       .Case("Null", OF_Null)
+                       .Default(OF_Unknown);
     if (OutputFormat == OF_Unknown)
       invalidArgValue(A);
   }
@@ -1546,12 +1547,10 @@ int main(int argc, char **argv) {
   // parse command line
   BumpPtrAllocator A;
   StringSaver Saver(A);
-  MctollOptTable Tbl(" [options] <input object files>",
-                     "MC to LLVM IR raiser");
+  MctollOptTable Tbl(" [options] <input object files>", "MC to LLVM IR raiser");
   ToolName = argv[0];
   opt::InputArgList Args =
-      Tbl.parseArgs(argc, argv, OPT_UNKNOWN, Saver,
-                    [&](StringRef Msg) {
+      Tbl.parseArgs(argc, argv, OPT_UNKNOWN, Saver, [&](StringRef Msg) {
         error(Msg);
         exit(1);
       });
@@ -1577,7 +1576,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-    parseOptions(Args);
+  parseOptions(Args);
 
   // Set appropriate bug report message
   llvm::setBugReportMsg(
@@ -1608,8 +1607,7 @@ int main(int argc, char **argv) {
 
   if (!IncludeFNames.empty()) {
     if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFNames,
-                                                        TargetName,
-                                                        SysRoot)) {
+                                                        TargetName, SysRoot)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }

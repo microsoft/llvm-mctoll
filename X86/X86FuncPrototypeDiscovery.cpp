@@ -59,44 +59,44 @@ static bool hasExactImplicitDefOfPhysReg(const MachineInstr &I, unsigned Reg,
 // register PReg according to C calling convention.
 
 int X86MachineInstructionRaiser::getArgumentNumber(unsigned PReg) {
-  int pos = -1;
+  int Pos = -1;
   if (is8BitPhysReg(PReg)) {
-    int diff = std::distance(
+    int Diff = std::distance(
         GPR64ArgRegs8Bit.begin(),
         std::find(GPR64ArgRegs8Bit.begin(), GPR64ArgRegs8Bit.end(), PReg));
-    if ((diff >= 0) && (diff < (int)GPR64ArgRegs8Bit.size())) {
-      pos = diff + 1;
+    if ((Diff >= 0) && (Diff < (int)GPR64ArgRegs8Bit.size())) {
+      Pos = Diff + 1;
     }
   } else if (is16BitPhysReg(PReg)) {
-    int diff = std::distance(
+    int Diff = std::distance(
         GPR64ArgRegs16Bit.begin(),
         std::find(GPR64ArgRegs16Bit.begin(), GPR64ArgRegs16Bit.end(), PReg));
-    if ((diff >= 0) && (diff < (int)GPR64ArgRegs16Bit.size())) {
-      pos = diff + 1;
+    if ((Diff >= 0) && (Diff < (int)GPR64ArgRegs16Bit.size())) {
+      Pos = Diff + 1;
     }
   } else if (is32BitPhysReg(PReg)) {
-    int diff = std::distance(
+    int Diff = std::distance(
         GPR64ArgRegs32Bit.begin(),
         std::find(GPR64ArgRegs32Bit.begin(), GPR64ArgRegs32Bit.end(), PReg));
-    if ((diff >= 0) && (diff < (int)GPR64ArgRegs32Bit.size())) {
-      pos = diff + 1;
+    if ((Diff >= 0) && (Diff < (int)GPR64ArgRegs32Bit.size())) {
+      Pos = Diff + 1;
     }
   } else if (is64BitPhysReg(PReg)) {
-    int diff = std::distance(
+    int Diff = std::distance(
         GPR64ArgRegs64Bit.begin(),
         std::find(GPR64ArgRegs64Bit.begin(), GPR64ArgRegs64Bit.end(), PReg));
-    if ((diff >= 0) && (diff < (int)GPR64ArgRegs64Bit.size())) {
-      pos = diff + 1;
+    if ((Diff >= 0) && (Diff < (int)GPR64ArgRegs64Bit.size())) {
+      Pos = Diff + 1;
     }
   } else if (isSSE2Reg(PReg)) {
-    int diff = std::distance(
+    int Diff = std::distance(
         SSEArgRegs64Bit.begin(),
         std::find(SSEArgRegs64Bit.begin(), SSEArgRegs64Bit.end(), PReg));
-    if ((diff >= 0) && (diff < (int)SSEArgRegs64Bit.size())) {
-      pos = diff + 1;
+    if ((Diff >= 0) && (Diff < (int)SSEArgRegs64Bit.size())) {
+      Pos = Diff + 1;
     }
   }
-  return pos;
+  return Pos;
 }
 
 // Add Reg to LiveInSet. This function adds the actual register Reg - not its
@@ -146,7 +146,7 @@ void X86MachineInstructionRaiser::addRegisterToFunctionLiveInSet(
 }
 
 Type *X86MachineInstructionRaiser::getFunctionReturnType() {
-  Type *returnType = nullptr;
+  Type *ReturnType = nullptr;
 
   assert(x86TargetInfo.is64Bit() && "Only x86_64 binaries supported for now");
 
@@ -162,16 +162,16 @@ Type *X86MachineInstructionRaiser::getFunctionReturnType() {
     }
   }
 
-  while (!WorkList.empty() && returnType == nullptr) {
+  while (!WorkList.empty() && ReturnType == nullptr) {
     MachineBasicBlock *MBB = WorkList.pop_back_val();
-    returnType = getReachingReturnType(*MBB);
+    ReturnType = getReachingReturnType(*MBB);
   }
 
   // If return type is still not discovered, assume it to be void
-  if (returnType == nullptr)
-    returnType = Type::getVoidTy(MF.getFunction().getContext());
+  if (ReturnType == nullptr)
+    ReturnType = Type::getVoidTy(MF.getFunction().getContext());
 
-  return returnType;
+  return ReturnType;
 }
 
 // Construct prototype of the Function for the MachineFunction being raised.
@@ -188,7 +188,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   unlinkEmptyMBBs();
 
   MF.getRegInfo().freezeReservedRegs(MF);
-  std::vector<Type *> argTypeVector;
+  std::vector<Type *> ArgTypeVector;
 
   // 1. Discover function arguments.
   // Function livein set will contain the actual registers that are
@@ -231,7 +231,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
     }
 
     // Union of defined registers of all predecessors
-    for (auto PredMBB : MBB->predecessors()) {
+    for (auto *PredMBB : MBB->predecessors()) {
       auto PredMBBRegDefSizeIter =
           PerMBBDefinedPhysRegMap.find(PredMBB->getNumber());
       // Register defs of all predecessors may not be available if MBB
@@ -285,7 +285,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
         if (Use1Op.getReg() != Use2Op.getReg()) {
           // If the source register has not been used before, add it to
           // the list of first use registers.
-          unsigned UseReg = Use1Op.getReg();
+          Register UseReg = Use1Op.getReg();
           if (MBBDefRegs.find(find64BitSuperReg(UseReg)) == MBBDefRegs.end())
             addRegisterToFunctionLiveInSet(FunctionLiveInRegs, UseReg);
 
@@ -295,7 +295,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
         }
 
         // Add def reg to MBBDefRegs set
-        unsigned DestReg = DestOp.getReg();
+        Register DestReg = DestOp.getReg();
         // We need the last definition. Even if there is a previous definition,
         // it is correct to just over write the size information.
         MBBDefRegs[find64BitSuperReg(DestReg)] =
@@ -417,7 +417,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
           if (!MO.isReg())
             continue;
 
-          unsigned Reg = MO.getReg();
+          Register Reg = MO.getReg();
           if (!(isGPReg(Reg) || isSSE2Reg(Reg)))
             continue;
 
@@ -433,7 +433,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
           if (!MO.isReg())
             continue;
 
-          unsigned Reg = MO.getReg();
+          Register Reg = MO.getReg();
           if (!(isGPReg(Reg) || isSSE2Reg(Reg)))
             continue;
 
@@ -460,11 +460,11 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
 
   // Use the first register usage list to form argument vector using
   // first argument register usage.
-  buildFuncArgTypeVector(FunctionLiveInRegs, argTypeVector);
+  buildFuncArgTypeVector(FunctionLiveInRegs, ArgTypeVector);
   // 2. Discover function return type
-  Type *returnType = DiscoveredRetType != nullptr ? DiscoveredRetType
+  Type *ReturnType = DiscoveredRetType != nullptr ? DiscoveredRetType
                                                   : getFunctionReturnType();
-  if (returnType == nullptr)
+  if (ReturnType == nullptr)
     return nullptr;
 
   // The Function object associated with current MachineFunction object
@@ -476,24 +476,24 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // module with the correct Function object being created now.
 
   // 1. Get the current function name
-  StringRef functionName = MF.getFunction().getName();
-  Module *module = MR->getModule();
+  StringRef FunctionName = MF.getFunction().getName();
+  Module *Mod = MR->getModule();
 
   // 2. Get the corresponding Function* registered in module
-  Function *tempFunctionPtr = module->getFunction(functionName);
-  assert(tempFunctionPtr != nullptr && "Function not found in module list");
+  Function *TempFunctionPtr = Mod->getFunction(FunctionName);
+  assert(TempFunctionPtr != nullptr && "Function not found in module list");
 
   // 4. Delete the tempFunc from module list to allow for the creation of the
   //    real function to add the correct one to FunctionList of the module.
-  module->getFunctionList().remove(tempFunctionPtr);
+  Mod->getFunctionList().remove(TempFunctionPtr);
 
   // 3. Create a function type using the discovered arguments and return value.
   FunctionType *FT =
-      FunctionType::get(returnType, argTypeVector, false /* isVarArg*/);
+      FunctionType::get(ReturnType, ArgTypeVector, false /* isVarArg*/);
 
   // 4. Create the real Function now that we have discovered the arguments.
   RaisedFunction =
-      Function::Create(FT, GlobalValue::ExternalLinkage, functionName, module);
+      Function::Create(FT, GlobalValue::ExternalLinkage, FunctionName, Mod);
 
   // Set global linkage
   RaisedFunction->setLinkage(GlobalValue::ExternalLinkage);
@@ -506,15 +506,15 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
   // Note: Call to arg_begin() calls Function::BuildLazyArguments()
   // to build the arguments.
   Function::arg_iterator ArgIt = RaisedFunction->arg_begin();
-  unsigned numFuncArgs = RaisedFunction->arg_size();
-  StringRef prefix("arg");
+  unsigned NumFuncArgs = RaisedFunction->arg_size();
+  StringRef Prefix("arg");
   // Set the name.
-  for (unsigned i = 0; i < numFuncArgs; ++i, ++ArgIt)
-    ArgIt->setName(prefix + std::to_string(i + 1));
+  for (unsigned Idx = 0; Idx < NumFuncArgs; ++Idx, ++ArgIt)
+    ArgIt->setName(Prefix + std::to_string(Idx + 1));
 
   // Insert the map of raised function to tempFunctionPointer.
   const_cast<ModuleRaiser *>(MR)->insertPlaceholderRaisedFunctionMap(
-      RaisedFunction, tempFunctionPtr);
+      RaisedFunction, TempFunctionPtr);
 
   return RaisedFunction->getFunctionType();
 }
@@ -625,11 +625,11 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     if (I->isReturn())
       continue;
 
-    // No need to inspect padding instructions. ld uses nop and lld uses int3 for
-    // alignment padding in text section.
+    // No need to inspect padding instructions. ld uses nop and lld uses int3
+    // for alignment padding in text section.
     auto Opcode = I->getOpcode();
     if (isNoop(Opcode) || (Opcode == X86::INT3))
-    	continue;
+      continue;
 
     unsigned DefReg = X86::NoRegister;
     const TargetRegisterInfo *TRI = MF.getRegInfo().getTargetRegisterInfo();
@@ -637,7 +637,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
     if (I->getDesc().getNumDefs() != 0) {
       const MachineOperand &MO = I->getOperand(0);
       if (MO.isReg()) {
-        unsigned PReg = MO.getReg();
+        Register PReg = MO.getReg();
         if (!Register::isPhysicalRegister(PReg))
           continue;
 
@@ -645,7 +645,7 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
         for (MCSubRegIterator SubRegs(X86::RAX, TRI,
                                       /*IncludeSelf=*/true);
              (SubRegs.isValid() && DefReg == X86::NoRegister); ++SubRegs) {
-          if (*SubRegs == PReg) {
+          if (*SubRegs == PReg.asMCReg()) {
             DefReg = *SubRegs;
             break;
           }
@@ -698,45 +698,45 @@ X86MachineInstructionRaiser::getReturnTypeFromMBB(const MachineBasicBlock &MBB,
 bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
     const std::set<MCPhysReg> &PhysRegs, std::vector<Type *> &ArgTyVec) {
   // A map of argument number and type as discovered
-  std::map<unsigned int, Type *> argNumTypeMap;
-  std::map<unsigned int, Type *> sseArgNumTypeMap;
-  llvm::LLVMContext &funcLLVMContext = MF.getFunction().getContext();
+  std::map<unsigned int, Type *> ArgNumTypeMap;
+  std::map<unsigned int, Type *> SSEArgNumTypeMap;
+  llvm::LLVMContext &Ctx = MF.getFunction().getContext();
   int MaxGPArgNum = 0;
   int MaxSSEArgNum = 0;
 
   for (MCPhysReg PReg : PhysRegs) {
     // If Reg is an argument register per C standard calling convention
     // construct function argument.
-    int argNum = getArgumentNumber(PReg);
-    if (argNum > 0) {
+    int ArgNum = getArgumentNumber(PReg);
+    if (ArgNum > 0) {
 
       if (isGPReg(PReg)) {
-        if (argNum > MaxGPArgNum)
-          MaxGPArgNum = argNum;
+        if (ArgNum > MaxGPArgNum)
+          MaxGPArgNum = ArgNum;
 
         // Make sure each argument position is discovered only once
-        assert(argNumTypeMap.find(argNum) == argNumTypeMap.end());
+        assert(ArgNumTypeMap.find(ArgNum) == ArgNumTypeMap.end());
         if (is8BitPhysReg(PReg)) {
-          argNumTypeMap.insert(
-              std::make_pair(argNum, Type::getInt8Ty(funcLLVMContext)));
+          ArgNumTypeMap.insert(
+              std::make_pair(ArgNum, Type::getInt8Ty(Ctx)));
         } else if (is16BitPhysReg(PReg)) {
-          argNumTypeMap.insert(
-              std::make_pair(argNum, Type::getInt16Ty(funcLLVMContext)));
+          ArgNumTypeMap.insert(
+              std::make_pair(ArgNum, Type::getInt16Ty(Ctx)));
         } else if (is32BitPhysReg(PReg)) {
-          argNumTypeMap.insert(
-              std::make_pair(argNum, Type::getInt32Ty(funcLLVMContext)));
+          ArgNumTypeMap.insert(
+              std::make_pair(ArgNum, Type::getInt32Ty(Ctx)));
         } else if (is64BitPhysReg(PReg)) {
-          argNumTypeMap.insert(
-              std::make_pair(argNum, Type::getInt64Ty(funcLLVMContext)));
+          ArgNumTypeMap.insert(
+              std::make_pair(ArgNum, Type::getInt64Ty(Ctx)));
         }
       } else if (isSSE2Reg(PReg)) {
-        if (argNum > MaxSSEArgNum)
-          MaxSSEArgNum = argNum;
+        if (ArgNum > MaxSSEArgNum)
+          MaxSSEArgNum = ArgNum;
 
         // Make sure each argument position is discovered only once
-        assert(sseArgNumTypeMap.find(argNum) == sseArgNumTypeMap.end());
-        sseArgNumTypeMap.insert(
-            std::make_pair(argNum, Type::getDoubleTy(funcLLVMContext)));
+        assert(SSEArgNumTypeMap.find(ArgNum) == SSEArgNumTypeMap.end());
+        SSEArgNumTypeMap.insert(
+            std::make_pair(ArgNum, Type::getDoubleTy(Ctx)));
       } else {
         outs() << x86RegisterInfo->getRegAsmName(PReg) << "\n";
         llvm_unreachable("Unhandled register type encountered in binary");
@@ -746,25 +746,25 @@ bool X86MachineInstructionRaiser::buildFuncArgTypeVector(
 
   // Build argument type vector that will be used to build FunctionType
   // while sanity checking arguments discovered
-  for (int i = 1; i <= MaxGPArgNum; i++) {
-    auto argIter = argNumTypeMap.find(i);
-    if (argIter == argNumTypeMap.end()) {
+  for (int Idx = 1; Idx <= MaxGPArgNum; Idx++) {
+    auto ArgIter = ArgNumTypeMap.find(Idx);
+    if (ArgIter == ArgNumTypeMap.end()) {
       // Argument register not used. It is most likely optimized.
       // The argument is not used. Safe to consider it to be of 64-bit
       // type.
-      ArgTyVec.push_back(Type::getInt64Ty(funcLLVMContext));
+      ArgTyVec.push_back(Type::getInt64Ty(Ctx));
     } else
-      ArgTyVec.push_back(argNumTypeMap.find(i)->second);
+      ArgTyVec.push_back(ArgNumTypeMap.find(Idx)->second);
   }
   // TODO: for now we just assume that SSE registers are always the last
   // arguments This may work when compiling to X86 using the System V ABI, not
   // necessarily for other ABIs.
-  for (int i = 1; i <= MaxSSEArgNum; i++) {
-    auto argIter = sseArgNumTypeMap.find(i);
-    if (argIter == sseArgNumTypeMap.end()) {
-      ArgTyVec.push_back(Type::getDoubleTy(funcLLVMContext));
+  for (int Idx = 1; Idx <= MaxSSEArgNum; Idx++) {
+    auto ArgIter = SSEArgNumTypeMap.find(Idx);
+    if (ArgIter == SSEArgNumTypeMap.end()) {
+      ArgTyVec.push_back(Type::getDoubleTy(Ctx));
     } else {
-      ArgTyVec.push_back(argIter->second);
+      ArgTyVec.push_back(ArgIter->second);
     }
   }
   return true;
@@ -836,7 +836,7 @@ X86MachineInstructionRaiser::getCalledFunction(const MachineInstr &MI) {
 
     // Search the called function from the excluded set of function filter.
     if (CalledFunc == nullptr) {
-      auto Filter = MR->getFunctionFilter();
+      auto *Filter = MR->getFunctionFilter();
       CalledFunc = Filter->findFunctionByIndex(
           MCInstOffset + RelCallTargetOffset + MCInstSize,
           FunctionFilter::FILTER_EXCLUDE);

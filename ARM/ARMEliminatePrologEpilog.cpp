@@ -41,8 +41,8 @@ bool ARMEliminatePrologEpilog::checkRegister(
   for (; Iter < Instrs.end(); ++Iter) {
     MachineInstr *MI = *Iter;
     if (MI->mayStore()) {
-      for (unsigned i = 0; i < MI->getNumOperands(); i++) {
-        MachineOperand MO = MI->getOperand(i);
+      for (unsigned Idx = 0; Idx < MI->getNumOperands(); Idx++) {
+        MachineOperand MO = MI->getOperand(Idx);
 
         // Compare the register number.
         if (MO.isReg() && MO.getReg() == Reg)
@@ -136,8 +136,8 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
   const MCPhysReg *CSRegs = TRI->getCalleeSavedRegs(&MF);
 
   std::vector<CalleeSavedInfo> CSI;
-  for (unsigned i = 0; CSRegs[i]; ++i) {
-    unsigned Reg = CSRegs[i];
+  for (unsigned Idx = 0; CSRegs[Idx]; ++Idx) {
+    unsigned Reg = CSRegs[Idx];
 
     // Save register.
     if (checkRegister(Reg, PrologInstrs)) {
@@ -201,8 +201,8 @@ bool ARMEliminatePrologEpilog::eliminateProlog(MachineFunction &MF) const {
 
   // Eliminate the instructions identified in function prologue
   unsigned int DelInstSz = PrologInstrs.size();
-  for (unsigned int i = 0; i < DelInstSz; i++) {
-    FrontMBB.erase(PrologInstrs[i]);
+  for (unsigned int Idx = 0; Idx < DelInstSz; Idx++) {
+    FrontMBB.erase(PrologInstrs[Idx]);
   }
 
   return true;
@@ -281,8 +281,8 @@ bool ARMEliminatePrologEpilog::eliminateEpilog(MachineFunction &MF) const {
 
     // Eliminate the instructions identified in function epilogue
     unsigned int DelInstSz = EpilogInstrs.size();
-    for (unsigned int i = 0; i < DelInstSz; i++) {
-      MBB.erase(EpilogInstrs[i]);
+    for (unsigned int Idx = 0; Idx < DelInstSz; Idx++) {
+      MBB.erase(EpilogInstrs[Idx]);
     }
   }
 

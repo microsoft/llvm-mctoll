@@ -2,6 +2,11 @@ if(NOT (LLVM_TARGETS_TO_BUILD MATCHES "X86" OR LLVM_TARGETS_TO_BUILD MATCHES "AR
   return()
 endif()
 
+if (MCTOLL_CLANG_TIDY)
+ message(STATUS "Enabled clang-tidy checks for llvm-mctoll source files")
+ set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
+endif()
+ 
 set(LLVM_MCTOLL_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLVM_MCTOLL_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 

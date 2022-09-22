@@ -31,17 +31,18 @@ ARMFunctionPrototype::ARMFunctionPrototype() : MachineFunctionPass(ID) {}
 ARMFunctionPrototype::~ARMFunctionPrototype() {}
 
 /// Check the first reference of the reg is USE.
-bool ARMFunctionPrototype::isUsedRegiser(unsigned reg,
-                                         const MachineBasicBlock &mbb) {
-  for (MachineBasicBlock::const_iterator ii = mbb.begin(), ie = mbb.end();
-       ii != ie; ++ii) {
-    const MachineInstr &mi = *ii;
-    for (MachineInstr::const_mop_iterator oi = mi.operands_begin(),
-                                          oe = mi.operands_end();
-         oi != oe; oi++) {
-      const MachineOperand &mo = *oi;
-      if (mo.isReg() && (mo.getReg() == reg))
-        return mo.isUse();
+bool ARMFunctionPrototype::isUsedRegiser(unsigned Reg,
+                                         const MachineBasicBlock &MBB) {
+  for (MachineBasicBlock::const_iterator BegIter = MBB.begin(),
+                                         EndIter = MBB.end();
+       BegIter != EndIter; ++BegIter) {
+    const MachineInstr &MI = *BegIter;
+    for (MachineInstr::const_mop_iterator OpBegIter = MI.operands_begin(),
+                                          OpEndIter = MI.operands_end();
+         OpBegIter != OpEndIter; OpBegIter++) {
+      const MachineOperand &MO = *OpBegIter;
+      if (MO.isReg() && (MO.getReg() == Reg))
+        return MO.isUse();
     }
   }
 
@@ -49,12 +50,12 @@ bool ARMFunctionPrototype::isUsedRegiser(unsigned reg,
 }
 
 /// Check the first reference of the reg is DEF.
-void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes) {
+void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &ParamVec) {
   assert(!MF->empty() && "The function body is empty!!!");
   MF->getRegInfo().freezeReservedRegs(*MF);
-  LivePhysRegs liveInPhysRegs;
+  LivePhysRegs LiveInPhysRegs;
   for (MachineBasicBlock &EMBB : *MF)
-    computeAndAddLiveIns(liveInPhysRegs, EMBB);
+    computeAndAddLiveIns(LiveInPhysRegs, EMBB);
   // Walk the CFG DFS to discover first register usage
   df_iterator_default_set<const MachineBasicBlock *, 16> Visited;
   DenseMap<unsigned, bool> ArgObtain;
@@ -62,26 +63,26 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes) {
   ArgObtain[ARM::R1] = false;
   ArgObtain[ARM::R2] = false;
   ArgObtain[ARM::R3] = false;
-  const MachineBasicBlock &fmbb = MF->front();
-  DenseMap<int, Type *> tarr;
-  int maxidx = -1; // When the maxidx is -1, means there is no argument.
+  const MachineBasicBlock &MBBFront = MF->front();
+  DenseMap<int, Type *> TyArr;
+  int MaxIdx = -1; // When the maxidx is -1, means there is no argument.
   // Track register liveness on CFG.
-  for (const MachineBasicBlock *Mbb : depth_first_ext(&fmbb, Visited)) {
+  for (const MachineBasicBlock *Mbb : depth_first_ext(&MBBFront, Visited)) {
     for (unsigned IReg = ARM::R0; IReg < ARM::R4; IReg++) {
       if (!ArgObtain[IReg] && Mbb->isLiveIn(IReg)) {
-        for (MachineBasicBlock::const_iterator ii = Mbb->begin(),
-                                               ie = Mbb->end();
-             ii != ie; ++ii) {
-          const MachineInstr &LMI = *ii;
+        for (MachineBasicBlock::const_iterator BI = Mbb->begin(),
+                                               EI = Mbb->end();
+             BI != EI; ++BI) {
+          const MachineInstr &LMI = *BI;
           auto RUses = LMI.uses();
-          auto ResIter =
+          const auto *ResIter =
               std::find_if(RUses.begin(), RUses.end(),
                            [IReg](const MachineOperand &OP) -> bool {
                              return OP.isReg() && (OP.getReg() == IReg);
                            });
           if (ResIter != RUses.end()) {
-            maxidx = IReg - ARM::R0;
-            tarr[maxidx] = getDefaultType();
+            MaxIdx = IReg - ARM::R0;
+            TyArr[MaxIdx] = getDefaultType();
             break;
           }
         }
@@ -90,70 +91,70 @@ void ARMFunctionPrototype::genParameterTypes(std::vector<Type *> &paramTypes) {
     }
   }
   // The rest of function arguments are from stack.
-  for (MachineFunction::const_iterator mbbi = MF->begin(), mbbe = MF->end();
-       mbbi != mbbe; ++mbbi) {
-    const MachineBasicBlock &mbb = *mbbi;
-    for (MachineBasicBlock::const_iterator mii = mbb.begin(), mie = mbb.end();
-         mii != mie; ++mii) {
-      const MachineInstr &mi = *mii;
+  for (MachineFunction::const_iterator BegMBBIter = MF->begin(), EndMBBIter = MF->end();
+       BegMBBIter != EndMBBIter; ++BegMBBIter) {
+    const MachineBasicBlock &Mbb = *BegMBBIter;
+    for (MachineBasicBlock::const_iterator Mii = Mbb.begin(), Mie = Mbb.end();
+         Mii != Mie; ++Mii) {
+      const MachineInstr &Mi = *Mii;
       // Match pattern like ldr r1, [fp, #8].
-      if (mi.getOpcode() == ARM::LDRi12 && mi.getNumOperands() > 2) {
-        const MachineOperand &mo = mi.getOperand(1);
-        const MachineOperand &mc = mi.getOperand(2);
-        if (mo.isReg() && mo.getReg() == ARM::R11 && mc.isImm()) {
+      if (Mi.getOpcode() == ARM::LDRi12 && Mi.getNumOperands() > 2) {
+        const MachineOperand &Mo = Mi.getOperand(1);
+        const MachineOperand &Mc = Mi.getOperand(2);
+        if (Mo.isReg() && Mo.getReg() == ARM::R11 && Mc.isImm()) {
           // TODO: Need to check the imm is larger than 0 and it is align
           // by 4(32 bit).
-          int imm = mc.getImm();
-          if (imm >= 0) {
+          int Imm = Mc.getImm();
+          if (Imm >= 0) {
             // The start index of arguments on stack. If the library was
             // compiled by clang, it starts from 2. If the library was compiled
             // by GNU cross compiler, it starts from 1.
             // FIXME: For now, we only treat that the library was complied by
             // clang. We will enable the 'if condition' after we are able to
             // identify the library was compiled by which compiler.
-            int idxoff = 2;
+            int Idxoff = 2;
             if (true /* clang */)
-              idxoff = 2;
+              Idxoff = 2;
             else /* gnu */
-              idxoff = 1;
+              Idxoff = 1;
 
-            int idx = imm / 4 - idxoff + 4; // Plus 4 is to guarantee the first
+            int Idx = Imm / 4 - Idxoff + 4; // Plus 4 is to guarantee the first
                                             // stack argument index is after all
                                             // of register arguments' indices.
-            if (maxidx < idx)
-              maxidx = idx;
-            tarr[idx] = getDefaultType();
+            if (MaxIdx < Idx)
+              MaxIdx = Idx;
+            TyArr[Idx] = getDefaultType();
           }
         }
       }
     }
   }
-  for (int i = 0; i <= maxidx; ++i) {
-    if (tarr[i] == nullptr)
-      paramTypes.push_back(getDefaultType());
+  for (int Idx = 0; Idx <= MaxIdx; ++Idx) {
+    if (TyArr[Idx] == nullptr)
+      ParamVec.push_back(getDefaultType());
     else
-      paramTypes.push_back(tarr[i]);
+      ParamVec.push_back(TyArr[Idx]);
   }
 }
 
 /// Get all arguments types of current MachineFunction.
-bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
-                                            const MachineBasicBlock &mbb) {
-  for (MachineBasicBlock::const_reverse_iterator ii = mbb.rbegin(),
-                                                 ie = mbb.rend();
-       ii != ie; ++ii) {
-    const MachineInstr &mi = *ii;
-    for (MachineInstr::const_mop_iterator oi = mi.operands_begin(),
-                                          oe = mi.operands_end();
-         oi != oe; oi++) {
-      const MachineOperand &mo = *oi;
-      if (mo.isReg() && (mo.getReg() == reg)) {
+bool ARMFunctionPrototype::isDefinedRegiser(unsigned Reg,
+                                            const MachineBasicBlock &MBB) {
+  for (MachineBasicBlock::const_reverse_iterator Ii = MBB.rbegin(),
+                                                 Ie = MBB.rend();
+       Ii != Ie; ++Ii) {
+    const MachineInstr &MI = *Ii;
+    for (MachineInstr::const_mop_iterator Oi = MI.operands_begin(),
+                                          Oe = MI.operands_end();
+         Oi != Oe; Oi++) {
+      const MachineOperand &MO = *Oi;
+      if (MO.isReg() && (MO.getReg() == Reg)) {
         // The return register must not be tied to another register.
         // If it was, it should not be return register.
-        if (mo.isTied())
+        if (MO.isTied())
           return false;
 
-        return mo.isDef();
+        return MO.isDef();
       }
     }
   }
@@ -164,51 +165,51 @@ bool ARMFunctionPrototype::isDefinedRegiser(unsigned reg,
 /// Get return type of current MachineFunction.
 Type *ARMFunctionPrototype::genReturnType() {
   // TODO: Need to track register liveness on CFG.
-  Type *retTy;
-  retTy = Type::getVoidTy(*CTX);
-  for (const MachineBasicBlock &mbb : *MF) {
-    if (mbb.succ_empty()) {
-      if (isDefinedRegiser(ARM::R0, mbb)) {
+  Type *RetTy;
+  RetTy = Type::getVoidTy(*CTX);
+  for (const MachineBasicBlock &MBB : *MF) {
+    if (MBB.succ_empty()) {
+      if (isDefinedRegiser(ARM::R0, MBB)) {
         // TODO: Need to identify data type, int, long, float or double.
-        retTy = getDefaultType();
+        RetTy = getDefaultType();
         break;
       }
     }
   }
 
-  return retTy;
+  return RetTy;
 }
 
-Function *ARMFunctionPrototype::discover(MachineFunction &mf) {
+Function *ARMFunctionPrototype::discover(MachineFunction &MachFunc) {
   LLVM_DEBUG(dbgs() << "ARMFunctionPrototype start.\n");
 
-  MF = &mf;
-  Function &fn = const_cast<Function &>(mf.getFunction());
-  CTX = &fn.getContext();
+  MF = &MachFunc;
+  Function &Fn = const_cast<Function &>(MachFunc.getFunction());
+  CTX = &Fn.getContext();
 
-  std::vector<Type *> paramTys;
-  genParameterTypes(paramTys);
-  Type *retTy = genReturnType();
-  FunctionType *fnTy = FunctionType::get(retTy, paramTys, false);
+  std::vector<Type *> ParamTys;
+  genParameterTypes(ParamTys);
+  Type *RetTy = genReturnType();
+  FunctionType *FnTy = FunctionType::get(RetTy, ParamTys, false);
 
-  MachineModuleInfo &mmi = mf.getMMI();
-  Module *mdl = const_cast<Module *>(mmi.getModule());
-  mdl->getFunctionList().remove(&fn);
-  Function *pnfn =
-      Function::Create(fnTy, GlobalValue::ExternalLinkage, fn.getName(), mdl);
+  MachineModuleInfo &Mmi = MachFunc.getMMI();
+  Module *Mdl = const_cast<Module *>(Mmi.getModule());
+  Mdl->getFunctionList().remove(&Fn);
+  Function *Pnfn =
+      Function::Create(FnTy, GlobalValue::ExternalLinkage, Fn.getName(), Mdl);
   // When run as FunctionPass, the Function must not be empty, so add
   // EntryBlock at here.
-  BasicBlock::Create(pnfn->getContext(), "EntryBlock", pnfn);
+  BasicBlock::Create(Pnfn->getContext(), "EntryBlock", Pnfn);
 
   LLVM_DEBUG(MF->dump());
-  LLVM_DEBUG(pnfn->dump());
+  LLVM_DEBUG(Pnfn->dump());
   LLVM_DEBUG(dbgs() << "ARMFunctionPrototype end.\n");
 
-  return pnfn;
+  return Pnfn;
 }
 
-bool ARMFunctionPrototype::runOnMachineFunction(MachineFunction &mf) {
-  discover(mf);
+bool ARMFunctionPrototype::runOnMachineFunction(MachineFunction &MachFunc) {
+  discover(MachFunc);
   return true;
 }
 
@@ -218,7 +219,7 @@ bool ARMFunctionPrototype::runOnMachineFunction(MachineFunction &mf) {
 extern "C" {
 #endif
 
-MachineFunctionPass *InitializeARMFunctionPrototype() {
+MachineFunctionPass *initializeARMFunctionPrototype() {
   return new ARMFunctionPrototype();
 }
 

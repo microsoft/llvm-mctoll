@@ -362,3 +362,31 @@ void FunctionFilter::dump(FilterType FT) {
                   });
   }
 }
+
+/// Check if function is needs raising
+bool FunctionFilter::checkFunction(StringRef &PrototypeStr, uint64_t Start) {
+  bool RaiseFunc = true;
+  // Check the symbol name whether it should be excluded or not.
+  // Check in a non-empty exclude list
+  if (!isFilterSetEmpty(FunctionFilter::FILTER_EXCLUDE)) {
+    FunctionFilter::FuncInfo *FI = findFuncInfoBySymbol(
+        PrototypeStr, FunctionFilter::FILTER_EXCLUDE);
+    if (FI != nullptr) {
+      // Record the function start index.
+      FI->StartIdx = Start;
+      // Skip raising this function symbol
+      RaiseFunc = false;
+    }
+  }
+
+  if (!isFilterSetEmpty(FunctionFilter::FILTER_INCLUDE)) {
+    // Include list specified. Unless the current function symbol is
+    // specified in the include list, skip raising it.
+    RaiseFunc = false;
+    // Check the symbol name whether it should be included or not.
+    if (findFuncInfoBySymbol(
+            PrototypeStr, FunctionFilter::FILTER_INCLUDE) != nullptr)
+      RaiseFunc = true;
+  }
+  return RaiseFunc;
+}

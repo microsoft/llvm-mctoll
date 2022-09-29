@@ -83,6 +83,8 @@ public:
   bool readFilterFunctionConfigFile(std::string &FunctionFilterFilename);
   /// Test if the list of specified list is empty.
   bool isFilterSetEmpty(FilterType);
+  /// Check if function is needs raising
+  bool checkFunction(StringRef &PrototypeStr, uint64_t Start);
   /// Dump the list of specified list; dump both include and exclude lists if no
   /// argument is specified.
   void dump(FilterType FT = FILTER_NONE);

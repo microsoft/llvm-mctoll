@@ -990,39 +990,13 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
       if (isAFunctionSymbol(Obj, Symbols[SI])) {
         auto &SymStr = Symbols[SI].Name;
 
-        bool RaiseFuncSymbol = true;
-        if ((!FilterConfigFileName.empty())) {
-          // Check the symbol name whether it should be excluded or not.
-          // Check in a non-empty exclude list
-          if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_EXCLUDE)) {
-            FunctionFilter::FuncInfo *FI = FuncFilter->findFuncInfoBySymbol(
-                SymStr, FunctionFilter::FILTER_EXCLUDE);
-            if (FI != nullptr) {
-              // Record the function start index.
-              FI->StartIdx = Start;
-              // Skip raising this function symbol
-              RaiseFuncSymbol = false;
-            }
-          }
-
-          if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_INCLUDE)) {
-            // Include list specified. Unless the current function symbol is
-            // specified in the include list, skip raising it.
-            RaiseFuncSymbol = false;
-            // Check the symbol name whether it should be included or not.
-            if (FuncFilter->findFuncInfoBySymbol(
-                    SymStr, FunctionFilter::FILTER_INCLUDE) != nullptr)
-              RaiseFuncSymbol = true;
-          }
-        }
+        // Check the symbol name by the function filter.
+        if (!FuncFilter->checkFunction(SymStr, Start))
+          continue;
 
         // If Symbol is in the ELFCRTSymbol list return this is a symbol of a
         // function we are not interested in disassembling and raising.
         if (ELFCRTSymbols.find(SymStr) != ELFCRTSymbols.end())
-          RaiseFuncSymbol = false;
-
-        // Check if raising function symbol should be skipped
-        if (!RaiseFuncSymbol)
           continue;
 
         // Note that since LLVM infrastructure was built to be used to build a

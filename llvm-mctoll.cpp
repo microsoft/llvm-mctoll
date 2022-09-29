@@ -240,6 +240,7 @@ private:
   FilterPredicate Predicate;
   llvm::object::ObjectFile const &Object;
 };
+
 SectionFilter toolSectionFilter(llvm::object::ObjectFile const &O) {
   return SectionFilter(
       [](llvm::object::SectionRef const &S) {
@@ -396,15 +397,6 @@ bool mctoll::RelocAddressLess(RelocationRef A, RelocationRef B) {
 }
 
 namespace {
-static bool isArmElf(const ObjectFile *Obj) {
-  return (Obj->isELF() &&
-          (Obj->getArch() == Triple::aarch64 ||
-           Obj->getArch() == Triple::aarch64_be ||
-           Obj->getArch() == Triple::arm || Obj->getArch() == Triple::armeb ||
-           Obj->getArch() == Triple::thumb ||
-           Obj->getArch() == Triple::thumbeb));
-}
-
 class PrettyPrinter {
 public:
   virtual ~PrettyPrinter() {}
@@ -551,118 +543,6 @@ static std::error_code getRelocationValueString(const ELFObjectFile<ELFT> *Obj,
   return std::error_code();
 }
 
-static uint8_t getElfSymbolType(const ObjectFile *Obj, const SymbolRef &Sym) {
-  assert(Obj->isELF());
-  auto SymbImpl = Sym.getRawDataRefImpl();
-  if (auto *Elf32LEObj = dyn_cast<ELF32LEObjectFile>(Obj)) {
-    auto SymbOrErr = Elf32LEObj->getSymbol(SymbImpl);
-    if (!SymbOrErr)
-      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
-    return SymbOrErr.get()->getType();
-  }
-  if (auto *Elf64LEObj = dyn_cast<ELF64LEObjectFile>(Obj)) {
-    auto SymbOrErr = Elf64LEObj->getSymbol(SymbImpl);
-    if (!SymbOrErr)
-      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
-    return SymbOrErr.get()->getType();
-  }
-  if (auto *Elf32BEObj = dyn_cast<ELF32BEObjectFile>(Obj)) {
-    auto SymbOrErr = Elf32BEObj->getSymbol(SymbImpl);
-    if (!SymbOrErr)
-      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
-    return SymbOrErr.get()->getType();
-  }
-  if (auto *Elf64BEObj = dyn_cast<ELF64BEObjectFile>(Obj)) {
-    auto SymbOrErr = Elf64BEObj->getSymbol(SymbImpl);
-    if (!SymbOrErr)
-      reportError(SymbOrErr.takeError(), "ELF32 symbol not found");
-    return SymbOrErr.get()->getType();
-  }
-  llvm_unreachable("Unsupported binary format");
-  // Keep the code analyzer happy
-  return ELF::STT_NOTYPE;
-}
-
-template <class ELFT>
-static void
-addDynamicElfSymbols(const ELFObjectFile<ELFT> *Obj,
-                     std::map<SectionRef, SectionSymbolsTy> &AllSymbols) {
-  for (auto Symbol : Obj->getDynamicSymbolIterators()) {
-    uint8_t SymbolType = Symbol.getELFType();
-    if (SymbolType != ELF::STT_FUNC || Symbol.getSize() == 0)
-      continue;
-
-    Expected<uint64_t> AddressOrErr = Symbol.getAddress();
-    if (!AddressOrErr)
-      reportError(AddressOrErr.takeError(), Obj->getFileName());
-    uint64_t Address = *AddressOrErr;
-
-    Expected<StringRef> Name = Symbol.getName();
-    if (!Name)
-      reportError(Name.takeError(), Obj->getFileName());
-    if (Name->empty())
-      continue;
-
-    Expected<section_iterator> SectionOrErr = Symbol.getSection();
-    if (!SectionOrErr)
-      reportError(SectionOrErr.takeError(), Obj->getFileName());
-    section_iterator SecI = *SectionOrErr;
-    if (SecI == Obj->section_end())
-      continue;
-
-    AllSymbols[*SecI].emplace_back(Address, *Name, SymbolType);
-  }
-}
-
-static void
-addDynamicElfSymbols(const ObjectFile *Obj,
-                     std::map<SectionRef, SectionSymbolsTy> &AllSymbols) {
-  assert(Obj->isELF());
-  if (auto *Elf32LEObj = dyn_cast<ELF32LEObjectFile>(Obj))
-    addDynamicElfSymbols(Elf32LEObj, AllSymbols);
-  else if (auto *Elf64LEObj = dyn_cast<ELF64LEObjectFile>(Obj))
-    addDynamicElfSymbols(Elf64LEObj, AllSymbols);
-  else if (auto *Elf32BEObj = dyn_cast<ELF32BEObjectFile>(Obj))
-    addDynamicElfSymbols(Elf32BEObj, AllSymbols);
-  else if (auto *Elf64BEObj = dyn_cast<ELF64BEObjectFile>(Obj))
-    addDynamicElfSymbols(Elf64BEObj, AllSymbols);
-  else
-    llvm_unreachable("Unsupported binary format");
-}
-
-/*
-   A list of symbol entries corresponding to CRT functions added by
-   the linker while creating an ELF executable. It is not necessary to
-   disassemble and translate these functions.
-*/
-
-static std::set<StringRef> ELFCRTSymbols = {
-    "call_weak_fn",
-    "deregister_tm_clones",
-    "__do_global_dtors_aux",
-    "__do_global_dtors_aux_fini_array_entry",
-    "_fini",
-    "frame_dummy",
-    "__frame_dummy_init_array_entry",
-    "_init",
-    "__init_array_end",
-    "__init_array_start",
-    "__libc_csu_fini",
-    "__libc_csu_init",
-    "register_tm_clones",
-    "_start",
-    "_dl_relocate_static_pie"};
-
-/*
-   A list of symbol entries corresponding to CRT functions added by
-   the linker while creating an MachO executable. It is not necessary
-   to disassemble and translate these functions.
-*/
-
-static std::set<StringRef> MachOCRTSymbols = {"__mh_execute_header",
-                                              "dyld_stub_binder", "__text",
-                                              "__stubs", "__stub_helper"};
-
 /*
    A list of sections whose contents are to be disassembled as code
 */
@@ -678,19 +558,6 @@ static std::set<StringRef> MachOSectionsToDisassemble = {};
 /* TODO: Figure out the symbol linkage type from the symbol
    table. For now assuming global linkage
 */
-
-static bool isAFunctionSymbol(const ObjectFile *Obj, SymbolInfoTy &Symbol) {
-  if (Obj->isELF()) {
-    return (Symbol.Type == ELF::STT_FUNC);
-  }
-  if (Obj->isMachO()) {
-    // If Symbol is not in the MachOCRTSymbol list return true indicating that
-    // this is a symbol of a function we are interested in disassembling and
-    // raising.
-    return (MachOCRTSymbols.find(Symbol.Name) == MachOCRTSymbols.end());
-  }
-  return false;
-}
 
 #define MODULE_RAISER(TargetName)                                              \
   extern "C" void register##TargetName##ModuleRaiser();
@@ -753,7 +620,6 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     reportError(Obj->getFileName(),
                 "no instruction printer for target " + TripleName);
   IP->setPrintImmHex(PrintImmHex);
-  PrettyPrinter &PIP = selectPrettyPrinter(Triple(TripleName));
 
   LLVMContext LlvmCtx;
   std::unique_ptr<TargetMachine> Target(
@@ -780,487 +646,25 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                           MIA.get(), MII.get(), MRI.get(), IP.get(),
                           Obj, DisAsm.get());
 
-  // Collect dynamic relocations.
-  MR->collectDynamicRelocations();
+  FunctionFilter *FuncFilter = MR->getFunctionFilter();
+  if (!FilterConfigFileName.empty()) {
+    if (!FuncFilter->readFilterFunctionConfigFile(FilterConfigFileName)) {
+      dbgs() << "Unable to read function filter configuration file "
+             << FilterConfigFileName << ". Ignoring\n";
+    }
+  }
 
-  // Create a mapping, RelocSecs = SectionRelocMap[S], where sections
-  // in RelocSecs contain the relocations for section S.
-  std::error_code EC;
-  std::map<SectionRef, SmallVector<SectionRef, 1>> SectionRelocMap;
+  // Filtered sections list
+  SmallVector<SectionRef, 1> FilteredSections;
   for (const SectionRef &Section : toolSectionFilter(*Obj)) {
-    Expected<section_iterator> SecOrErr = Section.getRelocatedSection();
-    if (!SecOrErr) {
-      break;
-    }
-    section_iterator Sec2 = *SecOrErr;
-    if (Sec2 != Obj->section_end())
-      SectionRelocMap[*Sec2].push_back(Section);
+    FilteredSections.push_back(Section);
   }
 
-  // Create a mapping from virtual address to symbol name. This is used to
-  // pretty print the symbols while disassembling.
-  std::map<SectionRef, SectionSymbolsTy> AllSymbols;
-  for (const SymbolRef &Symbol : Obj->symbols()) {
-    Expected<uint64_t> AddressOrErr = Symbol.getAddress();
-    if (!AddressOrErr)
-      reportError(AddressOrErr.takeError(), Obj->getFileName());
-    uint64_t Address = *AddressOrErr;
-
-    Expected<StringRef> Name = Symbol.getName();
-    if (!Name)
-      reportError(Name.takeError(), Obj->getFileName());
-    if (Name->empty())
-      continue;
-
-    Expected<section_iterator> SectionOrErr = Symbol.getSection();
-    if (!SectionOrErr)
-      reportError(SectionOrErr.takeError(), Obj->getFileName());
-    section_iterator SecI = *SectionOrErr;
-    if (SecI == Obj->section_end())
-      continue;
-
-    uint8_t SymbolType = ELF::STT_NOTYPE;
-    if (Obj->isELF())
-      SymbolType = getElfSymbolType(Obj, Symbol);
-
-    AllSymbols[*SecI].emplace_back(Address, *Name, SymbolType);
-  }
-  if (AllSymbols.empty() && Obj->isELF())
-    addDynamicElfSymbols(Obj, AllSymbols);
-
-  // Create a mapping from virtual address to section.
-  std::vector<std::pair<uint64_t, SectionRef>> SectionAddresses;
-  for (SectionRef Sec : Obj->sections())
-    SectionAddresses.emplace_back(Sec.getAddress(), Sec);
-  array_pod_sort(SectionAddresses.begin(), SectionAddresses.end());
-
-  // Linked executables (.exe and .dll files) typically don't include a real
-  // symbol table, but they might contain an export table.
-  if (const auto *COFFObj = dyn_cast<COFFObjectFile>(Obj)) {
-    for (const auto &ExportEntry : COFFObj->export_directories()) {
-      StringRef Name;
-      error(ExportEntry.getSymbolName(Name));
-      if (Name.empty())
-        continue;
-
-      uint32_t RVA;
-      error(ExportEntry.getExportRVA(RVA));
-
-      uint64_t VA = COFFObj->getImageBase() + RVA;
-      auto Sec = std::upper_bound(
-          SectionAddresses.begin(), SectionAddresses.end(), VA,
-          [](uint64_t LHS, const std::pair<uint64_t, SectionRef> &RHS) {
-            return LHS < RHS.first;
-          });
-      if (Sec != SectionAddresses.begin())
-        --Sec;
-      else
-        Sec = SectionAddresses.end();
-
-      if (Sec != SectionAddresses.end())
-        AllSymbols[Sec->second].emplace_back(VA, Name, ELF::STT_NOTYPE);
-    }
-  }
-
-  // Sort all the symbols, this allows us to use a simple binary search to find
-  // a symbol near an address.
-  for (std::pair<const SectionRef, SectionSymbolsTy> &SecSyms : AllSymbols)
-    array_pod_sort(SecSyms.second.begin(), SecSyms.second.end());
-
-  for (const SectionRef &Section : toolSectionFilter(*Obj)) {
-    if ((!Section.isText() || Section.isVirtual()))
-      continue;
-
-    StringRef SectionName;
-    if (auto NameOrErr = Section.getName())
-      SectionName = *NameOrErr;
-    else
-      consumeError(NameOrErr.takeError());
-
-    uint64_t SectionAddr = Section.getAddress();
-    uint64_t SectSize = Section.getSize();
-    if (!SectSize)
-      continue;
-
-    // Get the list of all the symbols in this section.
-    SectionSymbolsTy &Symbols = AllSymbols[Section];
-    std::vector<uint64_t> DataMappingSymsAddr;
-    std::vector<uint64_t> TextMappingSymsAddr;
-    if (isArmElf(Obj)) {
-      for (const auto &Symb : Symbols) {
-        uint64_t Address = Symb.Addr;
-        StringRef Name = Symb.Name;
-        if (Name.startswith("$d"))
-          DataMappingSymsAddr.push_back(Address - SectionAddr);
-        if (Name.startswith("$x"))
-          TextMappingSymsAddr.push_back(Address - SectionAddr);
-        if (Name.startswith("$a"))
-          TextMappingSymsAddr.push_back(Address - SectionAddr);
-        if (Name.startswith("$t"))
-          TextMappingSymsAddr.push_back(Address - SectionAddr);
-      }
-    }
-
-    std::sort(DataMappingSymsAddr.begin(), DataMappingSymsAddr.end());
-    std::sort(TextMappingSymsAddr.begin(), TextMappingSymsAddr.end());
-
-    // If the section has no symbol at the start, just insert a dummy one.
-    StringRef DummyName;
-    if (Symbols.empty() || Symbols[0].Addr != 0) {
-      Symbols.insert(
-          Symbols.begin(),
-          SymbolInfoTy(SectionAddr, DummyName,
-                       Section.isText() ? ELF::STT_FUNC : ELF::STT_OBJECT));
-    }
-
-    SmallString<40> Comments;
-    raw_svector_ostream CommentStream(Comments);
-
-    StringRef BytesStr =
-        unwrapOrError(Section.getContents(), Obj->getFileName());
-    ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(BytesStr.data()),
-                            BytesStr.size());
-
-    uint64_t Size;
-    uint64_t Index;
-
-    FunctionFilter *FuncFilter = MR->getFunctionFilter();
-    if (!FilterConfigFileName.empty()) {
-      if (!FuncFilter->readFilterFunctionConfigFile(FilterConfigFileName)) {
-        dbgs() << "Unable to read function filter configuration file "
-               << FilterConfigFileName << ". Ignoring\n";
-      }
-    }
-
-    // Build a map of relocations (if they exist in the binary) of text
-    // section whose instructions are being raised.
-    MR->collectTextSectionRelocs(Section);
-
-    // Set used to record all branch targets of a function.
-    std::set<uint64_t> BranchTargetSet;
-    MachineFunctionRaiser *CurMFRaiser = nullptr;
-
-    // Disassemble symbol by symbol and fill MR->MFRaiserVector by
-    // MachineFunctionRaiser for each function
-    LLVM_DEBUG(dbgs() << "BEGIN Disassembly of Functions in Section : "
-                      << SectionName.data() << "\n");
-    for (unsigned SI = 0, SSize = Symbols.size(); SI != SSize; ++SI) {
-      uint64_t Start = Symbols[SI].Addr - SectionAddr;
-      // The end is either the section end or the beginning of the next
-      // symbol.
-      uint64_t End =
-          (SI == SSize - 1) ? SectSize : Symbols[SI + 1].Addr - SectionAddr;
-      // Don't try to disassemble beyond the end of section contents.
-      if (End > SectSize)
-        End = SectSize;
-      // If this symbol has the same address as the next symbol, then skip it.
-      if (Start >= End)
-        continue;
-
-      // Check if we need to skip symbol
-      // Skip if the symbol's data is not between StartAddress and StopAddress
-      if (End + SectionAddr < StartAddress ||
-          Start + SectionAddr > StopAddress) {
-        continue;
-      }
-
-      // Stop disassembly at the stop address specified
-      if (End + SectionAddr > StopAddress)
-        End = StopAddress - SectionAddr;
-
-      if (Obj->isELF() && Obj->getArch() == Triple::amdgcn) {
-        // make size 4 bytes folded
-        End = Start + ((End - Start) & ~0x3ull);
-        if (Symbols[SI].Type == ELF::STT_AMDGPU_HSA_KERNEL) {
-          // skip amd_kernel_code_t at the begining of kernel symbol (256 bytes)
-          Start += 256;
-        }
-        if (SI == SSize - 1 ||
-            Symbols[SI + 1].Type == ELF::STT_AMDGPU_HSA_KERNEL) {
-          // cut trailing zeroes at the end of kernel
-          // cut up to 256 bytes
-          const uint64_t EndAlign = 256;
-          const auto Limit = End - (std::min)(EndAlign, End - Start);
-          while (End > Limit && *reinterpret_cast<const support::ulittle32_t *>(
-                                    &Bytes[End - 4]) == 0)
-            End -= 4;
-        }
-      }
-
-      if (isAFunctionSymbol(Obj, Symbols[SI])) {
-        auto &SymStr = Symbols[SI].Name;
-
-        // Check the symbol name by the function filter.
-        if (!FuncFilter->checkFunction(SymStr, Start))
-          continue;
-
-        // If Symbol is in the ELFCRTSymbol list return this is a symbol of a
-        // function we are not interested in disassembling and raising.
-        if (ELFCRTSymbols.find(SymStr) != ELFCRTSymbols.end())
-          continue;
-
-        // Note that since LLVM infrastructure was built to be used to build a
-        // conventional compiler pipeline, MachineFunction is built well after
-        // Function object was created and populated fully. Hence, creation of
-        // a Function object is necessary to build MachineFunction.
-        // However, in a raiser, we are conceptually walking the traditional
-        // compiler pipeline backwards. So we build MachineFunction from
-        // the binary before building Function object. Given the dependency,
-        // build a placeholder Function object to allow for building the
-        // MachineFunction object.
-        // This Function object is NOT populated when raising MachineFunction
-        // abstraction of the binary function. Instead, a new Function is
-        // created using the LLVMContext and name of this Function object.
-        FunctionType *FTy = FunctionType::get(Type::getVoidTy(LlvmCtx), false);
-        StringRef FunctionName(Symbols[SI].Name);
-        // Strip leading underscore if the binary is MachO
-        if (Obj->isMachO()) {
-          FunctionName.consume_front("_");
-        }
-        Function *Func = Function::Create(FTy, GlobalValue::ExternalLinkage,
-                                          FunctionName, &M);
-
-        // New function symbol encountered. Record all targets collected to
-        // current MachineFunctionRaiser before we start parsing the new
-        // function bytes.
-        CurMFRaiser = MR->getCurrentMachineFunctionRaiser();
-        for (auto TargetIdx : BranchTargetSet) {
-          assert(CurMFRaiser != nullptr &&
-                 "Encountered uninitialized MachineFunction raiser object");
-          CurMFRaiser->getMCInstRaiser()->addTarget(TargetIdx);
-        }
-
-        // Clear the set used to record all branch targets of this function.
-        BranchTargetSet.clear();
-        // Create a new MachineFunction raiser
-        CurMFRaiser =
-            MR->CreateAndAddMachineFunctionRaiser(Func, MR, Start, End);
-        LLVM_DEBUG(dbgs() << "\nFunction " << Symbols[SI].Name << ":\n");
-      } else {
-        // Continue using to the most recent MachineFunctionRaiser
-        // Get current MachineFunctionRaiser
-        CurMFRaiser = MR->getCurrentMachineFunctionRaiser();
-        // assert(curMFRaiser != nullptr && "Current Machine Function Raiser not
-        // initialized");
-        if (CurMFRaiser == nullptr) {
-          // At this point in the instruction stream, we do not have a function
-          // symbol to which the bytes being parsed can be made part of. So skip
-          // parsing the bytes of this symbol.
-          continue;
-        }
-
-        // Adjust function end to represent the addition of the content of the
-        // current symbol. This represents a situation where we have discovered
-        // bytes (most likely data bytes) that belong to the most recent
-        // function being parsed.
-        MCInstRaiser *InstRaiser = CurMFRaiser->getMCInstRaiser();
-        if (InstRaiser->getFuncEnd() < End) {
-          assert(InstRaiser->adjustFuncEnd(End) &&
-                 "Unable to adjust function end value");
-        }
-      }
-
-      // Get the associated MCInstRaiser
-      MCInstRaiser *InstRaiser = CurMFRaiser->getMCInstRaiser();
-
-      // Start new basic block at the symbol.
-      BranchTargetSet.insert(Start);
-
-      for (Index = Start; Index < End; Index += Size) {
-        MCInst Inst;
-
-        if (Index + SectionAddr < StartAddress ||
-            Index + SectionAddr > StopAddress) {
-          // skip byte by byte till StartAddress is reached
-          Size = 1;
-          continue;
-        }
-
-        // AArch64 ELF binaries can interleave data and text in the
-        // same section. We rely on the markers introduced to
-        // understand what we need to dump. If the data marker is within a
-        // function, it is denoted as a word/short etc
-        if (isArmElf(Obj) && Symbols[SI].Type != ELF::STT_OBJECT) {
-          uint64_t Stride = 0;
-
-          auto DAI = std::lower_bound(DataMappingSymsAddr.begin(),
-                                      DataMappingSymsAddr.end(), Index);
-          if (DAI != DataMappingSymsAddr.end() && *DAI == Index) {
-            // Switch to data.
-            while (Index < End) {
-              if (Index + 4 <= End) {
-                Stride = 4;
-                uint32_t Data = 0;
-                if (Obj->isLittleEndian()) {
-                  const auto *const Word =
-                      reinterpret_cast<const support::ulittle32_t *>(
-                          Bytes.data() + Index);
-                  Data = *Word;
-                } else {
-                  const auto *const Word =
-                      reinterpret_cast<const support::ubig32_t *>(Bytes.data() +
-                                                                  Index);
-                  Data = *Word;
-                }
-                InstRaiser->addMCInstOrData(Index, Data);
-              } else if (Index + 2 <= End) {
-                Stride = 2;
-                uint16_t Data = 0;
-                if (Obj->isLittleEndian()) {
-                  const auto *const Short =
-                      reinterpret_cast<const support::ulittle16_t *>(
-                          Bytes.data() + Index);
-                  Data = *Short;
-                } else {
-                  const auto *const Short =
-                      reinterpret_cast<const support::ubig16_t *>(Bytes.data() +
-                                                                  Index);
-                  Data = *Short;
-                }
-                InstRaiser->addMCInstOrData(Index, Data);
-              } else {
-                Stride = 1;
-                InstRaiser->addMCInstOrData(Index, Bytes.slice(Index, 1)[0]);
-              }
-              Index += Stride;
-
-              auto TAI = std::lower_bound(TextMappingSymsAddr.begin(),
-                                          TextMappingSymsAddr.end(), Index);
-              if (TAI != TextMappingSymsAddr.end() && *TAI == Index)
-                break;
-            }
-          }
-        }
-
-        // If there is a data symbol inside an ELF text section and we are
-        // only disassembling text, we are in a situation where we must print
-        // the data and not disassemble it.
-        // TODO : Get rid of the following code in the if-block.
-        if (Obj->isELF() && Symbols[SI].Type == ELF::STT_OBJECT &&
-            Section.isText()) {
-          // parse data up to 8 bytes at a time
-          uint8_t AsciiData[9] = {'\0'};
-          uint8_t Byte;
-          int NumBytes = 0;
-
-          for (Index = Start; Index < End; Index += 1) {
-            if (((SectionAddr + Index) < StartAddress) ||
-                ((SectionAddr + Index) > StopAddress))
-              continue;
-            if (NumBytes == 0) {
-              outs() << format("%8" PRIx64 ":", SectionAddr + Index);
-              outs() << "\t";
-            }
-            Byte = Bytes.slice(Index)[0];
-            outs() << format(" %02x", Byte);
-            AsciiData[NumBytes] = isprint(Byte) ? Byte : '.';
-
-            uint8_t IndentOffset = 0;
-            NumBytes++;
-            if (Index == End - 1 || NumBytes > 8) {
-              // Indent the space for less than 8 bytes data.
-              // 2 spaces for byte and one for space between bytes
-              IndentOffset = 3 * (8 - NumBytes);
-              for (int Excess = 8 - NumBytes; Excess < 8; Excess++)
-                AsciiData[Excess] = '\0';
-              NumBytes = 8;
-            }
-            if (NumBytes == 8) {
-              AsciiData[8] = '\0';
-              outs() << std::string(IndentOffset, ' ') << "         ";
-              outs() << reinterpret_cast<char *>(AsciiData);
-              outs() << '\n';
-              NumBytes = 0;
-            }
-          }
-        }
-
-        if (Index >= End)
-          break;
-
-        // Disassemble a real instruction or a data
-        bool Disassembled = DisAsm->getInstruction(
-            Inst, Size, Bytes.slice(Index), SectionAddr + Index, CommentStream);
-        if (Size == 0)
-          Size = 1;
-
-        if (!Disassembled) {
-          errs() << "**** Warning: Failed to decode instruction\n";
-          PIP.printInst(*IP, Disassembled ? &Inst : nullptr,
-                        Bytes.slice(Index, Size), SectionAddr + Index, outs(),
-                        "", *STI);
-          outs() << CommentStream.str();
-          Comments.clear();
-          errs() << "\n";
-        }
-
-        // Add MCInst to the list if all instructions were decoded
-        // successfully till now. Else, do not bother adding since no attempt
-        // will be made to raise this function.
-        if (Disassembled) {
-          InstRaiser->addMCInstOrData(Index, Inst);
-
-          // Find branch target and record it. Call targets are not
-          // recorded as they are not needed to build per-function CFG.
-          if (MIA && MIA->isBranch(Inst)) {
-            uint64_t BranchTarget;
-            if (MIA->evaluateBranch(Inst, Index, Size, BranchTarget)) {
-              // In a relocatable object, the target's section must reside in
-              // the same section as the call instruction, or it is accessed
-              // through a relocation.
-              //
-              // In a non-relocatable object, the target may be in any
-              // section.
-              //
-              // N.B. We don't walk the relocations in the relocatable case
-              // yet.
-              if (!Obj->isRelocatableObject()) {
-                auto SectionAddress = std::upper_bound(
-                    SectionAddresses.begin(), SectionAddresses.end(),
-                    BranchTarget,
-                    [](uint64_t LHS,
-                       const std::pair<uint64_t, SectionRef> &RHS) {
-                      return LHS < RHS.first;
-                    });
-                if (SectionAddress != SectionAddresses.begin()) {
-                  --SectionAddress;
-                }
-              }
-              // Add the index Target to target indices set.
-              BranchTargetSet.insert(BranchTarget);
-            }
-
-            // Mark the next instruction as a target, if it is not beyond the
-            // function end
-            uint64_t FallThruIndex = Index + Size;
-            if (FallThruIndex < End) {
-              BranchTargetSet.insert(FallThruIndex);
-            }
-          }
-        }
-      }
-      FuncFilter->eraseFunctionBySymbol(Symbols[SI].Name,
-                                        FunctionFilter::FILTER_INCLUDE);
-    }
-    LLVM_DEBUG(dbgs() << "END Disassembly of Functions in Section : "
-                      << SectionName.data() << "\n");
-
-    // Record all targets of the last function parsed
-    CurMFRaiser = MR->getCurrentMachineFunctionRaiser();
-    for (auto TargetIdx : BranchTargetSet)
-      CurMFRaiser->getMCInstRaiser()->addTarget(TargetIdx);
-
-    MR->runMachineFunctionPasses();
-
-    if (!FuncFilter->isFilterSetEmpty(FunctionFilter::FILTER_INCLUDE)) {
-      errs() << "***** WARNING: The following include filter symbol(s) are not "
-                "found :\n";
-      FuncFilter->dump(FunctionFilter::FILTER_INCLUDE);
-    }
-  }
+  // Load data
+  MR->load(StartAddress, StopAddress, FilteredSections);
 
   // Add the pass manager
-  Triple TheTriple = Triple(TripleName);
+  legacy::PassManager PM;
 
   // Decide where to send the output.
   std::unique_ptr<ToolOutputFile> Out = getOutputStream(Obj->getFileName());
@@ -1272,9 +676,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
   auto *OS = &Out->os();
 
-  legacy::PassManager PM;
-
-  LLVMTargetMachine &LLVMTM = static_cast<LLVMTargetMachine &>(*Target);
+   LLVMTargetMachine &LLVMTM = static_cast<LLVMTargetMachine &>(*Target);
 
   CodeGenFileType OutputFileType;
 

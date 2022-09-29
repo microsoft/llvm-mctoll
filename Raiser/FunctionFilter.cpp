@@ -364,7 +364,7 @@ void FunctionFilter::dump(FilterType FT) {
 }
 
 /// Check if function is needs raising
-bool FunctionFilter::checkFunction(StringRef &PrototypeStr, uint64_t Start) {
+bool FunctionFilter::checkFunctionFilter(StringRef &PrototypeStr, uint64_t Start) {
   bool RaiseFunc = true;
   // Check the symbol name whether it should be excluded or not.
   // Check in a non-empty exclude list
@@ -389,4 +389,51 @@ bool FunctionFilter::checkFunction(StringRef &PrototypeStr, uint64_t Start) {
       RaiseFunc = true;
   }
   return RaiseFunc;
+}
+
+/*
+   A list of symbol entries corresponding to CRT functions added by
+   the linker while creating an ELF executable. It is not necessary to
+   disassemble and translate these functions.
+*/
+
+static std::set<StringRef> ELFCRTSymbols = {
+    "call_weak_fn",
+    "deregister_tm_clones",
+    "__do_global_dtors_aux",
+    "__do_global_dtors_aux_fini_array_entry",
+    "_fini",
+    "frame_dummy",
+    "__frame_dummy_init_array_entry",
+    "_init",
+    "__init_array_end",
+    "__init_array_start",
+    "__libc_csu_fini",
+    "__libc_csu_init",
+    "register_tm_clones",
+    "_start",
+    "_dl_relocate_static_pie"};
+
+/*
+   A list of symbol entries corresponding to CRT functions added by
+   the linker while creating an MachO executable. It is not necessary
+   to disassemble and translate these functions.
+*/
+
+static std::set<StringRef> MachOCRTSymbols = {"__mh_execute_header",
+                                              "dyld_stub_binder", "__text",
+                                              "__stubs", "__stub_helper"};
+
+/// Check if function is CRT function.
+bool FunctionFilter::isCRTFunction(const ObjectFile *Obj, StringRef &Sym) {
+  if (Obj->isELF()) {
+    return (ELFCRTSymbols.find(Sym) != ELFCRTSymbols.end());
+  }
+  if (Obj->isMachO()) {
+    // If Symbol is not in the MachOCRTSymbol list return true indicating that
+    // this is a symbol of a function we are interested in disassembling and
+    // raising.
+    return (MachOCRTSymbols.find(Sym) != MachOCRTSymbols.end());
+  }
+  return false;
 }

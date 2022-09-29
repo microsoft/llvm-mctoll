@@ -18,9 +18,13 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
 
 namespace llvm {
 namespace mctoll {
+
+using namespace object;
 
 /// Class encapsulating lists of function specifications to be included and
 /// excluded along with methods to maintain and query the lists.
@@ -83,8 +87,10 @@ public:
   bool readFilterFunctionConfigFile(std::string &FunctionFilterFilename);
   /// Test if the list of specified list is empty.
   bool isFilterSetEmpty(FilterType);
-  /// Check if function is needs raising
-  bool checkFunction(StringRef &PrototypeStr, uint64_t Start);
+  /// Check if function is needs raising.
+  bool checkFunctionFilter(StringRef &PrototypeStr, uint64_t Start);
+  /// Check if function is CRT function.
+  bool isCRTFunction(const ObjectFile *Obj, StringRef &Sym);
   /// Dump the list of specified list; dump both include and exclude lists if no
   /// argument is specified.
   void dump(FilterType FT = FILTER_NONE);

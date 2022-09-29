@@ -94,7 +94,6 @@ public:
 
   /// Insert the map of raised function R to place-holder function PH pointer
   /// that inturn has the to corresponding MachineFunction.
-
   bool insertPlaceholderRaisedFunctionMap(Function *R, Function *PH) {
     auto V = PlaceholderRaisedFunctionMap.insert(std::make_pair(R, PH));
     return V.second;
@@ -103,6 +102,8 @@ public:
   bool collectTextSectionRelocs(const SectionRef &);
   virtual bool collectDynamicRelocations() = 0;
 
+  /// Get the MachineFunction associated with the placeholder
+  /// function corresponding to raised function.
   MachineFunction *getMachineFunction(Function *);
 
   // Member getters
@@ -147,6 +148,9 @@ public:
   FunctionFilter *getFunctionFilter() const { return FFT; }
   /// Get the current architecture type.
   Triple::ArchType getArch() const { return Arch; }
+  /// Load data from object file.
+  void load(uint64_t StartAddress, uint64_t StopAddress,
+                   SmallVector<SectionRef, 1> &FilteredSections);
 
 protected:
   /// A sequential list of MachineFunctionRaiser objects created

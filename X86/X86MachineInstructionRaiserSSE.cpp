@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains implementaion of functions to raise SSE2 instructions
+// This file contains implementation of functions to raise SSE2 instructions
 // declared in X86MachineInstructionRaiser class for use by llvm-mctoll.
 //
 //===----------------------------------------------------------------------===//

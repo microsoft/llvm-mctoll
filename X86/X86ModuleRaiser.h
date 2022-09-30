@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULERAISER_H
-#define LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULERAISER_H
+#ifndef LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULE_RAISER_H
+#define LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULE_RAISER_H
 
 #include "Raiser/ModuleRaiser.h"
 
@@ -38,4 +38,4 @@ public:
 
 extern "C" void registerX86ModuleRaiser();
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULERAISER_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86MODULE_RAISER_H

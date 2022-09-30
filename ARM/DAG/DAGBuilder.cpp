@@ -42,6 +42,7 @@ void DAGBuilder::visit(const MachineInstr &MI) {
       VCtv.push_back(Sdv);
       VCtt.push_back(Evt);
     } else if (MO.isFI()) {
+      // Frame index
       int FI = MO.getIndex();
       if (FuncInfo.isStackIndex(FI)) {
         const MachineFrameInfo &MFI = MI.getMF()->getFrameInfo();
@@ -68,6 +69,7 @@ void DAGBuilder::visit(const MachineInstr &MI) {
         // Do nothing for now.
       }
     } else if (MO.isJTI()) {
+      // Jump table index
       EVT Evt = EVT::getEVT(FuncInfo.getDefaultType());
       SDValue Sdv = DAG.getConstant(MO.getIndex(), SDLoc(nullptr, 0), Evt);
       VCtv.push_back(Sdv);

@@ -43,6 +43,7 @@ private:
   void selectBasicBlock();
   void doInstructionSelection();
   void emitDAG();
+  void dumpDAG();
 
   std::unique_ptr<OptimizationRemarkEmitter> ORE;
 

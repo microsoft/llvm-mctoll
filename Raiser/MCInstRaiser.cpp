@@ -257,12 +257,14 @@ MachineInstr *MCInstRaiser::RaiseMCInst(const MCInstrInfo &InstrInfo,
   return Builder.getInstr();
 }
 
-void MCInstRaiser::dump() const {
+void MCInstRaiser::dump(const MCInstPrinter *Printer,
+                        StringRef Separator,
+                        const MCRegisterInfo *RegInfo) const {
   for (auto In : InstMap) {
     uint64_t InstIndex = In.first;
     MCInstOrData InstorData = In.second;
     LLVM_DEBUG(dbgs() << "0x" << format("%016" PRIx64, InstIndex) << ": ");
-    LLVM_DEBUG(InstorData.dump());
+    LLVM_DEBUG(InstorData.dump(Printer, Separator, RegInfo));
   }
 }
 

@@ -297,7 +297,7 @@ FunctionType *X86MachineInstructionRaiser::getRaisedFunctionPrototype() {
         // Add def reg to MBBDefRegs set
         Register DestReg = DestOp.getReg();
         // We need the last definition. Even if there is a previous definition,
-        // it is correct to just over write the size information.
+        // it is correct to just overwrite the size information.
         MBBDefRegs[find64BitSuperReg(DestReg)] =
             getPhysRegSizeInBits(DestReg) / 8;
       } else if (MI.isCall() || MI.isUnconditionalBranch()) {

@@ -37,7 +37,9 @@ public:
   bool isData() const { return (Type == Tag::DATA); }
   bool isMCInst() const { return (Type == Tag::INSTRUCTION); }
 
-  void dump() const;
+  void dump(const MCInstPrinter *Printer = nullptr,
+            StringRef Separator = " ",
+            const MCRegisterInfo *RegInfo = nullptr) const;
 };
 
 } // end namespace mctoll

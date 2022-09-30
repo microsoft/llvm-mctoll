@@ -779,7 +779,8 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   assert((MR != nullptr) && "Failed to build module raiser");
   // Set data of module raiser
   MR->setModuleRaiserInfo(&M, Target.get(), &MachineModuleInfo->getMMI(),
-                          MIA.get(), MII.get(), Obj, DisAsm.get());
+                          MIA.get(), MII.get(), MRI.get(), IP.get(),
+                          Obj, DisAsm.get());
 
   // Collect dynamic relocations.
   MR->collectDynamicRelocations();
@@ -1076,7 +1077,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
         CurMFRaiser = MR->getCurrentMachineFunctionRaiser();
         for (auto TargetIdx : BranchTargetSet) {
           assert(CurMFRaiser != nullptr &&
-                 "Encountered unintialized MachineFunction raiser object");
+                 "Encountered uninitialized MachineFunction raiser object");
           CurMFRaiser->getMCInstRaiser()->addTarget(TargetIdx);
         }
 
@@ -1611,7 +1612,7 @@ int main(int argc, char **argv) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }
-  // Restore stashed Outputfilename
+  // Restore stashed OutputFileName
   OutputFilename = OF;
   // Disassemble contents of .text section.
   Disassemble = true;

@@ -45,10 +45,10 @@ public:
   ~ARMFrameBuilder() override;
 
   bool build();
-  bool runOnMachineFunction(MachineFunction &mf) override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
-  unsigned getBitCount(unsigned opcode);
+  unsigned getBitCount(unsigned Opcode);
   Type *getStackType(unsigned Size);
   /// Replace common regs assigned by SP to SP.
   bool replaceNonSPBySP(MachineInstr &MI);

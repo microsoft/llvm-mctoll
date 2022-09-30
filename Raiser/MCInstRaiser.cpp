@@ -129,7 +129,7 @@ void MCInstRaiser::buildCFG(MachineFunction &MF, const MCInstrAnalysis *MIA,
       // an unconditional branch. In such situations, no fall-through target is
       // recorded in targetIndices since offset after the branch is not within
       // the function boundary. The above loop relies on a fall-through being
-      // registered to add control flow edges and we have no fall-through edge
+      // registered to add control flow edges, and we have no fall-through edge
       // to add them for the last MBB with a branch. If the function were padded
       // with noop, this would not trigger and the case would be naturally
       // handled in the above loop.

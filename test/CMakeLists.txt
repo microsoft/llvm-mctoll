@@ -26,5 +26,6 @@ add_lit_testsuite(check-mctoll "Running llvm-mctoll tests"
   PARAMS llvm_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
          llvm_unit_site_config=${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg
   DEPENDS ${LLVM_MCTEST_DEPENDS}
+  ARGS --show-unsupported
 )
 

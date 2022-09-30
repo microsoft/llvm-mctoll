@@ -53,7 +53,12 @@ git checkout <hash from llvm-project-git-commit-to-use.txt>
 4. Configure LLVM by enabling Clang and ld. See [LLVM CMake Variables](https://llvm.org/docs/CMake.html#frequently-used-cmake-variables) for more information on LLVM's cmake options.
 
 ```sh
-cmake -S llvm -B <build-dir> -G "Ninja" -DLLVM_TARGETS_TO_BUILD="X86;ARM" -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_ENABLE_ASSERTIONS=true -DCMAKE_BUILD_TYPE=<build-type>
+cmake -S llvm -B <build-dir> -G "Ninja" \
+  -DLLVM_TARGETS_TO_BUILD="X86;ARM"  \
+  -DLLVM_ENABLE_PROJECTS="clang;lld" \
+  -DLLVM_ENABLE_ASSERTIONS=true      \
+  -DCLANG_DEFAULT_PIE_ON_LINUX=OFF   \
+  -DCMAKE_BUILD_TYPE=<build-type>
 ```
 
 `clang-tidy` checks can be enabled for the `llvm-mctoll` project sources by using the additional cmake option `-DMCTOLL_CLANG_TIDY`.

@@ -40,20 +40,37 @@ bool PeepholeOptimizationPass::runOnFunction(Function &F) {
                       BinOp->getOpcode() == Instruction::Or)) {
             auto *Ptr = P2I->getOperand(0);
 
-            auto *PtrElemTy = Ptr->getType()->getNonOpaquePointerElementType();
-            if (isa<IntegerType>(PtrElemTy)) {
+            auto *Ctx = &F.getContext();
+            Type *PtrElemTy = nullptr;
+            auto *PTy = Ptr->getType(); //->getNonOpaquePointerElementType();
+            if (PTy == Type::getInt64PtrTy(*Ctx))
+              PtrElemTy = Type::getInt64Ty(*Ctx);
+            else if (PTy == Type::getInt32PtrTy(*Ctx))
+              PtrElemTy = Type::getInt32Ty(*Ctx);
+            else if (PTy == Type::getInt16PtrTy(*Ctx))
+              PtrElemTy = Type::getInt16Ty(*Ctx);
+            else if (PTy == Type::getInt8PtrTy(*Ctx))
+              PtrElemTy = Type::getInt8Ty(*Ctx);
+            else if (PTy == Type::getInt1PtrTy(*Ctx))
+              PtrElemTy = Type::getInt1Ty(*Ctx);
+
+            //auto *PtrElemTy = Ptr->getType()->getNonOpaquePointerElementType();
+            if (isa_and_nonnull<IntegerType>(PtrElemTy)) {
               Value *Idx = BinOp->getOperand(1);
               std::vector<Value *> GEPIdx;
               GEPIdx.push_back(Idx);
 
               IRBuilder<> Builder(&I);
 
+              auto *ElementTy = IntegerType::get(F.getContext(), 8);
               auto *BytePtrTy =
-                  PointerType::getUnqual(IntegerType::get(F.getContext(), 8));
+                  PointerType::getUnqual(ElementTy);
               auto *BytePtr = Builder.CreatePointerCast(Ptr, BytePtrTy);
-
+              // OpaquePointer hack
+              // assert(ElementTy == BytePtr->getType()->getScalarType()->getPointerElementType()
+              //       && "check types peephole");
               auto *GEP = Builder.CreateGEP(
-                  BytePtr->getType()->getScalarType()->getPointerElementType(),
+                  ElementTy,
                   BytePtr, GEPIdx);
 
               auto *FinalPtr = Builder.CreatePointerCast(GEP, I2P->getType());

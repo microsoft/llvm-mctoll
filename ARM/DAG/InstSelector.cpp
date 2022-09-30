@@ -475,7 +475,25 @@ void InstSelector::selectCode(SDNode *N) {
   case ARM::BLX_pred:
   case ARM::tBLXi:
   case ARM::tBLXr: {
-    outs() << "WARNING: Not yet implemented!\n";
+    // outs() << "WARNING: ARM::BLX Not yet implemented!\n";
+    SDValue Func = N->getOperand(0);
+    SDNode *Node = nullptr;
+    if (RegisterSDNode::classof(Func.getNode())) {
+      Func = FuncInfo->getValFromRegMap(Func);
+      Node =
+          CurDAG
+              ->getNode(ISD::BRIND, Dl, getDefaultEVT(), Func, getMDOperand(N))
+              .getNode();
+    } else {
+      Node = CurDAG
+                 ->getNode(EXT_ARMISD::BRD, Dl, getDefaultEVT(), Func,
+                           getMDOperand(N))
+                 .getNode();
+    }
+
+    FuncInfo->setValueByRegister(ARM::R0, SDValue(Node, 0));
+    FuncInfo->NodeRegMap[Node] = ARM::R0;
+    replaceNode(N, Node);
   } break;
   case ARM::BR_JTr: {
     SDNode *Node = nullptr;
@@ -1088,7 +1106,7 @@ void InstSelector::selectCode(SDNode *N) {
   case ARM::VMSR_FPSID:
   case ARM::VMSR_FPINST:
   case ARM::VMSR_FPINST2: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::MCR Not yet implemented!\n";
   } break;
   case ARM::MRS:
   case ARM::MRSsys:
@@ -1107,49 +1125,49 @@ void InstSelector::selectCode(SDNode *N) {
   /* ABS */
   case ARM::ABS:
   case ARM::t2ABS: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::ABS Not yet implemented!\n";
   } break;
   case ARM::tLDRpci:
   case ARM::LDRcp: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::LDR Not yet implemented!\n";
   } break;
   case ARM::t2SBFX:
   case ARM::SBFX:
   case ARM::t2UBFX:
   case ARM::UBFX: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::UBFX Not yet implemented!\n";
   } break;
   case ARM::t2UMAAL:
   case ARM::UMAAL: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::UMAAL Not yet implemented!\n";
   } break;
   case ARM::t2UMLAL:
   case ARM::UMLAL:
   case ARM::UMLALv5: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::UMLAL Not yet implemented!\n";
   } break;
   case ARM::t2SMLAL:
   case ARM::SMLAL:
   case ARM::SMLALv5: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::SMLAL Not yet implemented!\n";
   } break;
   case ARM::t2SMMLS:
   case ARM::SMMLS: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::SMMLS Not yet implemented!\n";
   } break;
   case ARM::VZIPd8:
   case ARM::VZIPd16:
   case ARM::VZIPq8:
   case ARM::VZIPq16:
   case ARM::VZIPq32: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::VZIP Not yet implemented!\n";
   } break;
   case ARM::VUZPd8:
   case ARM::VUZPd16:
   case ARM::VUZPq8:
   case ARM::VUZPq16:
   case ARM::VUZPq32: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::VUZP Not yet implemented!\n";
   } break;
   case ARM::VTRNd8:
   case ARM::VTRNd16:
@@ -1157,7 +1175,7 @@ void InstSelector::selectCode(SDNode *N) {
   case ARM::VTRNq8:
   case ARM::VTRNq16:
   case ARM::VTRNq32: {
-    outs() << "WARNING: Not yet implemented!\n";
+    outs() << "WARNING: ARM::VTRN Not yet implemented!\n";
   } break;
     // TODO: Need to add other pattern matching here.
   }

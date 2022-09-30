@@ -137,7 +137,10 @@ bool ARMSelectionDAGISel::doSelection() {
 
   FuncInfo->clear();
 
-  LLVM_DEBUG(dbgs() << "ARMSelectionDAGISel end.\n");
+  // For debugging.
+  LLVM_DEBUG(MF->dump());
+  LLVM_DEBUG(getRaisedFunction()->dump());
+    LLVM_DEBUG(dbgs() << "ARMSelectionDAGISel end.\n");
 
   return true;
 }

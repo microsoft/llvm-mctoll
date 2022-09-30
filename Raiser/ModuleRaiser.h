@@ -138,6 +138,7 @@ public:
   int64_t getTextSectionAddress() const;
 
   bool changeRaisedFunctionReturnType(Function *, Type *);
+
   virtual ~ModuleRaiser() {
     if (FFT != nullptr)
       delete FFT;

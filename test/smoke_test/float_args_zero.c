@@ -2,7 +2,7 @@
 // RUN: clang -O3 -o %t %s
 // RUN: llvm-mctoll -d -I /usr/include/stdio.h %t
 // RUN: cat %t-dis.ll 2>&1 | FileCheck %s
-// CHECK: %{{.*}} = call i32 (i8*, ...) @printf(i8* {{.*}}), double %{{.*}})
+// CHECK: %{{.*}} = call i32 (ptr, ...) @printf(ptr {{.*}}), double %{{.*}})
 
 #include <stdio.h>
 

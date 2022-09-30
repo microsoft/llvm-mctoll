@@ -11,10 +11,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "X86MachineInstructionRaiser.h"
 #include "IncludedFileInfo.h"
 #include "Raiser/MachineFunctionRaiser.h"
 #include "X86InstrBuilder.h"
+#include "X86MachineInstructionRaiser.h"
 #include "X86ModuleRaiser.h"
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
@@ -5582,9 +5582,8 @@ bool X86MachineInstructionRaiser::raiseMachineInstr(MachineInstr &MI) {
   return Success;
 }
 
-// Raise MachineInstr in MachineFunction to MachineInstruction
-
-bool X86MachineInstructionRaiser::raiseMachineFunction() {
+/// Raise MachineInstr in MachineFunction to MachineInstruction
+bool X86MachineInstructionRaiser::raise() {
   Function *CurFunction = getRaisedFunction();
   LLVMContext &Ctx(CurFunction->getContext());
 
@@ -5660,28 +5659,11 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
       }
     }
   }
-  return createFunctionStackFrame() && raiseBranchMachineInstrs() &&
-         handleUnpromotedReachingDefs() && handleUnterminatedBlocks();
-}
-
-bool X86MachineInstructionRaiser::raise() {
-  bool Success = raiseMachineFunction();
-  if (Success) {
-    // Delete empty basic blocks with no predecessors
-    SmallVector<BasicBlock *, 4> UnConnectedBEmptyBs;
-    for (BasicBlock &BB : *RaisedFunction) {
-      if (BB.hasNPredecessors(0) && BB.size() == 0)
-        UnConnectedBEmptyBs.push_back(&BB);
-    }
-
-    DeleteDeadBlocks(ArrayRef<BasicBlock *>(UnConnectedBEmptyBs));
-
-    // Unify all exit nodes of the raised function
-    legacy::PassManager PM;
-    PM.add(createUnifyFunctionExitNodesPass());
-    PM.run(*(RaisedFunction->getParent()));
-  }
-  return Success;
+  return createFunctionStackFrame() &&
+         raiseBranchMachineInstrs() &&
+         handleUnpromotedReachingDefs() &&
+         handleUnterminatedBlocks() &&
+         deleteEmptyBlocks();
 }
 
 // NOTE : The following X86ModuleRaiser class function is defined here as

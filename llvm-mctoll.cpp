@@ -578,6 +578,7 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
   // Add the pass manager
   legacy::PassManager PM;
+  MR->addPasses(PM);
 
   // Decide where to send the output.
   std::unique_ptr<ToolOutputFile> Out = getOutputStream(Obj->getFileName());

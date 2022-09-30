@@ -155,6 +155,9 @@ public:
   /// Load data from object file.
   void load(uint64_t StartAddress, uint64_t StopAddress,
                    SmallVector<SectionRef, 1> &FilteredSections);
+  /// Add raise passes to the specified pass manager.
+  virtual bool
+  addPasses(PassManagerBase &PM) { return true; }
 
 protected:
   /// A sequential list of MachineFunctionRaiser objects created

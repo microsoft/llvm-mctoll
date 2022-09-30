@@ -262,7 +262,7 @@ void FunctionFilter::eraseFunctionBySymbol(StringRef &Sym,
 
 /// Read the function symbol set from the configuration file of filter
 /// functions.
-bool FunctionFilter::readFilterFunctionConfigFile(
+bool FunctionFilter::readFunctionFilterConfigFile(
     std::string &FunctionFilterFilename) {
 
   if (FunctionFilterFilename.size() == 0)

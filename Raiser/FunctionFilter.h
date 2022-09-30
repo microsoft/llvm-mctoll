@@ -84,7 +84,7 @@ public:
   /// Get the data type corresponding to type string.
   Type *getPrimitiveDataType(const StringRef &TypeStr);
   /// Read user-specified include and exclude functions from file
-  bool readFilterFunctionConfigFile(std::string &FunctionFilterFilename);
+  bool readFunctionFilterConfigFile(std::string &FunctionFilterFilename);
   /// Test if the list of specified list is empty.
   bool isFilterSetEmpty(FilterType);
   /// Check if function is needs raising.

@@ -191,75 +191,6 @@ struct RunPassOption {
 };
 } // namespace
 
-namespace {
-typedef std::function<bool(llvm::object::SectionRef const &)> FilterPredicate;
-
-class SectionFilterIterator {
-public:
-  SectionFilterIterator(FilterPredicate P,
-                        llvm::object::section_iterator const &I,
-                        llvm::object::section_iterator const &E)
-      : Predicate(std::move(P)), Iterator(I), End(E) {
-    scanPredicate();
-  }
-  const llvm::object::SectionRef &operator*() const { return *Iterator; }
-  SectionFilterIterator &operator++() {
-    ++Iterator;
-    scanPredicate();
-    return *this;
-  }
-  bool operator!=(SectionFilterIterator const &Other) const {
-    return Iterator != Other.Iterator;
-  }
-
-private:
-  void scanPredicate() {
-    while (Iterator != End && !Predicate(*Iterator)) {
-      ++Iterator;
-    }
-  }
-  FilterPredicate Predicate;
-  llvm::object::section_iterator Iterator;
-  llvm::object::section_iterator End;
-};
-
-class SectionFilter {
-public:
-  SectionFilter(FilterPredicate P, llvm::object::ObjectFile const &O)
-      : Predicate(std::move(P)), Object(O) {}
-  SectionFilterIterator begin() {
-    return SectionFilterIterator(Predicate, Object.section_begin(),
-                                 Object.section_end());
-  }
-  SectionFilterIterator end() {
-    return SectionFilterIterator(Predicate, Object.section_end(),
-                                 Object.section_end());
-  }
-
-private:
-  FilterPredicate Predicate;
-  llvm::object::ObjectFile const &Object;
-};
-
-SectionFilter toolSectionFilter(llvm::object::ObjectFile const &O) {
-  return SectionFilter(
-      [](llvm::object::SectionRef const &S) {
-        if (FilterSections.empty())
-          return true;
-        llvm::StringRef String;
-        if (auto NameOrErr = S.getName())
-          String = *NameOrErr;
-        else {
-          consumeError(NameOrErr.takeError());
-          return false;
-        }
-
-        return is_contained(FilterSections, String);
-      },
-      O);
-}
-} // namespace
-
 static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   // Figure out the target triple.
   llvm::Triple TheTriple("unknown-unknown-unknown");
@@ -391,34 +322,6 @@ static bool addPass(PassManagerBase &PM, StringRef Argv0, StringRef PassName,
 
   return false;
 }
-
-bool mctoll::RelocAddressLess(RelocationRef A, RelocationRef B) {
-  return A.getOffset() < B.getOffset();
-}
-
-namespace {
-class PrettyPrinter {
-public:
-  virtual ~PrettyPrinter() {}
-  virtual void printInst(MCInstPrinter &IP, const MCInst *MI,
-                         ArrayRef<uint8_t> Bytes, uint64_t Address,
-                         raw_ostream &OS, StringRef Annot,
-                         MCSubtargetInfo const &STI) {
-    OS << format("%8" PRIx64 ":", Address);
-    OS << "\t";
-    dumpBytes(Bytes, OS);
-    if (MI)
-      IP.printInst(MI, 0, "", STI, OS);
-    else
-      OS << " <unknown>";
-  }
-};
-PrettyPrinter PrettyPrinterInst;
-
-PrettyPrinter &selectPrettyPrinter(Triple const &Triple) {
-  return PrettyPrinterInst;
-}
-} // namespace
 
 bool mctoll::isRelocAddressLess(RelocationRef A, RelocationRef B) {
   return A.getOffset() < B.getOffset();
@@ -646,9 +549,8 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
                           MIA.get(), MII.get(), MRI.get(), IP.get(),
                           Obj, DisAsm.get());
 
-  FunctionFilter *FuncFilter = MR->getFunctionFilter();
   if (!FilterConfigFileName.empty()) {
-    if (!FuncFilter->readFilterFunctionConfigFile(FilterConfigFileName)) {
+    if (!MR->readFunctionFilterConfigFile(FilterConfigFileName)) {
       dbgs() << "Unable to read function filter configuration file "
              << FilterConfigFileName << ". Ignoring\n";
     }
@@ -656,9 +558,20 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
   // Filtered sections list
   SmallVector<SectionRef, 1> FilteredSections;
-  for (const SectionRef &Section : toolSectionFilter(*Obj)) {
-    FilteredSections.push_back(Section);
-  }
+  copy_if(Obj->sections(), std::back_inserter(FilteredSections),
+      [](llvm::object::SectionRef const &S) {
+        if (FilterSections.empty())
+          return true;
+        llvm::StringRef String;
+        if (auto NameOrErr = S.getName())
+          String = *NameOrErr;
+        else {
+          consumeError(NameOrErr.takeError());
+          return false;
+        }
+
+        return is_contained(FilterSections, String);
+      });
 
   // Load data
   MR->load(StartAddress, StopAddress, FilteredSections);

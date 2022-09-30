@@ -146,6 +146,10 @@ public:
   }
   /// Get the function filter for current Module.
   FunctionFilter *getFunctionFilter() const { return FFT; }
+  /// Read user-specified include and exclude functions from file.
+  bool readFunctionFilterConfigFile(std::string &FunctionFilterFilename) {
+    return FFT->readFunctionFilterConfigFile(FunctionFilterFilename);
+  }
   /// Get the current architecture type.
   Triple::ArchType getArch() const { return Arch; }
   /// Load data from object file.

@@ -67,18 +67,22 @@ bool X86MachineInstructionRaiser::raiseMachineJumpTable() {
         size_t JmpTblEntryOffset = 0;
         // Find the section.
         for (section_iterator SecIter : Elf64LEObjFile->sections()) {
-          uint64_t SecStart = SecIter->getAddress();
-          uint64_t SecEnd = SecStart + SecIter->getSize();
-          if ((SecStart <= JmpTblBaseMemAddress) &&
-              (SecEnd >= JmpTblBaseMemAddress)) {
-            StringRef Contents = unwrapOrError(
-                SecIter->getContents(), MR->getObjectFile()->getFileName());
-            DataContent =
-                static_cast<const unsigned char *>(Contents.bytes_begin());
-            DataSize = SecIter->getSize();
-            JmpTblEntryOffset = JmpTblBaseMemAddress - SecStart;
+          // BSS section content is not mapped. Skip it since reading its
+          // content for jump table is not valid.
+          if (!SecIter->isBSS()) {
+            uint64_t SecStart = SecIter->getAddress();
+            uint64_t SecEnd = SecStart + SecIter->getSize();
+            if ((SecStart <= JmpTblBaseMemAddress) &&
+                (SecEnd >= JmpTblBaseMemAddress)) {
+              StringRef Contents = unwrapOrError(
+                  SecIter->getContents(), MR->getObjectFile()->getFileName());
+              DataContent =
+                  static_cast<const unsigned char *>(Contents.bytes_begin());
+              DataSize = SecIter->getSize();
+              JmpTblEntryOffset = JmpTblBaseMemAddress - SecStart;
 
-            break;
+              break;
+            }
           }
         }
 

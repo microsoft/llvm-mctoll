@@ -1854,6 +1854,8 @@ static constexpr const_addl_instr_info::value_type MapData[] = {
     {X86::PCMPEQQrr, {0, SSE_COMPARE_RR}},
     {X86::PCMPEQWrm, {16, SSE_COMPARE_RM}},
     {X86::PCMPEQWrr, {0, SSE_COMPARE_RR}},
+    {X86::PCMPGTDrr, {0, SSE_COMPARE_RR}},
+    {X86::PCMPGTDrm, {0, SSE_COMPARE_RM}},
     {X86::PDEP32rm, {4, Unknown}},
     {X86::PDEP32rr, {0, Unknown}},
     {X86::PDEP64rm, {8, Unknown}},

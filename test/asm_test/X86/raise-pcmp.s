@@ -7,10 +7,12 @@
 // CHECK-NEXT: 0x0000ffffffffffffffffffffffffffff
 // CHECK-NEXT: 0x00000000ffffffffffffffffffffffff
 // CHECK-NEXT: 0x0000000000000000ffffffffffffffff
+// CHECK-NEXT: 0xffffffff000000000000000000000000
 // CHECK-NEXT: 0x00ffffffffffffffffffffffffffffff
 // CHECK-NEXT: 0x0000ffffffffffffffffffffffffffff
 // CHECK-NEXT: 0x00000000ffffffffffffffffffffffff
 // CHECK-NEXT: 0x0000000000000000ffffffffffffffff
+// CHECK-NEXT: 0xffffffff000000000000000000000000
 // CHECK-EMPTY
 
 .text
@@ -64,6 +66,16 @@ main:                                   # @main
     mov al, 0
     call printf
 
+    movdqa xmm0, [.L.val]
+    movdqa xmm1, [.L.val.1]
+    pcmpgtd xmm0, xmm1
+    movdqu [rsp], xmm0
+    mov rsi, QWORD PTR [rsp + 8]
+    mov rdx, QWORD PTR [rsp]
+    mov rdi, offset .L.str
+    mov al, 0
+    call printf
+
     # rm
     movdqa xmm0, [.L.val]
     pcmpeqb xmm0, [.L.val.1]
@@ -94,6 +106,15 @@ main:                                   # @main
 
     movdqa xmm0, [.L.val]
     pcmpeqq xmm0, [.L.val.1]
+    movdqu [rsp], xmm0
+    mov rsi, QWORD PTR [rsp + 8]
+    mov rdx, QWORD PTR [rsp]
+    mov rdi, offset .L.str
+    mov al, 0
+    call printf
+
+    movdqa xmm0, [.L.val]
+    pcmpgtd xmm0, [.L.val.1]
     movdqu [rsp], xmm0
     mov rsi, QWORD PTR [rsp + 8]
     mov rdx, QWORD PTR [rsp]

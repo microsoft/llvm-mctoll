@@ -276,7 +276,9 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
   case X86::PCMPEQDrm:
   case X86::PCMPEQDrr:
   case X86::PCMPEQQrm:
-  case X86::PCMPEQQrr: {
+  case X86::PCMPEQQrr:
+  case X86::PCMPGTDrr:
+  case X86::PCMPGTDrm: {
     // Compare a comparison of packed bytes/words/dwords/qwords
     // If a pair is equal, set the bits corresponding to 1, otherwise to 0
     LLVMContext &Ctx(MF.getFunction().getContext());
@@ -290,22 +292,32 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
            "Expected operand types to be vector types of size 128");
 
     unsigned int ElementSizeInBits;
+    CmpInst::Predicate CmpPred = CmpInst::BAD_ICMP_PREDICATE;
     switch (MI.getOpcode()) {
     case X86::PCMPEQBrm:
     case X86::PCMPEQBrr:
       ElementSizeInBits = 8;
+      CmpPred = CmpInst::ICMP_EQ;
       break;
     case X86::PCMPEQWrm:
     case X86::PCMPEQWrr:
       ElementSizeInBits = 16;
+      CmpPred = CmpInst::ICMP_EQ;
       break;
     case X86::PCMPEQDrm:
     case X86::PCMPEQDrr:
       ElementSizeInBits = 32;
+      CmpPred = CmpInst::ICMP_EQ;
       break;
     case X86::PCMPEQQrm:
     case X86::PCMPEQQrr:
       ElementSizeInBits = 64;
+      CmpPred = CmpInst::ICMP_EQ;
+      break;
+    case X86::PCMPGTDrr:
+    case X86::PCMPGTDrm:
+      ElementSizeInBits = 32;
+      CmpPred = CmpInst::ICMP_SGT;
       break;
     default:
       llvm_unreachable("Unhandled pcmp instruction");
@@ -329,8 +341,8 @@ bool X86MachineInstructionRaiser::raiseSSECompareMachineInstr(
           ExtractElementInst::Create(CmpOpVal1, Index, "", RaisedBB);
       auto *CmpSegment2 =
           ExtractElementInst::Create(CmpOpVal2, Index, "", RaisedBB);
-      auto *CmpInst = new ICmpInst(*RaisedBB, CmpInst::ICMP_EQ, CmpSegment1,
-                                   CmpSegment2, "cmp_segment");
+      auto *CmpInst = new ICmpInst(*RaisedBB, CmpPred, CmpSegment1, CmpSegment2,
+                                   "cmp_segment");
       auto *SelectInstr =
           SelectInst::Create(CmpInst, BitmaskVal, ZeroVal, "segment", RaisedBB);
       Result =

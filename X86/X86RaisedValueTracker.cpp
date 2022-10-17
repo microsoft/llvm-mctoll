@@ -11,9 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "X86RaisedValueTracker.h"
 #include "InstMetadata.h"
 #include "RuntimeFunction.h"
-#include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
 #include "llvm/Support/Debug.h"
 #include <X86InstrBuilder.h>
@@ -72,7 +72,8 @@ X86RaisedValueTracker::X86RaisedValueTracker(
       // Look at all defs - explicit and implicit.
       unsigned NumDefs = MI.getNumDefs();
 
-      for (unsigned Idx = 0, E = MI.getNumOperands(); NumDefs && Idx != E; ++Idx) {
+      for (unsigned Idx = 0, E = MI.getNumOperands(); NumDefs && Idx != E;
+           ++Idx) {
         MachineOperand &MO = MI.getOperand(Idx);
         if (!MO.isReg() || !MO.isDef())
           continue;
@@ -458,7 +459,7 @@ Value *X86RaisedValueTracker::getReachingDef(unsigned int PhysReg, int MBBNo,
     }
     // 3. load from the stack slot for use in current block
     Instruction *LdReachingVal = new LoadInst(
-        Alloca->getAllocatedType(), Alloca, "", false, Align());
+        X86MIRaiser->getPointerElementType(Alloca), Alloca, "", false, Align());
     LdReachingVal =
         setInstMetadataRODataContent(dyn_cast<LoadInst>(LdReachingVal));
     // Insert load instruction
@@ -585,11 +586,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // values
       Function *ValueOF =
           Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
-      CallInst *GetOF = CallInst::Create(
-          ValueOF->getFunctionType(),
-          //cast<FunctionType>(
-          //    ValueOF->getType()->getNonOpaquePointerElementType()),
-          ValueOF, ArrayRef<Value *>(TestArg));
+      CallInst *GetOF = CallInst::Create(ValueOF->getFunctionType(), ValueOF,
+                                         ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set it
       PhysRegDefsInMBB[FlagBit][MBBNo].second =
@@ -605,11 +603,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // values
       Function *ValueOF =
           Intrinsic::getDeclaration(M, IntrinsicOF, TestArg[0]->getType());
-      CallInst *GetOF = CallInst::Create(
-          ValueOF->getFunctionType(),
-          //cast<FunctionType>(
-          //    ValueOF->getType()->getNonOpaquePointerElementType()),
-          ValueOF, ArrayRef<Value *>(TestArg));
+      CallInst *GetOF = CallInst::Create(ValueOF->getFunctionType(), ValueOF,
+                                         ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set it
       PhysRegDefsInMBB[FlagBit][MBBNo].second =
@@ -807,11 +802,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // values
       Function *ValueCF = Intrinsic::getDeclaration(
           M, Intrinsic::usub_with_overflow, TestArg[0]->getType());
-      CallInst *GetCF = CallInst::Create(
-          ValueCF->getFunctionType(),
-          //cast<FunctionType>(
-          //    ValueCF->getType()->getNonOpaquePointerElementType()),
-          ValueCF, ArrayRef<Value *>(TestArg));
+      CallInst *GetCF = CallInst::Create(ValueCF->getFunctionType(), ValueCF,
+                                         ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetCF);
       // Extract flag-bit
       NewCF = ExtractValueInst::Create(GetCF, 1, "CF", RaisedBB);
@@ -828,11 +820,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // values
       Function *ValueCF = Intrinsic::getDeclaration(
           M, Intrinsic::uadd_with_overflow, TestArg[0]->getType());
-      CallInst *GetCF = CallInst::Create(
-          ValueCF->getFunctionType(),
-          //cast<FunctionType>(
-          //    ValueCF->getType()->getNonOpaquePointerElementType()),
-          ValueCF, ArrayRef<Value *>(TestArg));
+      CallInst *GetCF = CallInst::Create(ValueCF->getFunctionType(), ValueCF,
+                                         ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetCF);
       // Extract flag-bit
       NewCF = ExtractValueInst::Create(GetCF, 1, "CF", RaisedBB);
@@ -1025,11 +1014,8 @@ bool X86RaisedValueTracker::testAndSetEflagSSAValue(unsigned int FlagBit,
       // values.
       Function *ValueOF = Intrinsic::getDeclaration(
           M, Intrinsic::smul_with_overflow, TestArg[0]->getType());
-      CallInst *GetOF = CallInst::Create(
-          ValueOF->getFunctionType(),
-          //cast<FunctionType>(
-          //    ValueOF->getType()->getNonOpaquePointerElementType()),
-          ValueOF, ArrayRef<Value *>(TestArg));
+      CallInst *GetOF = CallInst::Create(ValueOF->getFunctionType(), ValueOF,
+                                         ArrayRef<Value *>(TestArg));
       RaisedBB->getInstList().push_back(GetOF);
       // Extract OF and set both OF and CF to the same value
       auto *NewOF = ExtractValueInst::Create(GetOF, 1, "OF", RaisedBB);
@@ -1348,9 +1334,9 @@ X86RaisedValueTracker::setInstMetadataRODataContent(LoadInst *LdInst) {
         ModSrcValue = castValue(ModSrcValue, LdPtrTy, RaisedBB);
         // NOTE: Do not insert the new instruction as the caller of this
         // function is expected to do so.
-        NewLdInst = new LoadInst(LdInst->getType(), ModSrcValue,
-                                 "rodata-reloc", LdInst->isVolatile(),
-                                 Align(LdInst->getAlign()));
+        NewLdInst =
+            new LoadInst(LdInst->getType(), ModSrcValue, "rodata-reloc",
+                         LdInst->isVolatile(), Align(LdInst->getAlign()));
         // Copy metadata of the new load instruction to indicate that the loaded
         // value is content of rodata by propagating the metadata from
         // SrcValueAsInst.

@@ -18,6 +18,8 @@
 #include "Raiser/MCInstRaiser.h"
 #include "Raiser/ModuleRaiser.h"
 #include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Operator.h"
 
 namespace llvm {
 namespace mctoll {
@@ -63,6 +65,37 @@ public:
 
   std::vector<ControlTransferInfo *> getControlTransferInfo() {
     return CTInfo;
+  };
+
+  // Helper function added since LLVM deprecated getPointerElementType() API
+  // Get type of a pointer or non-pointer typed Val
+  static Type *getPointerElementType(const Value *Val) {
+    assert(Val && "Attempt to obtain element type of a null type");
+    Type *ValTy = Val->getType();
+    assert(ValTy->isPointerTy() &&
+           "Attempt to obtain element type of a non-pointer type");
+
+    Type *RetTy = nullptr;
+    if (isa<AllocaInst>(Val)) {
+      RetTy = dyn_cast<AllocaInst>(Val)->getAllocatedType();
+    } else if (isa<GlobalVariable>(Val)) {
+      RetTy = dyn_cast<GlobalVariable>(Val)->getValueType();
+    } else if (isa<GetElementPtrInst>(Val)) {
+      RetTy = dyn_cast<GetElementPtrInst>(Val)->getSourceElementType();
+    } else if (isa<GEPOperator>(Val)) {
+      RetTy = dyn_cast<GEPOperator>(Val)->getResultElementType();
+    } else if (isa<LoadInst>(Val)) {
+      RetTy = dyn_cast<LoadInst>(Val)->getType();
+    } else if (isa<StoreInst>(Val)) {
+      RetTy = dyn_cast<StoreInst>(Val)->getValueOperand()->getType();
+    } else if (isa<CallInst>(Val)) {
+      RetTy = dyn_cast<CallInst>(Val)->getFunctionType();
+    } else if (isa<IntToPtrInst>(Val)) {
+      RetTy = dyn_cast<IntToPtrInst>(Val)->getSrcTy();
+    } else {
+      assert(false && "Unhandled pointer type");
+    }
+    return RetTy;
   };
 
 protected:

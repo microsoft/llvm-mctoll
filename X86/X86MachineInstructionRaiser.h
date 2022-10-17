@@ -149,7 +149,8 @@ private:
   bool raiseSSECompareMachineInstr(const MachineInstr &, Value *CmpOpVal1,
                                    Value *CmpOpVal2, bool IsFromMem);
   bool raiseSSEConvertPrecisionMachineInstr(const MachineInstr &);
-  bool raiseSSEConvertPrecisionFromMemMachineInstr(const MachineInstr &, Value *);
+  bool raiseSSEConvertPrecisionFromMemMachineInstr(const MachineInstr &,
+                                                   Value *);
   bool raiseSSEMoveRegToRegMachineInstr(const MachineInstr &);
 
   bool raiseBranchMachineInstrs();
@@ -221,8 +222,6 @@ private:
   bool isPushToStack(const MachineInstr &MI) const;
   bool isPopFromStack(const MachineInstr &MI) const;
   bool isEffectiveAddrValue(Value *Val);
-
-  Type *getIntTypeByPtr(Type *PTy);
 
   std::vector<JumpTableInfo> JTList;
 };

@@ -99,8 +99,7 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
   // If the value of push operand register is known, then it does not
   // have a manifestation in the function code. So, a known garbage value is
   // used to affect the push operation.
-  auto *AllocaStackRef = dyn_cast<AllocaInst>(StackRef);
-  Type *StackRefElemTy = AllocaStackRef->getAllocatedType();
+  Type *StackRefElemTy = getPointerElementType(StackRef);
   if (RegValue == nullptr) {
     RegValue =
         ConstantInt::get(StackRefElemTy, 0xdeadbeef, false /* isSigned */);
@@ -834,22 +833,18 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       if ((Src1Value != nullptr) && (Src2Value != nullptr)) {
         // If this is a pointer type, convert it to int type
         while (Src1Value->getType()->isPointerTy()) {
-          // OpaquePointer hack
-          assert(false && "find Src1Value isPointerTy");
-//          PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
-//              Src1Value, Src1Value->getType()->getPointerElementType());
-//          RaisedBB->getInstList().push_back(ConvPtrToInst);
-//          Src1Value = ConvPtrToInst;
+          PtrToIntInst *ConvPtrToInst =
+              new PtrToIntInst(Src1Value, getPointerElementType(Src1Value));
+          RaisedBB->getInstList().push_back(ConvPtrToInst);
+          Src1Value = ConvPtrToInst;
         }
 
         // If this is a pointer type, convert it to int type
         while (Src2Value->getType()->isPointerTy()) {
-          // OpaquePointer hack
-          assert(false && "find Src2Value isPointerTy");
-//          PtrToIntInst *ConvPtrToInst = new PtrToIntInst(
-//              Src2Value, Src2Value->getType()->getPointerElementType());
-//          RaisedBB->getInstList().push_back(ConvPtrToInst);
-//          Src2Value = ConvPtrToInst;
+          PtrToIntInst *ConvPtrToInst =
+              new PtrToIntInst(Src2Value, getPointerElementType(Src2Value));
+          RaisedBB->getInstList().push_back(ConvPtrToInst);
+          Src2Value = ConvPtrToInst;
         }
         assert(((Src1Value->getType()->isIntegerTy() &&
                  Src2Value->getType()->isIntegerTy()) ||
@@ -2335,7 +2330,6 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
          "Unexpected type of memory reference in FPU load op instruction");
 
   LLVMContext &Ctx(MF.getFunction().getContext());
-  Type *MemRefValPtrElementTy = nullptr; // = MemRefValueTy->getPointerElementType();
   if (IsPCRelMemRef) {
     // If it is a PC-relative mem ref, memRefValue is a
     // global value loaded from PC-relative memory location. If it is a
@@ -2345,19 +2339,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
       assert(MemRefValueTy->isPointerTy() &&
              "Unhandled non-pointer type found while attempting to push value "
              "to FPU register stack.");
-      // OpaquePointer get ElementTy without call getPointerElementType()
-      if (isa<AllocaInst>(MemRefValue)) {
-        MemRefValPtrElementTy =
-            dyn_cast<AllocaInst>(MemRefValue)->getAllocatedType();
-      } else if (isa<GlobalValue>(MemRefValue)) {
-        MemRefValPtrElementTy =
-            dyn_cast<GlobalValue>(MemRefValue)->getValueType();
-      } else if (isa<ConstantExpr>(MemRefValue)) {
-        // OpaquePointer hack
-        MemRefValPtrElementTy = getIntTypeByPtr(MemRefValue->getType());
-      } else {
-        assert(false && "Unknown MemRefValue type");
-      }
+      Type *MemRefValPtrElementTy = getPointerElementType(MemRefValue);
       switch (MemRefValPtrElementTy->getTypeID()) {
       case Type::ArrayTyID: {
         // Make sure the array element type is integer or floating point type.
@@ -2368,8 +2350,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
         // Get the element
         Value *IndexOne = ConstantInt::get(Ctx, APInt(32, 1));
         Instruction *GetElem = GetElementPtrInst::CreateInBounds(
-            MemRefValPtrElementTy, MemRefValue, {IndexOne, IndexOne}, "",
-            RaisedBB);
+            ArrElemTy, MemRefValue, {IndexOne, IndexOne}, "", RaisedBB);
         MemRefValue = GetElem;
       } break;
       // Primitive types that need not be reached into.
@@ -2391,32 +2372,14 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
     RaisedBB->getInstList().push_back(CInst);
     MemRefValue = CInst;
   }
-  // check is pointer ElementType detected
-  if (!MemRefValPtrElementTy) {
-    // OpaquePointer calculate MatchTy without call getPointerElementType()
-    if (isa<AllocaInst>(MemRefValue)) {
-      MemRefValPtrElementTy =
-          dyn_cast<AllocaInst>(MemRefValue)->getAllocatedType();
-    } else if (isa<GlobalValue>(MemRefValue)) {
-      MemRefValPtrElementTy =
-          dyn_cast<GlobalValue>(MemRefValue)->getValueType();
-    } else if (isa<ConstantExpr>(MemRefValue)) {
-      // OpaquePointer hack
-      MemRefValPtrElementTy = getIntTypeByPtr(MemRefValue->getType());
-    } else {
-      assert(false && "Unknown MemRefValPtrElementTy type for OpaquePointer type calculation");
-    }
-  }
   assert(MemRefValue->getType()->isPointerTy() &&
          "Pointer type expected in load instruction");
-//  assert(MemRefValue->getType()->getPointerElementType() ==
-//               MemRefValPtrElementTy && "test types");
   // Load the value from memory location
-  auto MemAlignment = Align(MemRefValPtrElementTy
-                                ->getPrimitiveSizeInBits() / 8);
+  auto MemAlignment =
+      Align(getPointerElementType(MemRefValue)->getPrimitiveSizeInBits() / 8);
   LoadInst *LdInst =
-      new LoadInst(MemRefValPtrElementTy, MemRefValue,
-                   "", false, MemAlignment, RaisedBB);
+      new LoadInst(getPointerElementType(MemRefValue), MemRefValue, "", false,
+                   MemAlignment, RaisedBB);
 
   switch (Opcode) {
   default: {
@@ -2478,7 +2441,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
 
   LLVMContext &Ctx(MF.getFunction().getContext());
   if (IsPCRelMemRef) {
-    // If it is a PC-relative mem ref, memRefValue is a global value loaded
+    // If it is a PC-relative mem ref, MemRefValue is a global value loaded
     // from PC-relative memory location. If it is a derived type value, get
     // its element pointer.
     assert(isa<GlobalValue>(MemRefValue) && "MemRefValue is not GlobalValue");
@@ -2487,8 +2450,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
       assert(MemRefValueTy->isPointerTy() &&
              "Unhandled non-pointer type found while attempting to load value "
              "from FPU register stack.");
-      auto *Glob = dyn_cast<GlobalValue>(MemRefValue);
-      Type *MemRefValPtrElementTy = Glob->getValueType();
+      Type *MemRefValPtrElementTy = getPointerElementType(MemRefValue);
       switch (MemRefValPtrElementTy->getTypeID()) {
       case Type::ArrayTyID: {
         assert(MemRefValPtrElementTy->getArrayNumElements() == 1 &&
@@ -2503,8 +2465,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
         // Get the element
         Value *IndexOne = ConstantInt::get(Ctx, APInt(32, 1));
         Instruction *GetElem = GetElementPtrInst::CreateInBounds(
-            MemRefValPtrElementTy, MemRefValue, {IndexOne, IndexOne}, "",
-            RaisedBB);
+            ArrElemTy, MemRefValue, {IndexOne, IndexOne}, "", RaisedBB);
         MemRefValue = GetElem;
       } break;
       // Primitive types that need not be reached into.
@@ -2537,22 +2498,9 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
     Value *ST0Val = topFPURegisterStack();
     Type *SrcTy = ST0Val->getType();
     // The value in ST0 is converted to single-precision or double precision
-    // floating-point format. So, cast the memRefValue to the PointerType of
+    // floating-point format. So, cast the MemRefValue to the PointerType of
     // SrcTy.
-    // OpaquePointer calculate DestElemTy without call getPointerElementType()
-    Type *DestElemTy;
-    if (isa<AllocaInst>(MemRefValue)) {
-      DestElemTy =
-          dyn_cast<AllocaInst>(MemRefValue)->getAllocatedType();
-    } else if (isa<GlobalValue>(MemRefValue)) {
-      DestElemTy =
-          dyn_cast<GlobalValue>(MemRefValue)->getValueType();
-    } else if (isa<CastInst>(MemRefValue)) {
-      DestElemTy =
-          dyn_cast<CastInst>(MemRefValue)->getSrcTy();
-    } else {
-      assert(false && "Unknown MemRefValue type for OpaquePointer type calculation");
-    }
+    Type *DestElemTy = getPointerElementType(MemRefValue);
     if (DestElemTy != SrcTy) {
       PointerType *SrcPtrTy = SrcTy->getPointerTo(0);
       Instruction *CInst = CastInst::Create(
@@ -2631,8 +2579,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     // If it is an effective address value or a select instruction, convert it
     // to a pointer to load register type.
     Type *LdTy = getPhysRegOperandType(MI, LoadOpIndex);
-    PointerType *PtrTy =
-        PointerType::get(LdTy, 0);
+    PointerType *PtrTy = PointerType::get(LdTy, 0);
     if ((isEffectiveAddrValue(MemRefValue)) || isa<SelectInst>(MemRefValue)) {
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
       // Set or copy rodata metadata, if any
@@ -2858,8 +2805,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     auto PtrAlign =
         MemRefVal->getPointerAlignment(MR->getModule()->getDataLayout());
     LoadInst *LdInst =
-        new LoadInst(StoreTy, MemRefVal,
-                     "", false, PtrAlign, RaisedBB);
+        new LoadInst(StoreTy, MemRefVal, "", false, PtrAlign, RaisedBB);
     assert((LdInst != nullptr) && "Memory value expected to be loaded while "
                                   "raising binary mem op instruction");
     assert((SrcValue != nullptr) && "Source value expected to be loaded while "
@@ -3055,8 +3001,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
   // Load the value from memory location
   // OpaquePointer hack
   Instruction *SrcValue =
-      new LoadInst(DataTy, MemRefVal, "memload", false,
-                   Align(), RaisedBB);
+      new LoadInst(DataTy, MemRefVal, "memload", false, Align(), RaisedBB);
 
   switch (MI.getOpcode()) {
   case X86::NOT16m:
@@ -3371,8 +3316,7 @@ bool X86MachineInstructionRaiser::raiseBitTestMachineInstr(
     if (IsMemBT) {
       assert(MemRefValue->getType()->isPointerTy() &&
              "Expected MemRefVal to be of pointer type for bt instruction");
-      if (MemRefValue->getType() !=
-          WriteBackVal->getType()->getPointerTo()) {
+      if (MemRefValue->getType() != WriteBackVal->getType()->getPointerTo()) {
         MemRefValue = new BitCastInst(
             MemRefValue, WriteBackVal->getType()->getPointerTo(), "", RaisedBB);
       }
@@ -3459,10 +3403,8 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     // Load the value from memory location
     auto PtrAlign =
         MemRefValue->getPointerAlignment(MR->getModule()->getDataLayout());
-    // OpaquePointer hack
     LoadInst *LoadInstr =
-        new LoadInst(NonMemRefOpTy, MemRefValue,
-                     "", false, PtrAlign, RaisedBB);
+        new LoadInst(NonMemRefOpTy, MemRefValue, "", false, PtrAlign, RaisedBB);
     // save it at the appropriate index of operand value array
     if (MemRefOpIndex == 0) {
       OpValues[0] = LoadInstr;
@@ -3475,7 +3417,6 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     if (NonMemRefOp->isReg()) {
       NonMemRefVal = getRegOrArgValue(NonMemRefOp->getReg(), MBBNo);
     } else if (NonMemRefOp->isImm()) {
-      // OpaquePointer hack
       NonMemRefVal = ConstantInt::get(NonMemRefOpTy, NonMemRefOp->getImm());
     } else {
       LLVM_DEBUG(MI.dump());
@@ -3606,17 +3547,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
       // same, it is the source value that needs to be cast to match the type of
       // destination (i.e., memory). It needs to be sign extended as needed.
 
-      // OpaquePointer calculate MatchTy without call getPointerElementType()
-      Type *MatchTy;
-      if (isa<AllocaInst>(MemRefValue)) {
-        MatchTy = dyn_cast<AllocaInst>(MemRefValue)->getAllocatedType();
-      } else if (isa<GlobalValue>(MemRefValue)) {
-        MatchTy = dyn_cast<GlobalValue>(MemRefValue)->getValueType();
-      } else if (isa<CastInst>(MemRefValue)) {
-        MatchTy = dyn_cast<CastInst>(MemRefValue)->getSrcTy();
-      } else {
-        assert(false && "Unknown MemRefValue type for OpaquePointer type calculation");
-      }
+      Type *MatchTy = getPointerElementType(MemRefValue);
       if (!MatchTy->isArrayTy()) {
         CmpInst = getRaisedValues()->castValue(CmpInst, MatchTy, RaisedBB);
       }
@@ -4221,7 +4152,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     SrcOp2Value = OpValues[1];
 
     // Check validity of source operand values. Both source operands need to be
-    // not null values. The only exception is when the instruction has 3
+    // non-null values. The only exception is when the instruction has 3
     // operands indicating that there is an implicit constant value encoded by
     // the instruction such as SHR81. Such operands are constructed in an
     // instruction-specific way before the generating the appropriate IR
@@ -5596,8 +5527,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
 
       // Load the value from memory location
-      // OpaquePointer hack
-      Type *LdTy = getIntTypeByPtr(MemRefValue->getType());
+      Type *LdTy = getPointerElementType(MemRefValue);
       LoadInst *LdInst =
           new LoadInst(LdTy, MemRefValue, "memload", false, Align());
       LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
@@ -5617,10 +5547,8 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     }
 
     // Construct call instruction.
-    CallInst *CallInst = CallInst::Create(
-        FT,
-        //cast<FunctionType>(Func->getType()->getNonOpaquePointerElementType()),
-        Func, ArrayRef<Value *>(ArgValueVector));
+    CallInst *CallInst =
+        CallInst::Create(FT, Func, ArrayRef<Value *>(ArgValueVector));
     RaisedBB->getInstList().push_back(CallInst);
 
     // A function call with a non-void return will modify RAX.
@@ -5754,29 +5682,6 @@ bool X86MachineInstructionRaiser::raise() {
     PM.run(*(RaisedFunction->getParent()));
   }
   return Success;
-}
-
-Type *X86MachineInstructionRaiser::getIntTypeByPtr(Type *PTy) {
-  assert(PTy && PTy->isPointerTy() && "The input type is not a pointer!");
-  auto *Ctx = &MF.getFunction().getContext();
-  Type *Ty = nullptr;
-
-  if (PTy == Type::getInt64PtrTy(*Ctx))
-    Ty = Type::getInt64Ty(*Ctx);
-  else if (PTy == Type::getInt32PtrTy(*Ctx))
-    Ty = Type::getInt32Ty(*Ctx);
-  else if (PTy == Type::getInt16PtrTy(*Ctx))
-    Ty = Type::getInt16Ty(*Ctx);
-  else if (PTy == Type::getInt8PtrTy(*Ctx))
-    Ty = Type::getInt8Ty(*Ctx);
-  else if (PTy == Type::getInt1PtrTy(*Ctx))
-    Ty = Type::getInt1Ty(*Ctx);
-  else {
-    // getDefaultType()
-    auto *DLT = &MR->getModule()->getDataLayout();
-    Ty = Type::getIntNTy(*Ctx, DLT->getPointerSizeInBits());
-  }
-  return Ty;
 }
 
 // NOTE : The following X86ModuleRaiser class function is defined here as

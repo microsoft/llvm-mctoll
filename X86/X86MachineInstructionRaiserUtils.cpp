@@ -49,7 +49,7 @@ Value *X86MachineInstructionRaiser::getMemoryRefValue(const MachineInstr &MI) {
   if (MIDesc.mayStore()) {
     // If the instruction stores to stack, find the register whose value is
     // being stored. It would be the operand at offset
-    // memRefOperandStartIndex + X86::AddrNumOperands
+    // MemRefOperandStartIndex + X86::AddrNumOperands
     LoadOrStoreOpIndex = MemoryRefOpIndex + X86::AddrNumOperands;
   } else if (MIDesc.mayLoad()) {
     // If the instruction loads to memory to a register, it has 1 def.
@@ -181,8 +181,8 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
   uint64_t BaseSupReg = find64BitSuperReg(MemRef.Base.Reg);
   bool IsPCRelMemRef = (BaseSupReg == X86::RIP);
 
-  // Load the value from memory location of memRefValue.
-  // memRefVal is either an AllocaInst (stack access), GlobalValue (global
+  // Load the value from memory location of MemRefValue.
+  // MemRefVal is either an AllocaInst (stack access), GlobalValue (global
   // data access), an effective address value, element pointer or select
   // instruction.
   assert((isa<AllocaInst>(MemRefValue) || isEffectiveAddrValue(MemRefValue) ||
@@ -231,9 +231,6 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
     // instruction, as needed.
     MemRefValue = getRaisedValues()->castValue(MemRefValue, PtrTy, RaisedBB);
     // Load the value from memory location
-    // OpaquePointer hack - LdTy always equal SrcTy
-    // Type *LdTy = MemRefValue->getType()->getPointerElementType();
-    // assert(SrcTy == LdTy && "Error types");
     LoadInst *LdInst =
         new LoadInst(SrcTy, MemRefValue, "memload", false, Align());
     LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
@@ -241,7 +238,7 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
 
     return LdInst;
   }
-  // memRefValue already represents the global value loaded from
+  // MemRefValue already represents the global value loaded from
   // PC-relative memory location. It is incorrect to generate an
   // additional load of this value. It should be directly used.
   return MemRefValue;
@@ -769,8 +766,8 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
           }
 
           auto *GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
-                                              false /* isConstant */, Lnkg,
-                                              GlobalInit, Symname->data());
+                                               false /* isConstant */, Lnkg,
+                                               GlobalInit, Symname->data());
           // Don't use symbSize as it was modified.
           GlobalVal->setAlignment(MaybeAlign(Symb->st_size));
           GlobalVal->setDSOLocal(true);
@@ -888,8 +885,8 @@ Value *X86MachineInstructionRaiser::createPCRelativeAccesssValue(
         }
 
         auto *GlobalVal = new GlobalVariable(*(MR->getModule()), GlobalValTy,
-                                            false /* isConstant */, Lnkg,
-                                            GlobalInit, Symname->data());
+                                             false /* isConstant */, Lnkg,
+                                             GlobalInit, Symname->data());
         // Don't use symSize as it was modified.
         GlobalVal->setAlignment(MaybeAlign(SymAlignment));
         GlobalVal->setDSOLocal(true);
@@ -933,18 +930,17 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
          "Unexpected physical register size of reaching definition ");
   // This could simply be set to 64 because the stack slot allocated is
   // a 64-bit value.
-  auto *AllocaI = dyn_cast<AllocaInst>(Alloca);
-  assert(AllocaI && "Alloca Not an AllocaInst");
   int StackLocSzInBits =
-      AllocaI->getAllocatedType()->getPrimitiveSizeInBits();
+      getPointerElementType(Alloca)->getPrimitiveSizeInBits();
   Type *StackLocTy;
   if (ReachingValue->getType()->isIntOrPtrTy()) {
     // Cast the current value to int64 if needed
     StackLocTy = Type::getIntNTy(Ctxt, StackLocSzInBits);
   } else if (ReachingValue->getType()->isFloatingPointTy() ||
              ReachingValue->getType()->isVectorTy()) {
-    assert(StackLocSzInBits == 128 &&
-           "Expected FP types and vectors to be stored in 128 bit stack location");
+    assert(
+        StackLocSzInBits == 128 &&
+        "Expected FP types and vectors to be stored in 128 bit stack location");
     StackLocTy = VectorType::get(Type::getInt32Ty(Ctxt), 4, false);
   } else {
     llvm_unreachable("Unhandled type");
@@ -1016,8 +1012,8 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   // Replace all uses of ReachingValue with that loaded from stack location at
   // which ReachingValue is stored.
   for (auto *I : UsageInstList) {
-    LoadInst *LdFromStkSlot = new LoadInst(
-        AllocaI->getAllocatedType(), Alloca, "ld-stk-prom", I);
+    LoadInst *LdFromStkSlot =
+        new LoadInst(getPointerElementType(Alloca), Alloca, "ld-stk-prom", I);
     I->replaceUsesOfWith(ReachingValue, LdFromStkSlot);
   }
 
@@ -1141,16 +1137,13 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
 
     AllocaInst *TOSAlloca = const_cast<AllocaInst *>(
         MFrameInfo.getObjectAllocation(StackTopObjIndex));
-    Type *TOSAllocaOrigType = TOSAlloca->getType();
-    auto TOSSzInBytes =
-        TOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
+    auto TOSSzInBytes = TOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
     // Get stack bottom offset and index
     int64_t StackBottomOffset = ShadowStackIndexedByOffset.rbegin()->first;
     int StackBottomObjIndex = ShadowStackIndexedByOffset.rbegin()->second;
     const AllocaInst *BOSAlloca =
         MFrameInfo.getObjectAllocation(StackBottomObjIndex);
-    auto BOSSzInBytes =
-        BOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
+    auto BOSSzInBytes = BOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
     // Get stack frame size. Note that stack grows down on x86-64. Need to
     // ensure that stack frame size includes the size of the bottom most
     // object as well.
@@ -1159,23 +1152,17 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
     Value *StackFreameSizeVal =
         ConstantInt::get(Context, APInt(32, StackFrameSize));
     // Construct new alloca corresponding to TOS offset with size
-    // StackFrameSize bytes and insert it before TOSAlloca (which will be
-    // replaced later by the cast of this alloca).
+    // StackFrameSize bytes. Do not insert it yet. It will later replace
+    // TOSAlloca.
     Type *ByteTy = Type::getInt8Ty(Context);
     AllocaInst *StackFrameAlloca =
         new AllocaInst(ByteTy, AllocaAddrSpace, StackFreameSizeVal, Align(),
-                       "stktop_" + std::to_string(TOSSzInBytes), TOSAlloca);
-    // Cast the StackFrameAlloca instruction to the type of TOSAlloca
-    Instruction *CastStackFrameAlloca =
-        CastInst::Create(CastInst::getCastOpcode(StackFrameAlloca, false,
-                                                 TOSAllocaOrigType, false),
-                         StackFrameAlloca, TOSAllocaOrigType);
+                       "stktop_" + std::to_string(TOSSzInBytes));
 
     // Copy RODataIndex metadata
     raisedValues->setInstMetadataRODataIndex(TOSAlloca, StackFrameAlloca);
-    raisedValues->setInstMetadataRODataIndex(TOSAlloca, CastStackFrameAlloca);
 
-    // Update TOSAlloca entries to CastStackFrameAlloca in
+    // Update TOSAlloca entries to StackFrameAlloca in
     // reachingDefsToPromote. This map is used later while promoting
     // reaching defs that were not promoted.
     for (auto RDToFix : reachingDefsToPromote) {
@@ -1186,19 +1173,19 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
           unsigned int MBBNo = std::get<1>(RDToFix);
           reachingDefsToPromote.erase(std::make_tuple(PReg, MBBNo, A));
           reachingDefsToPromote.insert(
-              std::make_tuple(PReg, MBBNo, CastStackFrameAlloca));
+              std::make_tuple(PReg, MBBNo, StackFrameAlloca));
         }
       }
     }
 
-    // Finally, replace TOSAlloca with CastStackFrameAlloca
-    ReplaceInstWithInst(dyn_cast<Instruction>(TOSAlloca), CastStackFrameAlloca);
-    // Cast StackFrameAlloca as int and insert it before StackObjAlloca,
+    // Now, replace TOSAlloca with StackFrameAlloca
+    ReplaceInstWithInst(dyn_cast<Instruction>(TOSAlloca), StackFrameAlloca);
+    // Cast StackFrameAlloca as int and insert it after StackFrameAlloca,
     // which will be replaced later
     Type *Int64Ty = Type::getInt64Ty(Context);
     Instruction *StackFrameAllocaAddr = CastInst::Create(
         CastInst::getCastOpcode(StackFrameAlloca, false, Int64Ty, false),
-        StackFrameAlloca, Int64Ty, "tos", CastStackFrameAlloca->getNextNode());
+        StackFrameAlloca, Int64Ty, "tos", StackFrameAlloca->getNextNode());
 
     // Copy RODataIndex metadata
     raisedValues->setInstMetadataRODataIndex(StackFrameAlloca,
@@ -1287,7 +1274,8 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
                     (InstrKind == InstructionKind::SSE_MOV_TO_MEM));
   if (SSE2MemOp) {
     auto SSERegSzInBits = StackObjectSize * 8;
-    MemOpTy = getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Context);
+    MemOpTy =
+        getRaisedValues()->getSSEInstructionType(MI, SSERegSzInBits, Context);
   } else {
     switch (StackObjectSize) {
     case 8:
@@ -1385,8 +1373,7 @@ Value *X86MachineInstructionRaiser::getStackAllocatedValue(
       int Stride = MIStackOffset - StackSlotOffset;
       assert(Stride > 0 && "Unexpected stack slot stride");
       // Convert pointer to int with size of the source binary ISA pointer
-      Type *PtrCastIntTy =
-          Type::getIntNTy(Context, DL.getPointerSizeInBits());
+      Type *PtrCastIntTy = Type::getIntNTy(Context, DL.getPointerSizeInBits());
 
       PtrToIntInst *AllocaAsInt =
           new PtrToIntInst(StackSlotAllocaInst, PtrCastIntTy, "", RaisedBB);
@@ -1638,8 +1625,8 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
         Value *DataOffsetIndex =
             ConstantInt::get(Type::getInt32Ty(Context), DataOffset);
         Constant *GetElem = ConstantExpr::getInBoundsGetElementPtr(
-                RODataSecValue->getValueType(),
-            RODataSecValue, {Zero32Value, DataOffsetIndex});
+            getPointerElementType(RODataSecValue), RODataSecValue,
+            {Zero32Value, DataOffsetIndex});
         RODataValue = GetElem;
       }
       break;
@@ -1687,7 +1674,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
 
         if (!SymAddr)
           reportError(SymAddr.takeError(),
-                       "Failed to lookup symbol for global address");
+                      "Failed to lookup symbol for global address");
         uint64_t SymAddrVal = SymAddr.get();
         // We have established that Offset is not negative above. So, OK to
         // cast.
@@ -1720,7 +1707,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       Expected<StringRef> GlobalDataSymName = GlobalSymRef.getName();
       if (!GlobalDataSymName)
         reportError(GlobalDataSymName.takeError(),
-                     "Failed to find global symbol name.");
+                    "Failed to find global symbol name.");
       // Find if a global value associated with symbol name is already
       // created
       StringRef GlobalDataSymNameIndexStrRef(GlobalDataSymName.get());
@@ -1958,17 +1945,15 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       }
       assert(GlobalVariableValue->getType()->isPointerTy() &&
              "Unexpected non-pointer type value in global data offset access");
-      auto *GlobVal = dyn_cast<GlobalVariable>(GlobalVariableValue);
-      assert(GlobVal && "Not an GlobalVariable");
       // If the global variable is of array type, ensure its type is correct.
-      auto *GlobTy = GlobVal->getValueType();
+      auto *GlobTy = getPointerElementType(GlobalVariableValue);
       if (GlobTy->isArrayTy()) {
         // First index - is 0
         Value *FirstIndex =
             ConstantInt::get(MF.getFunction().getContext(), APInt(32, 0));
         // Find the size of array element
-        size_t ArrayElemByteSz = GlobTy->getArrayElementType()
-                                       ->getScalarSizeInBits() / 8;
+        size_t ArrayElemByteSz =
+            GlobTy->getArrayElementType()->getScalarSizeInBits() / 8;
 
         unsigned ScaledOffset = GlobalSymOffset / MemAccessSizeInBytes;
 
@@ -1983,11 +1968,10 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
           uint64_t GlobalArraySize = GlobTy->getArrayNumElements();
           // Construct integer type of size memAccessSize bytes. Note that It
           // has been asserted that array element is of integral type.
-          auto *ElementTy = ArrayType::get(
-              Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8),
-                              GlobalArraySize / MemAccessSizeInBytes);
+          auto *ElementTy =
+              ArrayType::get(Type::getIntNTy(Ctx, MemAccessSizeInBytes * 8),
+                             GlobalArraySize / MemAccessSizeInBytes);
           PointerType *CastToArrTy = PointerType::get(ElementTy, 0);
-
           CastInst *CInst = CastInst::Create(
               CastInst::getCastOpcode(GlobalVariableValue, false, CastToArrTy,
                                       false),
@@ -1995,14 +1979,14 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
           RaisedBB->getInstList().push_back(CInst);
           GlobalVariableValue = CInst;
           Instruction *GetElem = GetElementPtrInst::CreateInBounds(
-              ElementTy, GlobalVariableValue,
-              {FirstIndex, OffsetIndex}, "", RaisedBB);
+              ElementTy, GlobalVariableValue, {FirstIndex, OffsetIndex}, "",
+              RaisedBB);
           GlobalVariableValue = GetElem;
         } else {
           // Get the element
           Instruction *GetElem = GetElementPtrInst::CreateInBounds(
-              GlobVal->getValueType(), GlobalVariableValue,
-              {FirstIndex, OffsetIndex}, "", RaisedBB);
+              GlobTy, GlobalVariableValue, {FirstIndex, OffsetIndex}, "",
+              RaisedBB);
           GlobalVariableValue = GetElem;
         }
       }
@@ -2064,17 +2048,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
   if (IndexReg != X86::NoRegister) {
     Value *IndexRegVal = getPhysRegValue(MI, IndexReg);
     if (IndexRegVal->getType()->isPointerTy()) {
-      // OpaquePointer calculate MatchTy without call getPointerElementType()
-      Type *LdTy;
-      if (isa<AllocaInst>(IndexRegVal)) {
-        LdTy = dyn_cast<AllocaInst>(IndexRegVal)->getAllocatedType();
-      } else if (isa<GlobalValue>(IndexRegVal)) {
-        LdTy = dyn_cast<GlobalValue>(IndexRegVal)->getValueType();
-      } else if (isa<CastInst>(IndexRegVal)) {
-        LdTy = dyn_cast<CastInst>(IndexRegVal)->getSrcTy();
-      } else {
-        assert(false && "Unknown IndexRegVal type for OpaquePointer type calculation");
-      }
+      Type *LdTy = getPointerElementType(IndexRegVal);
       LoadInst *LdInst =
           new LoadInst(LdTy, IndexRegVal, "memload", false, Align());
       RaisedBB->getInstList().push_back(LdInst);
@@ -2227,14 +2201,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
           // type. Cast GV in accordance with the type of MemrefValue to
           // facilitate the addition performed later to construct the address
           // expression.
-
-          // OpaquePointer hack - check pointer isIntegerTy()
-          Type *PTy = GV->getType();
-          if (PTy == Type::getInt64PtrTy(Ctx) ||
-              PTy == Type::getInt32PtrTy(Ctx) ||
-              PTy == Type::getInt16PtrTy(Ctx) ||
-              PTy == Type::getInt8PtrTy(Ctx) ||
-              PTy == Type::getInt1PtrTy(Ctx)) {
+          if (getPointerElementType(GV)->isIntegerTy()) {
             DispValue = getRaisedValues()->castValue(GV, MemrefValue->getType(),
                                                      RaisedBB);
           } else {

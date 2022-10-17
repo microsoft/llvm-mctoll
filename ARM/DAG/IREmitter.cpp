@@ -136,108 +136,86 @@ void IREmitter::emitCondCode(unsigned CondValue, BasicBlock *BB,
   default:
     break;
   case ARMCC::EQ: { // EQ  Z set
-    Value *ZFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[1]));
+    Value *ZFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstEQ = IRB.CreateICmpEQ(ZFlag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::NE: { // NE Z clear
-    Value *ZFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[1]));
+    Value *ZFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstEQ = IRB.CreateICmpEQ(ZFlag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::HS: { // CS  C set
-    Value *CFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+    Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
     Value *InstEQ = IRB.CreateICmpEQ(CFlag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::LO: { // CC  C clear
-    Value *CFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+    Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
     Value *InstEQ = IRB.CreateICmpEQ(CFlag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::MI: { // MI  N set
-    Value *NFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[0]));
+    Value *NFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[0]);
     Value *InstEQ = IRB.CreateICmpEQ(NFlag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::PL: { // PL  N clear
-    Value *NFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[0]));
+    Value *NFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[0]);
     Value *InstEQ = IRB.CreateICmpEQ(NFlag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::VS: { // VS  V set
-    Value *VFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[3]));
+    Value *VFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstEQ = IRB.CreateICmpEQ(VFlag, IRB.getTrue());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::VC: { // VC  V clear
-    Value *VFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[3]));
+    Value *VFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstEQ = IRB.CreateICmpEQ(VFlag, IRB.getFalse());
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::HI: { // HI  C set & Z clear
-    Value *CFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
-    Value *ZFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[1]));
+    Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
+    Value *ZFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstCEQ = IRB.CreateICmpEQ(CFlag, IRB.getTrue());
     Value *InstZEQ = IRB.CreateICmpEQ(ZFlag, IRB.getFalse());
     Value *CondPass = IRB.CreateICmpEQ(InstCEQ, InstZEQ);
     IRB.CreateCondBr(CondPass, IfBB, ElseBB);
   } break;
   case ARMCC::LS: { // LS  C clear or Z set
-    Value *CFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
-    Value *ZFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[1]));
+    Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
+    Value *ZFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[1]);
     Value *InstCEQ = IRB.CreateICmpEQ(CFlag, IRB.getFalse());
     Value *InstZEQ = IRB.CreateICmpEQ(ZFlag, IRB.getTrue());
     Value *CondPass = IRB.CreateXor(InstCEQ, InstZEQ);
     IRB.CreateCondBr(CondPass, IfBB, ElseBB);
   } break;
   case ARMCC::GE: { // GE  N = V
-    Value *NFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[0]));
-    Value *VFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[3]));
+    Value *NFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *VFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstEQ = IRB.CreateICmpEQ(NFlag, VFlag);
     IRB.CreateCondBr(InstEQ, IfBB, ElseBB);
   } break;
   case ARMCC::LT: { // LT  N != V
-    Value *NFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[0]));
-    Value *VFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[3]));
+    Value *NFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *VFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstNE = IRB.CreateICmpNE(NFlag, VFlag);
     IRB.CreateCondBr(InstNE, IfBB, ElseBB);
   } break;
   case ARMCC::GT: { // GT  Z clear & N = V
-    Value *NFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[0]));
-    Value *ZFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[1]));
-    Value *VFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[3]));
+    Value *NFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *ZFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[1]);
+    Value *VFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstZEQ = IRB.CreateICmpEQ(ZFlag, IRB.getFalse());
     Value *InstNZEQ = IRB.CreateICmpEQ(NFlag, VFlag);
     Value *CondPass = IRB.CreateICmpEQ(InstZEQ, InstNZEQ);
     IRB.CreateCondBr(CondPass, IfBB, ElseBB);
   } break;
   case ARMCC::LE: { // LE  Z set or N != V
-    Value *NFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[0]));
-    Value *ZFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[1]));
-    Value *VFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[3]));
+    Value *NFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *ZFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[1]);
+    Value *VFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[3]);
     Value *InstZEQ = IRB.CreateICmpEQ(ZFlag, IRB.getTrue());
     Value *InstNZNE = IRB.CreateICmpNE(NFlag, VFlag);
     Value *CondPass = IRB.CreateXor(InstZEQ, InstNZNE);
@@ -587,8 +565,8 @@ void IREmitter::emitSDNode(SDNode *Node) {
         Type *Ty = Glob->getValueType();
         if (Ty->isArrayTy()) {
           Inst = IRB.CreatePtrToInt(Ptr, getDefaultType());
-          //Ty = Ty->getArrayElementType();
-          //Ptr->mutateType(PointerType::getUnqual(Ty));
+          // Ty = Ty->getArrayElementType();
+          // Ptr->mutateType(PointerType::getUnqual(Ty));
         } else {
           // if (Ty->isAggregateType()) {}
           auto *Pty = cast<PointerType>(Ptr->getType());
@@ -599,7 +577,6 @@ void IREmitter::emitSDNode(SDNode *Node) {
         Type *ElemTy = getIntTypeByPtr(Ptr->getType());
         Inst = callCreateAlignedLoad(
             ElemTy, Ptr, MaybeAlign(Log2(DLT->getPointerPrefAlignment())));
-
         // TODO:
         // Temporary method for this.
         if (Inst->getType() == Type::getInt64Ty(*CTX))
@@ -807,7 +784,8 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       const MachineJumpTableInfo *MJT = MF->getJumpTableInfo();
       unsigned JTIndex = Node->getConstantOperandVal(0);
       std::vector<MachineJumpTableEntry> JumpTables = MJT->getJumpTables();
-      for (unsigned Idx = 0, MBBSz = JumpTables[JTIndex].MBBs.size(); Idx != MBBSz; ++Idx) {
+      for (unsigned Idx = 0, MBBSz = JumpTables[JTIndex].MBBs.size();
+           Idx != MBBSz; ++Idx) {
         llvm::Type *I32Type = llvm::IntegerType::getInt32Ty(*CTX);
         llvm::ConstantInt *I32Val =
             cast<ConstantInt>(llvm::ConstantInt::get(I32Type, Idx, true));
@@ -826,7 +804,8 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
 
       // conditon instruction
       Instruction *CondInst = nullptr;
-      for (BasicBlock::iterator DI = CondBB->begin(); DI != CondBB->end(); DI++) {
+      for (BasicBlock::iterator DI = CondBB->begin(); DI != CondBB->end();
+           DI++) {
         Instruction *Ins = dyn_cast<Instruction>(DI);
         if (isa<LoadInst>(DI) && !CondInst) {
           CondInst = Ins;
@@ -907,8 +886,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
 
       if (DAGInfo->NPMap[Node]->UpdateCPSR) {
         Value *InstLShr = IRB.CreateLShr(S0, Val1);
-        Value *CFlag =
-            callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+        Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         CFlag = IRB.CreateZExt(CFlag, Ty);
         Value *Bit31 = IRB.CreateShl(CFlag, Val2);
         Value *Inst = IRB.CreateAdd(InstLShr, Bit31);
@@ -922,7 +900,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         CFlag = IRB.CreateAnd(S0, Val1);
         IRB.CreateStore(CFlag, FuncInfo->AllocaMap[2]);
       } else {
-        // Create new BB for EQ instructin exectute.
+        // Create new BB for EQ instructing execute.
         BasicBlock *IfBB = BasicBlock::Create(*CTX, "", BB->getParent());
         // Create new BB to update the DAG BB.
         BasicBlock *ElseBB = BasicBlock::Create(*CTX, "", BB->getParent());
@@ -933,8 +911,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         Value *InstLShr = IRB.CreateLShr(S0, Val1);
         Value *CFlag = nullptr;
 
-        CFlag =
-            callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+        CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         CFlag = IRB.CreateZExt(CFlag, Ty);
         Value *Bit31 = IRB.CreateShl(CFlag, Val2);
         Value *Inst = IRB.CreateAdd(InstLShr, Bit31);
@@ -947,8 +924,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       }
     } else {
       Value *InstLShr = IRB.CreateLShr(S0, Val1);
-      Value *CFlag =
-          callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+      Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
       CFlag = IRB.CreateZExt(CFlag, Ty);
       Value *Bit31 = IRB.CreateShl(CFlag, Val2);
       Value *Inst = IRB.CreateAdd(InstLShr, Bit31);
@@ -1084,8 +1060,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
       if (DAGInfo->NPMap[Node]->UpdateCPSR) {
         Value *InstSub = IRB.CreateSub(S1, S2);
         Value *CFlag = nullptr;
-        CFlag =
-            callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+        CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         Value *CZext = IRB.CreateZExt(CFlag, Ty);
         Value *InstSBC = IRB.CreateAdd(InstSub, CZext);
         DAGInfo->setRealValue(Node, InstSBC);
@@ -1103,8 +1078,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         IRB.SetInsertPoint(IfBB);
         Value *InstSub = IRB.CreateSub(S1, S2);
         Value *CFlag = nullptr;
-        CFlag =
-            callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+        CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         Value *CZext = IRB.CreateZExt(CFlag, Ty);
         Value *Inst = IRB.CreateAdd(InstSub, CZext);
         PHINode *Phi = createAndEmitPHINode(Node, BB, IfBB, ElseBB,
@@ -1118,8 +1092,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     } else {
       Value *InstSub = IRB.CreateSub(S1, S2);
       Value *CFlag = nullptr;
-      CFlag =
-          callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+      CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
       Value *CZext = IRB.CreateZExt(CFlag, Ty);
       Value *InstSBC = IRB.CreateAdd(InstSub, CZext);
       DAGInfo->setRealValue(Node, InstSBC);
@@ -1193,14 +1166,10 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     Value *BitCShift = IRB.getInt32(29);
     Value *BitVShift = IRB.getInt32(28);
 
-    Value *NFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[0]));
-    Value *ZFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[1]));
-    Value *CFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
-    Value *VFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[3]));
+    Value *NFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[0]);
+    Value *ZFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[1]);
+    Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
+    Value *VFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[3]);
 
     NFlag = IRB.CreateZExt(NFlag, Ty);
     ZFlag = IRB.CreateZExt(ZFlag, Ty);
@@ -1214,8 +1183,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     Value *NZVal = IRB.CreateAdd(NShift, ZShift);
     Value *CVVal = IRB.CreateAdd(CShift, VShift);
     Value *NZCVVal = IRB.CreateAdd(NZVal, CVVal);
-    Value *Reserved =
-        callCreateAlignedLoad(M.getGlobalVariable("Reserved"));
+    Value *Reserved = callCreateAlignedLoad(M.getGlobalVariable("Reserved"));
 
     Value *CPSRVal = IRB.CreateAdd(NZCVVal, Reserved);
     Value *RnPtr = IRB.CreateIntToPtr(Rn, PtrTy);
@@ -1234,8 +1202,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
 
       if (DAGInfo->NPMap[Node]->UpdateCPSR) {
         // Create add emit.
-        Value *CFlag =
-            callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+        Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         Value *Result = IRB.CreateAdd(S0, S1);
         Value *CZext = IRB.CreateZExt(CFlag, OperandTy);
         Value *InstADC = IRB.CreateAdd(Result, CZext);
@@ -1259,8 +1226,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         // Emit the condition code.
         emitCondCode(CondValue, BB, IfBB, ElseBB);
 
-        Value *CFlag =
-            callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+        Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
         IRB.SetInsertPoint(IfBB);
         Value *InstAdd = IRB.CreateAdd(S0, S1);
         Value *CZext = IRB.CreateZExtOrTrunc(CFlag, OperandTy);
@@ -1274,8 +1240,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
         IRB.SetInsertPoint(ElseBB);
       }
     } else {
-      Value *CFlag =
-          callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+      Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
       Value *Inst = IRB.CreateAdd(S0, S1);
       Value *CTrunc = IRB.CreateZExtOrTrunc(CFlag, getDefaultType());
       Value *InstADC = IRB.CreateAdd(Inst, CTrunc);
@@ -1288,8 +1253,7 @@ void IREmitter::emitSpecialNode(SDNode *Node) {
     Value *S0 = getIRValue(Node->getOperand(0));
     Value *S1 = getIRValue(Node->getOperand(1));
 
-    Value *CFlag =
-        callCreateAlignedLoad(dyn_cast<AllocaInst>(FuncInfo->AllocaMap[2]));
+    Value *CFlag = callCreateAlignedLoad(FuncInfo->AllocaMap[2]);
     Value *CZext = IRB.CreateZExt(CFlag, getDefaultType());
 
     Value *Inst = IRB.CreateAdd(S0, CZext);

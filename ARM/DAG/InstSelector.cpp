@@ -475,7 +475,6 @@ void InstSelector::selectCode(SDNode *N) {
   case ARM::BLX_pred:
   case ARM::tBLXi:
   case ARM::tBLXr: {
-    // outs() << "WARNING: ARM::BLX Not yet implemented!\n";
     SDValue Func = N->getOperand(0);
     SDNode *Node = nullptr;
     if (RegisterSDNode::classof(Func.getNode())) {
@@ -1106,7 +1105,7 @@ void InstSelector::selectCode(SDNode *N) {
   case ARM::VMSR_FPSID:
   case ARM::VMSR_FPINST:
   case ARM::VMSR_FPINST2: {
-    outs() << "WARNING: ARM::MCR Not yet implemented!\n";
+    dbgs() << "WARNING: ARM::MCR Not yet implemented!\n";
   } break;
   case ARM::MRS:
   case ARM::MRSsys:

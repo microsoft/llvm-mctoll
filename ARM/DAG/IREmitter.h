@@ -16,6 +16,7 @@
 
 #include "DAGRaisingInfo.h"
 #include "FunctionRaisingInfo.h"
+#include "Raiser/MachineInstructionRaiser.h"
 #include "Raiser/ModuleRaiser.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/IR/IRBuilder.h"
@@ -86,24 +87,17 @@ private:
   Type *getIntTypeByPtr(Type *PTy);
   Value *getIRValue(SDValue Val);
   // Wrapper to call new  Create*Load APIs
-//  LoadInst *callCreateAlignedLoad(Value *ValPtr,
-//                                  MaybeAlign Align = MaybeAlign()) {
-//    return IRB.CreateAlignedLoad(ValPtr->getType()->getPointerElementType(),
-//                                 ValPtr, Align, "");
-//  }
+
+  LoadInst *callCreateAlignedLoad(Value *ValPtr,
+                                  MaybeAlign Align = MaybeAlign()) {
+    Type *Ty = MachineInstructionRaiser::getPointerElementType(ValPtr);
+    assert(Ty != nullptr && "Unexpected type");
+    return IRB.CreateAlignedLoad(Ty, ValPtr, Align, "");
+  }
+
   LoadInst *callCreateAlignedLoad(Type *Ty, Value *ValPtr,
                                   MaybeAlign Align = MaybeAlign()) {
     return IRB.CreateAlignedLoad(Ty, ValPtr, Align, "");
-  }
-  LoadInst *callCreateAlignedLoad(AllocaInst *ValPtr,
-                                  MaybeAlign Align = MaybeAlign()) {
-    return IRB.CreateAlignedLoad(ValPtr->getAllocatedType(),
-                                 ValPtr, Align, "");
-  }
-  LoadInst *callCreateAlignedLoad(GlobalValue *ValPtr,
-                                  MaybeAlign Align = MaybeAlign()) {
-    return IRB.CreateAlignedLoad(ValPtr->getValueType(),
-                                 ValPtr, Align, "");
   }
 };
 

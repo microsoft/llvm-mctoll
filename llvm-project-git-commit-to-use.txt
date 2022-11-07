@@ -5,8 +5,21 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit b73d2c8c720a8c8e6e73b11be4e27afa6cb75bdf (HEAD, tag: llvmorg-15.0.1)
-Author: Florian Hahn <flo@fhahn.com>
-Date:   Mon Sep 19 18:14:34 2022 +0100
+commit 5c68a1cb123161b54b72ce90e7975d95a8eaf2a4 (tag: llvmorg-15.0.4)
+Author: Matt Arsenault <Matthew.Arsenault@amd.com>
+Date:   Mon Sep 26 23:07:49 2022 -0400
 
-    [LV] Keep track of cost-based ScalarAfterVec in VPWidenPointerInd.
+    AMDGPU: Make various vector undefs legal
+
+    Surprisingly these were getting legalized to something
+    zero initialized.
+
+    This fixes an infinite loop when combining some vector types.
+    Also fixes zero initializing some undef values.
+
+    SimplifyDemandedVectorElts / SimplifyDemandedBits are not checking
+    for the legality of the output undefs they are replacing unused
+    operations with. This resulted in turning vectors into undefs
+    that were later re-legalized back into zero vectors.
+
+    (cherry picked from commit 7a84624079a2656c684bed6100708544500c5a32)

@@ -48,7 +48,9 @@ class FuncDeclVisitor : public clang::RecursiveASTVisitor<FuncDeclVisitor> {
 
 public:
   FuncDeclVisitor(clang::ASTContext &Context) : Context(Context) {
+#ifndef NDEBUG
     llvm::setCurrentDebugType(DEBUG_TYPE);
+#endif
   }
 
   bool VisitFunctionDecl(clang::FunctionDecl *FuncDecl) {

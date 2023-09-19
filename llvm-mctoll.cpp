@@ -10,13 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm-mctoll.h"
 #include "EmitRaisedOutputPass.h"
 #include "PeepholeOptimizationPass.h"
 #include "Raiser/IncludedFileInfo.h"
 #include "Raiser/MCInstOrData.h"
 #include "Raiser/MachineFunctionRaiser.h"
 #include "Raiser/ModuleRaiser.h"
-#include "llvm-mctoll.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -777,8 +777,8 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   assert((MR != nullptr) && "Failed to build module raiser");
   // Set data of module raiser
   MR->setModuleRaiserInfo(&M, Target.get(), &MachineModuleInfo->getMMI(),
-                          MIA.get(), MII.get(), MRI.get(), IP.get(),
-                          Obj, DisAsm.get());
+                          MIA.get(), MII.get(), MRI.get(), IP.get(), Obj,
+                          DisAsm.get());
 
   // Collect dynamic relocations.
   MR->collectDynamicRelocations();
@@ -1575,8 +1575,7 @@ int main(int argc, char **argv) {
 
   if (!IncludeFileNames.empty()) {
     if (!IncludedFileInfo::getExternalFunctionPrototype(IncludeFileNames,
-                                                        TargetName,
-                                                        SysRoot)) {
+                                                        TargetName, SysRoot)) {
       dbgs() << "Unable to read external function prototype. Ignoring\n";
     }
   }
@@ -1585,8 +1584,9 @@ int main(int argc, char **argv) {
   // Disassemble contents of .text section.
   Disassemble = true;
   FilterSections.push_back(".text");
-
+#ifndef NDEBUG
   llvm::setCurrentDebugType(DEBUG_TYPE);
+#endif
   std::for_each(InputFNames.begin(), InputFNames.end(), dumpInput);
 
   return EXIT_SUCCESS;

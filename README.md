@@ -73,6 +73,16 @@ cmake --build  <build-dir> -- llvm-mctoll
 ninja check-mctoll
 ```
 
+7. Building `Release` without assertions
+
+```
+cmake -S llvm -B <build-dir> -G "Ninja"  \
+      -DLLVM_TARGETS_TO_BUILD="X86;ARM"  \
+      -DLLVM_ENABLE_PROJECTS="clang;lld" \
+      -DCLANG_DEFAULT_PIE_ON_LINUX=OFF   \
+      -DCMAKE_BUILD_TYPE=Release         \
+      -DLLVM_ENABLE_DUMP=true
+```
 # Usage
 
 | Command | Description |

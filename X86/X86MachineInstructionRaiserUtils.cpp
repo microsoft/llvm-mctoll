@@ -1528,7 +1528,8 @@ Function *X86MachineInstructionRaiser::getTargetFunctionAtPLTOffset(
       assert(GotPltReloc != nullptr &&
              "Failed to get dynamic relocation for jmp target of PLT entry");
 
-      assert((GotPltReloc->getType() == ELF::R_X86_64_JUMP_SLOT) &&
+      assert(((GotPltReloc->getType() == ELF::R_X86_64_JUMP_SLOT) ||
+              (GotPltReloc->getType() == ELF::R_X86_64_GLOB_DAT)) &&
              "Unexpected relocation type for PLT jmp instruction");
       symbol_iterator CalledFuncSym = GotPltReloc->getSymbol();
       assert(CalledFuncSym != Elf64LEObjFile->symbol_end() &&

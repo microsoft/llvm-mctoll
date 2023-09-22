@@ -1069,7 +1069,7 @@ bool X86MachineInstructionRaiser::handleUnpromotedReachingDefs() {
   return true;
 }
 
-// Check for unterminated basic blocks.
+/// Check for unterminated basic blocks.
 bool X86MachineInstructionRaiser::handleUnterminatedBlocks() {
   auto *RaisedFunction = getRaisedFunction();
   LLVMContext &Ctx(RaisedFunction->getContext());
@@ -1091,6 +1091,18 @@ bool X86MachineInstructionRaiser::handleUnterminatedBlocks() {
       }
     }
   }
+  return true;
+}
+
+/// Delete empty basic blocks with no predecessors
+bool X86MachineInstructionRaiser::deleteEmptyBlocks() {
+  SmallVector<BasicBlock *, 4> UnConnectedBEmptyBs;
+  for (BasicBlock &BB : *RaisedFunction) {
+    if (BB.hasNPredecessors(0) && BB.size() == 0)
+      UnConnectedBEmptyBs.push_back(&BB);
+  }
+
+  DeleteDeadBlocks(ArrayRef<BasicBlock *>(UnConnectedBEmptyBs));
   return true;
 }
 

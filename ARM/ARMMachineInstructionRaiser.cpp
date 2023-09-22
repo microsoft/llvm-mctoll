@@ -29,7 +29,7 @@ ARMMachineInstructionRaiser::ARMMachineInstructionRaiser(
     MachineFunction &MF, const ModuleRaiser *MR, MCInstRaiser *MCIR)
     : MachineInstructionRaiser(MF, MR, MCIR), MachineRegInfo(MF.getRegInfo()) {}
 
-bool ARMMachineInstructionRaiser::raiseMachineFunction() {
+bool ARMMachineInstructionRaiser::raise() {
   const ARMModuleRaiser *ConstAMR = dyn_cast<ARMModuleRaiser>(MR);
   assert(ConstAMR != nullptr && "The ARM module raiser is not initialized!");
   ARMModuleRaiser &AMR = const_cast<ARMModuleRaiser &>(*ConstAMR);
@@ -58,11 +58,6 @@ bool ARMMachineInstructionRaiser::raiseMachineFunction() {
   SelDis.doSelection();
 
   return true;
-}
-
-bool ARMMachineInstructionRaiser::raise() {
-  return raiseMachineFunction();
-  // return true;
 }
 
 int ARMMachineInstructionRaiser::getArgumentNumber(unsigned PReg) {

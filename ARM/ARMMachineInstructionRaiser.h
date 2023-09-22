@@ -34,7 +34,6 @@ public:
   std::vector<JumpTableInfo> JTList;
 
 private:
-  bool raiseMachineFunction();
   // Commonly used LLVM data structures during this phase
   MachineRegisterInfo &MachineRegInfo;
 };

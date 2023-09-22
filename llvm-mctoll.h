@@ -40,19 +40,13 @@ extern std::string CompilationDBDir;
 
 // Various helper functions.
 bool isRelocAddressLess(object::RelocationRef A, object::RelocationRef B);
-bool RelocAddressLess(object::RelocationRef a, object::RelocationRef b);
 void parseInputMachO(StringRef Filename);
-void printCOFFUnwindInfo(const object::COFFObjectFile *o);
-void printMachOUnwindInfo(const object::MachOObjectFile *o);
-void printELFFileHeader(const object::ObjectFile *o);
-void printCOFFFileHeader(const object::ObjectFile *o);
-void printCOFFSymbolTable(const object::COFFImportFile *i);
-void printCOFFSymbolTable(const object::COFFObjectFile *o);
-void printMachOFileHeader(const object::ObjectFile *o);
-void printMachOLoadCommands(const object::ObjectFile *o);
-void printWasmFileHeader(const object::ObjectFile *o);
-void PrintSymbolTable(const object::ObjectFile *o, StringRef ArchiveName,
-                      StringRef ArchitectureName = StringRef());
+void printCOFFUnwindInfo(const object::COFFObjectFile *O);
+void printCOFFFileHeader(const object::ObjectFile *O);
+void printCOFFSymbolTable(const object::COFFImportFile *I);
+void printCOFFSymbolTable(const object::COFFObjectFile *O);
+void printMachOFileHeader(const object::ObjectFile *O);
+void printMachOLoadCommands(const object::ObjectFile *O);
 
 } // end namespace mctoll
 } // end namespace llvm

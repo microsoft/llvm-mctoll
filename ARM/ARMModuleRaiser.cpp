@@ -73,6 +73,10 @@ void ARMModuleRaiser::addRODataValueAt(Value *V, uint64_t Offset) const {
   GlobalRODataValues.emplace(Offset, V);
 }
 
+bool ARMModuleRaiser::addPasses(PassManagerBase &PM) {
+  return true;
+}
+
 void registerARMModuleRaiser() {
   registerModuleRaiser(new ARMModuleRaiser());
 }

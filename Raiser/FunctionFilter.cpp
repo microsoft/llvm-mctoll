@@ -262,7 +262,7 @@ void FunctionFilter::eraseFunctionBySymbol(StringRef &Sym,
 
 /// Read the function symbol set from the configuration file of filter
 /// functions.
-bool FunctionFilter::readFilterFunctionConfigFile(
+bool FunctionFilter::readFunctionFilterConfigFile(
     std::string &FunctionFilterFilename) {
 
   if (FunctionFilterFilename.size() == 0)
@@ -361,4 +361,79 @@ void FunctionFilter::dump(FilterType FT) {
                     dbgs() << FFI->getSymName() << " ";
                   });
   }
+}
+
+/// Check if function is needs raising
+bool FunctionFilter::checkFunctionFilter(StringRef &PrototypeStr, uint64_t Start) {
+  bool RaiseFunc = true;
+  // Check the symbol name whether it should be excluded or not.
+  // Check in a non-empty exclude list
+  if (!isFilterSetEmpty(FunctionFilter::FILTER_EXCLUDE)) {
+    FunctionFilter::FuncInfo *FI = findFuncInfoBySymbol(
+        PrototypeStr, FunctionFilter::FILTER_EXCLUDE);
+    if (FI != nullptr) {
+      // Record the function start index.
+      FI->StartIdx = Start;
+      // Skip raising this function symbol
+      RaiseFunc = false;
+    }
+  }
+
+  if (!isFilterSetEmpty(FunctionFilter::FILTER_INCLUDE)) {
+    // Include list specified. Unless the current function symbol is
+    // specified in the include list, skip raising it.
+    RaiseFunc = false;
+    // Check the symbol name whether it should be included or not.
+    if (findFuncInfoBySymbol(
+            PrototypeStr, FunctionFilter::FILTER_INCLUDE) != nullptr)
+      RaiseFunc = true;
+  }
+  return RaiseFunc;
+}
+
+/*
+   A list of symbol entries corresponding to CRT functions added by
+   the linker while creating an ELF executable. It is not necessary to
+   disassemble and translate these functions.
+*/
+
+static std::set<StringRef> ELFCRTSymbols = {
+    "call_weak_fn",
+    "deregister_tm_clones",
+    "__do_global_dtors_aux",
+    "__do_global_dtors_aux_fini_array_entry",
+    "_fini",
+    "frame_dummy",
+    "__frame_dummy_init_array_entry",
+    "_init",
+    "__init_array_end",
+    "__init_array_start",
+    "__libc_csu_fini",
+    "__libc_csu_init",
+    "register_tm_clones",
+    "_start",
+    "_dl_relocate_static_pie"};
+
+/*
+   A list of symbol entries corresponding to CRT functions added by
+   the linker while creating an MachO executable. It is not necessary
+   to disassemble and translate these functions.
+*/
+
+static std::set<StringRef> MachOCRTSymbols = {"__mh_execute_header",
+                                              "dyld_stub_binder", "__text",
+                                              "__stubs", "__stub_helper"};
+
+/// Check if function is CRT function.
+bool FunctionFilter::isCRTFunction(const ObjectFile *Obj, StringRef &Sym) {
+  if (Obj->isELF()) {
+    return (ELFCRTSymbols.find(Sym) != ELFCRTSymbols.end());
+  }
+  if (Obj->isMachO()) {
+    // If Symbol is not in the MachOCRTSymbol list return true indicating that
+    // this is a symbol of a function we are interested in disassembling and
+    // raising.
+    return (MachOCRTSymbols.find(Sym) != MachOCRTSymbols.end());
+  }
+  return false;
 }

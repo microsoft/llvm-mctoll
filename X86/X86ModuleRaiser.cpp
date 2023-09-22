@@ -12,7 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86ModuleRaiser.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
 using namespace llvm;
 using namespace llvm::mctoll;
@@ -31,6 +33,11 @@ bool X86ModuleRaiser::collectDynamicRelocations() {
     for (const RelocationRef &Reloc : Section.relocations())
       DynRelocs.push_back(Reloc);
 
+  return true;
+}
+
+bool X86ModuleRaiser::addPasses(PassManagerBase &PM) {
+  PM.add(createUnifyFunctionExitNodesPass());
   return true;
 }
 

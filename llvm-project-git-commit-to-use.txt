@@ -5,8 +5,16 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 154e88af7ec97d9b9f389e55d45bf07108a9a097
-Author: Tom Stellard <tstellar@redhat.com>
-Date:   Tue Nov 15 22:28:29 2022 -0800
+commit 8dfdcc7b7bf66834a761bd8de445840ef68e4d1a
+Author: Nikolas Klauser <nikolasklauser@berlin.de>
+Date:   Thu Nov 17 21:34:29 2022 +0100
 
-    Bump version to 15.0.5
+    [libc++] Fix memory leaks when throwing inside std::vector constructors
+    
+    Fixes #58392
+    
+    Reviewed By: ldionne, #libc
+    
+    Spies: alexfh, hans, joanahalili, dblaikie, libcxx-commits
+    
+    Differential Revision: https://reviews.llvm.org/D138601

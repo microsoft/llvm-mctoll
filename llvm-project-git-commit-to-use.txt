@@ -5,21 +5,8 @@ Following is the tip of the git tree used for successful build of llvm-mctoll.
 
 llvm-project:
 
-commit 5c68a1cb123161b54b72ce90e7975d95a8eaf2a4 (tag: llvmorg-15.0.4)
-Author: Matt Arsenault <Matthew.Arsenault@amd.com>
-Date:   Mon Sep 26 23:07:49 2022 -0400
+commit 154e88af7ec97d9b9f389e55d45bf07108a9a097
+Author: Tom Stellard <tstellar@redhat.com>
+Date:   Tue Nov 15 22:28:29 2022 -0800
 
-    AMDGPU: Make various vector undefs legal
-
-    Surprisingly these were getting legalized to something
-    zero initialized.
-
-    This fixes an infinite loop when combining some vector types.
-    Also fixes zero initializing some undef values.
-
-    SimplifyDemandedVectorElts / SimplifyDemandedBits are not checking
-    for the legality of the output undefs they are replacing unused
-    operations with. This resulted in turning vectors into undefs
-    that were later re-legalized back into zero vectors.
-
-    (cherry picked from commit 7a84624079a2656c684bed6100708544500c5a32)
+    Bump version to 15.0.5

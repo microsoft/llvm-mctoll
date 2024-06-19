@@ -31,6 +31,7 @@ public:
   CreateAndAddMachineFunctionRaiser(Function *F, const ModuleRaiser *MR,
                                     uint64_t Start, uint64_t End) override;
   bool collectDynamicRelocations() override;
+  bool addPasses(PassManagerBase &PM) override;
 };
 
 } // end namespace mctoll

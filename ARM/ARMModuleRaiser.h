@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H
-#define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H
+#ifndef LLVM_TOOLS_LLVM_MCTOLL_ARM_ARM_MODULE_RAISER_H
+#define LLVM_TOOLS_LLVM_MCTOLL_ARM_ARM_MODULE_RAISER_H
 
 #include "Raiser/ModuleRaiser.h"
 
@@ -30,23 +30,24 @@ public:
   // Create a new MachineFunctionRaiser object and add it to the list of
   // MachineFunction raiser objects of this module.
   MachineFunctionRaiser *
-  CreateAndAddMachineFunctionRaiser(Function *f, const ModuleRaiser *mr,
-                                    uint64_t start, uint64_t end) override;
+  CreateAndAddMachineFunctionRaiser(Function *Fn, const ModuleRaiser *MR,
+                                    uint64_t Start, uint64_t End) override;
   bool collectDynamicRelocations() override;
+  bool addPasses(PassManagerBase &PM) override;
 
-  void collectRodataInstAddr(uint64_t instAddr) {
-    InstArgCollect.push_back(instAddr);
+  void collectRodataInstAddr(uint64_t InstAddr) {
+    InstArgCollect.push_back(InstAddr);
   }
 
-  void fillInstArgMap(uint64_t rodataAddr, uint64_t argNum) {
-    InstArgNumMap[rodataAddr] = argNum;
+  void fillInstArgMap(uint64_t RodataAddr, uint64_t ArgNum) {
+    InstArgNumMap[RodataAddr] = ArgNum;
   }
 
-  void fillInstAddrFuncMap(uint64_t callAddr, Function *func) {
-    InstAddrFuncMap[callAddr] = func;
+  void fillInstAddrFuncMap(uint64_t CallAddr, Function *Fn) {
+    InstAddrFuncMap[CallAddr] = Fn;
   }
 
-  Function *getCallFunc(uint64_t callAddr) { return InstAddrFuncMap[callAddr]; }
+  Function *getCallFunc(uint64_t CallAddr) { return InstAddrFuncMap[CallAddr]; }
 
   // Get function arg number.
   uint64_t getFunctionArgNum(uint64_t);
@@ -54,9 +55,9 @@ public:
   // Accoring call instruction to get the rodata instruction addr.
   uint64_t getArgNumInstrAddr(uint64_t);
   // Method to map syscall.
-  void setSyscallMapping(uint64_t idx, Function *fn) { SyscallMap[idx] = fn; }
+  void setSyscallMapping(uint64_t Idx, Function *Fn) { SyscallMap[Idx] = Fn; }
 
-  Function *getSyscallFunc(uint64_t idx) { return SyscallMap[idx]; }
+  Function *getSyscallFunc(uint64_t Idx) { return SyscallMap[Idx]; }
 
   const Value *getRODataValueAt(uint64_t Offset) const;
 
@@ -86,4 +87,4 @@ private:
 
 extern "C" void registerARMModuleRaiser();
 
-#endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARMMODULERAISER_H
+#endif // LLVM_TOOLS_LLVM_MCTOLL_ARM_ARM_MODULE_RAISER_H

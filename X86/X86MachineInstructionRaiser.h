@@ -109,7 +109,6 @@ private:
                               std::vector<Type *> &) override;
   Value *getRegOrArgValue(unsigned PReg, int MBBNo) override;
 
-  bool raiseMachineFunction();
   FunctionType *getRaisedFunctionPrototype() override;
   // This raises MachineInstr to MachineInstruction
   bool raiseMachineInstr(MachineInstr &);
@@ -206,6 +205,7 @@ private:
 
   bool handleUnpromotedReachingDefs();
   bool handleUnterminatedBlocks();
+  bool deleteEmptyBlocks();
 
   const MachineInstr *
   getPhysRegDefiningInstInBlock(int PhysReg, const MachineInstr *StartMI,

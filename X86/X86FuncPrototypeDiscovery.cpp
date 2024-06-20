@@ -48,10 +48,10 @@ using namespace llvm::mctoll::X86RegisterUtils;
 // true only if Reg is an implicit definition.
 static bool hasExactImplicitDefOfPhysReg(const MachineInstr &I, unsigned Reg,
                                          const MCRegisterInfo *MRI) {
-  if (const MCPhysReg *ImpDefs = I.getDesc().ImplicitDefs)
-    for (; *ImpDefs; ++ImpDefs)
-      if (*ImpDefs == Reg)
-        return true;
+  for (MCPhysReg ImpDef : I.getDesc().implicit_defs()) {
+    if (ImpDef == Reg)
+      return true;
+  }
   return false;
 }
 

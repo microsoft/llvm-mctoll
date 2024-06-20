@@ -222,7 +222,7 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
       // Set or copy rodata metadata, if any
       getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
-      RaisedBB->getInstList().push_back(ConvIntToPtr);
+      ConvIntToPtr->insertInto(RaisedBB, RaisedBB->end());
       MemRefValue = ConvIntToPtr;
     }
     assert(MemRefValue->getType()->isPointerTy() &&
@@ -234,7 +234,7 @@ Value *X86MachineInstructionRaiser::loadMemoryRefValue(
     LoadInst *LdInst =
         new LoadInst(SrcTy, MemRefValue, "memload", false, Align());
     LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-    RaisedBB->getInstList().push_back(LdInst);
+    LdInst->insertInto(RaisedBB, RaisedBB->end());
 
     return LdInst;
   }
@@ -961,7 +961,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
           CastInst::getCastOpcode(ReachingValue, false, StackLocTy, false),
           ReachingValue, StackLocTy);
       if (TermInst == nullptr)
-        ReachingBB->getInstList().push_back(CInst);
+        CInst->insertInto(ReachingBB, ReachingBB->end());
       else
         CInst->insertBefore(TermInst);
       ReachingValue = CInst;
@@ -969,7 +969,7 @@ StoreInst *X86MachineInstructionRaiser::promotePhysregToStackSlot(
   }
   StInst = new StoreInst(ReachingValue, Alloca, false, Align());
   if (TermInst == nullptr)
-    ReachingBB->getInstList().push_back(StInst);
+    StInst->insertInto(ReachingBB, ReachingBB->end());
   else
     StInst->insertBefore(TermInst);
 
@@ -1137,13 +1137,13 @@ bool X86MachineInstructionRaiser::createFunctionStackFrame() {
 
     AllocaInst *TOSAlloca = const_cast<AllocaInst *>(
         MFrameInfo.getObjectAllocation(StackTopObjIndex));
-    auto TOSSzInBytes = TOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
+    auto TOSSzInBytes = *TOSAlloca->getAllocationSizeInBits(DL) / 8;
     // Get stack bottom offset and index
     int64_t StackBottomOffset = ShadowStackIndexedByOffset.rbegin()->first;
     int StackBottomObjIndex = ShadowStackIndexedByOffset.rbegin()->second;
     const AllocaInst *BOSAlloca =
         MFrameInfo.getObjectAllocation(StackBottomObjIndex);
-    auto BOSSzInBytes = BOSAlloca->getAllocationSizeInBits(DL).getValue() / 8;
+    auto BOSSzInBytes = *BOSAlloca->getAllocationSizeInBits(DL) / 8;
     // Get stack frame size. Note that stack grows down on x86-64. Need to
     // ensure that stack frame size includes the size of the bottom most
     // object as well.
@@ -1606,7 +1606,7 @@ Value *X86MachineInstructionRaiser::getOrCreateGlobalRODataValueAtOffset(
           StringRef SecData = unwrapOrError(SecIter->getContents(),
                                             MR->getObjectFile()->getFileName());
           unsigned DataSize = SecIter->getSize();
-          auto DataStr = makeArrayRef(SecData.bytes_begin(), DataSize);
+          auto DataStr = ArrayRef(SecData.data(), DataSize);
           Constant *StrConstant = ConstantDataArray::get(Context, DataStr);
           auto *GlobalStrConstVal = new GlobalVariable(
               *(MR->getModule()), StrConstant->getType(), true /* isConstant */,
@@ -1722,7 +1722,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
       auto GlobalDataSymSection = GlobalSymRef.getSection();
       assert(GlobalDataSymSection && "No section for global symbol found");
       uint64_t GlobDataSymAlignment =
-          GlobalDataSymSection.get()->getAlignment();
+          GlobalDataSymSection.get()->getAlignment().value();
       // Make sure the alignment is a power of 2
       assert(((GlobDataSymAlignment & (GlobDataSymAlignment - 1)) == 0) &&
              "Section alignment not a power of 2");
@@ -1977,7 +1977,7 @@ X86MachineInstructionRaiser::getGlobalVariableValueAt(const MachineInstr &MI,
               CastInst::getCastOpcode(GlobalVariableValue, false, CastToArrTy,
                                       false),
               GlobalVariableValue, CastToArrTy);
-          RaisedBB->getInstList().push_back(CInst);
+          CInst->insertInto(RaisedBB, RaisedBB->end());
           GlobalVariableValue = CInst;
           Instruction *GetElem = GetElementPtrInst::CreateInBounds(
               ElementTy, GlobalVariableValue, {FirstIndex, OffsetIndex}, "",
@@ -2052,7 +2052,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
       Type *LdTy = getPointerElementType(IndexRegVal);
       LoadInst *LdInst =
           new LoadInst(LdTy, IndexRegVal, "memload", false, Align());
-      RaisedBB->getInstList().push_back(LdInst);
+      LdInst->insertInto(RaisedBB, RaisedBB->end());
       IndexRegVal = LdInst;
     }
     switch (ScaleAmt) {
@@ -2067,7 +2067,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
       Value *ScaleAmtValue = ConstantInt::get(MulValTy, ScaleAmt);
       Instruction *MulInst = BinaryOperator::CreateMul(
           ScaleAmtValue, IndexRegVal, "memref-idxreg");
-      RaisedBB->getInstList().push_back(MulInst);
+      MulInst->insertInto(RaisedBB, RaisedBB->end());
       MemrefValue = MulInst;
     } break;
     }
@@ -2089,7 +2089,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
           BinaryOperator::CreateAdd(BaseRegVal, MemrefValue, "memref-basereg");
       // Propagate rodata related metadata
       RVT->setInstMetadataRODataIndex(BaseRegVal, AddInst);
-      RaisedBB->getInstList().push_back(AddInst);
+      AddInst->insertInto(RaisedBB, RaisedBB->end());
       MemrefValue = AddInst;
     } else {
       MemrefValue = BaseRegVal;
@@ -2139,7 +2139,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                       GlobGEP->getPointerOperand(), ByteArrValPtrTy);
                   // Propagate rodata related metadata
                   RVT->setInstMetadataRODataIndex(GV, CastToArrInst);
-                  RaisedBB->getInstList().push_back(CastToArrInst);
+                  CastToArrInst->insertInto(RaisedBB, RaisedBB->end());
 
                   // Construct index array for a GEP instruction that accesses
                   // byte array
@@ -2164,7 +2164,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
                     Instruction *IdxMulInst =
                         BinaryOperator::CreateNSWMul(ScaleVal, IdxVal);
                     // Insert the new instruction
-                    RaisedBB->getInstList().push_back(IdxMulInst);
+                    IdxMulInst->insertInto(RaisedBB, RaisedBB->end());
                     // Add the value to array used to construct new GEP
                     ByteAccessGEPIdxArr.push_back(IdxVal);
                   }
@@ -2219,7 +2219,7 @@ X86MachineInstructionRaiser::getMemoryAddressExprValue(const MachineInstr &MI) {
           BinaryOperator::CreateAdd(MemrefValue, DispValue, "memref-disp");
       getRaisedValues()->setInstMetadataRODataIndex(MemrefValue, AddInst);
       getRaisedValues()->setInstMetadataRODataIndex(DispValue, AddInst);
-      RaisedBB->getInstList().push_back(AddInst);
+      AddInst->insertInto(RaisedBB, RaisedBB->end());
       MemrefValue = AddInst;
     } else {
       // Check that this is an instruction of the kind
@@ -2354,7 +2354,7 @@ Value *X86MachineInstructionRaiser::getPhysRegValue(const MachineInstr &MI,
       CastInst *CInst = CastInst::Create(
           CastInst::getCastOpcode(SrcOpValue, false, CastTy, false), SrcOpValue,
           CastTy);
-      RaisedBB->getInstList().push_back(CInst);
+      CInst->insertInto(RaisedBB, RaisedBB->end());
       SrcOpValue = CInst;
     }
   } else {
@@ -2385,7 +2385,6 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *Alloca,
   // Avoid using BasicBlock InstrList iterators so that the tool can use LLVM
   // built with LLVM_ABI_BREAKING_CHECKS ON or OFF.
   BasicBlock &EntryBlock = getRaisedFunction()->getEntryBlock();
-  BasicBlock::InstListType &InstList = EntryBlock.getInstList();
   // Ensure that stack slot corresponding to StackOffset is not in shadow
   // stack i.e., not generated.
   assert((ShadowStackIndexedByOffset.find(StackOffset) ==
@@ -2404,7 +2403,7 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *Alloca,
   // If this insertion point is at the beginning of the map, insert the alloca
   // instruction at the beginning of the block.
   if (InsertAtIter == ShadowStackIndexedByOffset.begin()) {
-    InstList.push_front(Alloca);
+    Alloca->insertInto(&EntryBlock, EntryBlock.begin());
   } else {
     // Insert alloca after the alloca instruction corresponding to the prior
     // stack slot.
@@ -2412,7 +2411,7 @@ bool X86MachineInstructionRaiser::insertAllocaInEntryBlock(Instruction *Alloca,
     InsertAtIter--;
     AllocaInst *Inst = const_cast<AllocaInst *>(
         MFInfo.getObjectAllocation(InsertAtIter->second));
-    InstList.insertAfter(Inst->getIterator(), Alloca);
+    Alloca->insertAfter(Inst);
   }
 
   return true;
@@ -2475,25 +2474,21 @@ bool X86MachineInstructionRaiser::recordMachineInstrInfo(
 
     const MCInstrDesc &MCID = MI.getDesc();
     // Save all values of implicitly used operands
-    unsigned ImplUsesCount = MCID.getNumImplicitUses();
-    if (ImplUsesCount > 0) {
-      const MCPhysReg *ImplUses = MCID.getImplicitUses();
-      for (unsigned Idx = 0; Idx < ImplUsesCount; Idx++) {
-        // Get the reaching definition of the implicit use register.
-        if (ImplUses[Idx] == X86::EFLAGS) {
-          for (auto FlgBit : EFlagBits) {
-            Value *Val = getRegOrArgValue(FlgBit, MI.getParent()->getNumber());
-            assert((Val != nullptr) &&
-                   "Unexpected null value of implicit eflags bits");
-            CurCTInfo->RegValues.push_back(Val);
-          }
-        } else {
-          Value *Val =
-              getRegOrArgValue(ImplUses[Idx], MI.getParent()->getNumber());
+    for (MCPhysReg Reg : MCID.implicit_uses()) {
+      // Get the reaching definition of the implicit use register.
+      if (Reg == X86::EFLAGS) {
+        for (auto FlgBit : EFlagBits) {
+          Value *Val = getRegOrArgValue(FlgBit, MI.getParent()->getNumber());
           assert((Val != nullptr) &&
-                 "Unexpected null value of implicit defined registers");
+                  "Unexpected null value of implicit eflags bits");
           CurCTInfo->RegValues.push_back(Val);
         }
+      } else {
+        Value *Val =
+            getRegOrArgValue(Reg, MI.getParent()->getNumber());
+        assert((Val != nullptr) &&
+                "Unexpected null value of implicit defined registers");
+        CurCTInfo->RegValues.push_back(Val);
       }
     }
     CurCTInfo->Raised = false;

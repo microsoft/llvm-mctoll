@@ -104,7 +104,7 @@ bool ARMSelectionDAGISel::doSelection() {
   LLVM_DEBUG(dbgs() << "ARMSelectionDAGISel start.\n");
 
   //MachineFunction &mf = *MF;
-  CurDAG->init(*MF, *ORE.get(), this, nullptr, nullptr, nullptr, nullptr);
+  CurDAG->init(*MF, *ORE.get(), this, nullptr, nullptr, nullptr, nullptr, nullptr);
   FuncInfo->set(*MR, *getRaisedFunction(), *MF, CurDAG);
 
   initEntryBasicBlock();

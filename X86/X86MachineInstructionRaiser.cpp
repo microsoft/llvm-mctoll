@@ -72,18 +72,18 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
   assert((MI.getOperand(0).isReg()) &&
          "Unhandled PUSH instruction with a non-register operand");
 
-  assert(MCIDesc.getNumImplicitUses() == 1 &&
-         MCIDesc.getNumImplicitDefs() == 1 &&
+  assert(MCIDesc.implicit_uses().size() == 1 &&
+         MCIDesc.implicit_defs().size() == 1 &&
          "Unexpected number of implicit uses and defs in push instruction");
-  assert((find64BitSuperReg(MCIDesc.ImplicitUses[0]) == X86::RSP) &&
-         (find64BitSuperReg(MCIDesc.ImplicitDefs[0]) == X86::RSP) &&
+  assert((find64BitSuperReg(MCIDesc.implicit_uses()[0]) == X86::RSP) &&
+         (find64BitSuperReg(MCIDesc.implicit_defs()[0]) == X86::RSP) &&
          (MI.getNumExplicitOperands() == 1) &&
          "Unexpected implicit or explicit registers in push instruction");
 
   X86AddressMode MemRef;
-  MemRef.Base.Reg = MCIDesc.ImplicitUses[0]; // SP
+  MemRef.Base.Reg = MCIDesc.implicit_uses()[0]; // SP
   MemRef.BaseType = X86AddressMode::RegBase;
-  // Displacement of the store location of MIDesc.ImplicitUses[0] 0 off SP
+  // Displacement of the store location of MIDesc.implicit_uses()[0] 0 off SP
   // i.e., on top of stack.
   MemRef.Disp = 0;
   MemRef.IndexReg = X86::NoRegister;
@@ -151,15 +151,15 @@ bool X86MachineInstructionRaiser::raiseConvertBWWDDQMachineInstr(
   unsigned int Opcode = MI.getOpcode();
   LLVMContext &Ctx(MF.getFunction().getContext());
 
-  assert(MIDesc.getNumImplicitUses() == 1 && MIDesc.getNumImplicitDefs() == 1 &&
+  assert(MIDesc.implicit_uses().size() == 1 && MIDesc.implicit_defs().size() == 1 &&
          "Unexpected number of implicit uses and defs in cbw/cwde/cdqe "
          "instruction");
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  MCPhysReg UseReg = MIDesc.ImplicitUses[0];
-  MCPhysReg DefReg = MIDesc.ImplicitDefs[0];
+  MCPhysReg UseReg = MIDesc.implicit_uses()[0];
+  MCPhysReg DefReg = MIDesc.implicit_defs()[0];
   Type *TargetTy = nullptr;
 
   if (Opcode == X86::CDQE) {
@@ -188,7 +188,7 @@ bool X86MachineInstructionRaiser::raiseConvertBWWDDQMachineInstr(
 
   // Generate sign-extend instruction
   SExtInst *SextInst = new SExtInst(UseValue, TargetTy);
-  RaisedBB->getInstList().push_back(SextInst);
+  SextInst->insertInto(RaisedBB, RaisedBB->end());
 
   // Update the value mapping of DefReg
   raisedValues->setPhysRegSSAValue(DefReg, MI.getParent()->getNumber(),
@@ -202,16 +202,16 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
   unsigned int Opcode = MI.getOpcode();
   LLVMContext &Ctx(MF.getFunction().getContext());
 
-  assert(MIDesc.getNumImplicitUses() == 1 && MIDesc.getNumImplicitDefs() == 2 &&
+  assert(MIDesc.implicit_uses().size() == 1 && MIDesc.implicit_defs().size() == 2 &&
          "Unexpected number of implicit uses and defs in cwd/cdq/cqo "
          "instruction");
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
 
-  MCPhysReg UseReg = MIDesc.ImplicitUses[0];
-  MCPhysReg DefReg0 = MIDesc.ImplicitDefs[0];
-  MCPhysReg DefReg1 = MIDesc.ImplicitDefs[1];
+  MCPhysReg UseReg = MIDesc.implicit_uses()[0];
+  MCPhysReg DefReg0 = MIDesc.implicit_defs()[0];
+  MCPhysReg DefReg1 = MIDesc.implicit_defs()[1];
   Type *TargetTy = nullptr;
   Type *UseRegTy = nullptr;
 
@@ -252,7 +252,7 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
   assert(UseValue->getType()->getScalarSizeInBits() ==
              UseRegTy->getScalarSizeInBits() &&
          "Mismatched types in cwd/cdq/cqo instruction");
-  RaisedBB->getInstList().push_back(TargetSextInst);
+  TargetSextInst->insertInto(RaisedBB, RaisedBB->end());
 
   // Logical Shift TargetSextInst by n-bits (where n is the size of
   // UserRegTy) to get the high bytes and set DefReg_1 to the resulting
@@ -261,11 +261,11 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
       TargetTy, UseRegTy->getScalarSizeInBits(), false /* isSigned */);
   Instruction *LShrInst =
       BinaryOperator::CreateLShr(TargetSextInst, ShiftAmount);
-  RaisedBB->getInstList().push_back(LShrInst);
+  LShrInst->insertInto(RaisedBB, RaisedBB->end());
   // Truncate LShrInst to get the high bytes
   Instruction *HighBytesInst =
       CastInst::Create(Instruction::Trunc, LShrInst, UseRegTy);
-  RaisedBB->getInstList().push_back(HighBytesInst);
+  HighBytesInst->insertInto(RaisedBB, RaisedBB->end());
   // Update the value mapping of DefReg_1
   raisedValues->setPhysRegSSAValue(DefReg1, MI.getParent()->getNumber(),
                                    HighBytesInst);
@@ -428,8 +428,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
            "Failed to set type - mov with extension instruction");
     // Now create the cast instruction corresponding to the instruction.
     CastInst *CInst = CastInst::Create(Cast, SrcValue, Ty);
-    RaisedBB->getInstList().push_back(CInst);
-
+    CInst->insertInto(RaisedBB, RaisedBB->end());
     // Update the value mapping of DstPReg
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, CInst);
     Success = true;
@@ -511,7 +510,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         // CF or ZF
         BinaryOperator *CFZFOrCond =
             BinaryOperator::CreateOr(CFValue, ZFValue, "CFZFOR_CMOVA");
-        RaisedBB->getInstList().push_back(CFZFOrCond);
+        CFZFOrCond->insertInto(RaisedBB, RaisedBB->end());
         // Test CF == 0 and ZF == 0
         CMOVCond = new ICmpInst(Pred, CFZFOrCond, FalseValue, "Cond_CMOVA");
       } break;
@@ -537,11 +536,11 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         // Compare ZF and 0
         CmpInst *ZFCond =
             new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_CMOVG");
-        RaisedBB->getInstList().push_back(ZFCond);
+        ZFCond->insertInto(RaisedBB, RaisedBB->end());
         // Test SF == OF
         CmpInst *SFOFCond =
             new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_CMOVG");
-        RaisedBB->getInstList().push_back(SFOFCond);
+        SFOFCond->insertInto(RaisedBB, RaisedBB->end());
         CMOVCond = BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG");
       } break;
       case X86::COND_LE: {
@@ -556,13 +555,12 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         // Check ZF == 1
         CmpInst *ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
                                        TrueValue, "ZFCmp_CMOVLE");
-        RaisedBB->getInstList().push_back(ZFCond);
+        ZFCond->insertInto(RaisedBB, RaisedBB->end());
 
         // Test SF != OF
         CmpInst *SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue,
                                          OFValue, "SFOFCmp_CMOVLE");
-        RaisedBB->getInstList().push_back(SFOFCond);
-
+        SFOFCond->insertInto(RaisedBB, RaisedBB->end());
         CMOVCond = BinaryOperator::CreateOr(ZFCond, SFOFCond, "Cond_CMOVLE");
       } break;
       case X86::COND_NS: {
@@ -639,8 +637,8 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
                                    TrueValue, "Cond_CMOVBE_CF");
         auto *ZFCmp = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
                                    TrueValue, "Cond_CMOVBE_ZF");
-        RaisedBB->getInstList().push_back(CFCmp);
-        RaisedBB->getInstList().push_back(ZFCmp);
+        CFCmp->insertInto(RaisedBB, RaisedBB->end());
+        ZFCmp->insertInto(RaisedBB, RaisedBB->end());
         CMOVCond = BinaryOperator::CreateOr(CFCmp, ZFCmp, "Cond_CMOVBE");
       } break;
       case X86::COND_INVALID:
@@ -650,8 +648,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
         assert(false && "CMOV instruction with unhandled condition found");
         break;
       }
-      RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CMOVCond));
-
+      dyn_cast<Instruction>(CMOVCond)->insertInto(RaisedBB, RaisedBB->end());
       // Ensure that the types of SrcValue and DstValue match.
       DstValue =
           getRaisedValues()->castValue(DstValue, SrcValue->getType(), RaisedBB);
@@ -835,7 +832,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         while (Src1Value->getType()->isPointerTy()) {
           PtrToIntInst *ConvPtrToInst =
               new PtrToIntInst(Src1Value, getPointerElementType(Src1Value));
-          RaisedBB->getInstList().push_back(ConvPtrToInst);
+          ConvPtrToInst->insertInto(RaisedBB, RaisedBB->end());
           Src1Value = ConvPtrToInst;
         }
 
@@ -843,7 +840,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         while (Src2Value->getType()->isPointerTy()) {
           PtrToIntInst *ConvPtrToInst =
               new PtrToIntInst(Src2Value, getPointerElementType(Src2Value));
-          RaisedBB->getInstList().push_back(ConvPtrToInst);
+          ConvPtrToInst->insertInto(RaisedBB, RaisedBB->end());
           Src2Value = ConvPtrToInst;
         }
         assert(((Src1Value->getType()->isIntegerTy() &&
@@ -862,7 +859,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
           Instruction *CInst = CastInst::Create(
               CastInst::getCastOpcode(Src2Value, false, DestValueTy, false),
               Src2Value, DestValueTy);
-          RaisedBB->getInstList().push_back(CInst);
+          CInst->insertInto(RaisedBB, RaisedBB->end());
           Src2Value = CInst;
         }
         ExplicitSrcValues[0] = Src1Value;
@@ -898,7 +895,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
     DstValue = BinOpInst;
     // Set SF and ZF based on DstValue; technically OF, AF, CF and PF also
     // needs to be set but ignoring for now.
@@ -927,7 +924,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
 
     DstValue = BinOpInst;
     // Setting EFLAG bits does not seem to matter, so not setting
@@ -942,11 +939,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
   case X86::MUL64r: {
     bool IsSigned = instrNameStartsWith(MI, "IMUL");
 
-    assert(MCID.getNumDefs() == 0 && MCID.getNumImplicitDefs() == 3 &&
-           MCID.getNumImplicitUses() == 1 &&
+    assert(MCID.getNumDefs() == 0 && MCID.implicit_defs().size() == 3 &&
+           MCID.implicit_uses().size() == 1 &&
            "Unexpected operands in imul instruction");
     // Find first source operand - this is the implicit operand AL/AX/EAX/RAX
-    const MCPhysReg Src1Reg = MCID.ImplicitUses[0];
+    const MCPhysReg Src1Reg = MCID.implicit_uses()[0];
     assert(find64BitSuperReg(Src1Reg) == X86::RAX &&
            "Unexpected implicit register in imul instruction");
     // Find second operand - this is the explicit operand of the instruction
@@ -981,41 +978,41 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         Src1Value, WideTy);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, Src1ValueDT);
-    RaisedBB->getInstList().push_back(Src1ValueDT);
+    Src1ValueDT->insertInto(RaisedBB, RaisedBB->end());
 
     CastInst *Src2ValueDT = CastInst::Create(
         CastInst::getCastOpcode(Src2Value, IsSigned, WideTy, IsSigned),
         Src2Value, WideTy);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src2Value, Src2ValueDT);
-    RaisedBB->getInstList().push_back(Src2ValueDT);
+    Src2ValueDT->insertInto(RaisedBB, RaisedBB->end());
     // Multiply the values
     Instruction *FullProductValue =
         BinaryOperator::CreateNSWMul(Src1ValueDT, Src2ValueDT);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1ValueDT, FullProductValue);
     raisedValues->setInstMetadataRODataIndex(Src2ValueDT, FullProductValue);
-    RaisedBB->getInstList().push_back(FullProductValue);
+    FullProductValue->insertInto(RaisedBB, RaisedBB->end());
     // Shift amount equal to size of source operand
     Value *ShiftAmountVal =
         ConstantInt::get(FullProductValue->getType(), SrcOpSize);
 
-    // Split the value into ImplicitDefs[0]:ImplicitDefs[1]
+    // Split the value into implicit_defs()[0]:implicit_defs()[1]
     // Compute shr of FullProductValue
     Instruction *ShrDT =
         BinaryOperator::CreateLShr(FullProductValue, ShiftAmountVal);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(FullProductValue, ShrDT);
-    RaisedBB->getInstList().push_back(ShrDT);
+    ShrDT->insertInto(RaisedBB, RaisedBB->end());
     // Truncate ShrDT to SrcOpSize
     Type *SrcValTy = Type::getIntNTy(Ctx, SrcOpSize);
     CastInst *ProductUpperValue =
         CastInst::Create(CastInst::Trunc, ShrDT, SrcValTy);
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(ShrDT, ProductUpperValue);
-    RaisedBB->getInstList().push_back(ProductUpperValue);
+    ProductUpperValue->insertInto(RaisedBB, RaisedBB->end());
     // Set the value of ImplicitDef[1] as ProductLowreHalfValue
-    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[1], MBBNo,
+    raisedValues->setPhysRegSSAValue(MCID.implicit_defs()[1], MBBNo,
                                      ProductUpperValue);
 
     // Truncate the multiplication result to get the lower half value
@@ -1024,9 +1021,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(FullProductValue,
                                              ProductLowerHalfValue);
-    RaisedBB->getInstList().push_back(ProductLowerHalfValue);
+    ProductLowerHalfValue->insertInto(RaisedBB, RaisedBB->end());
     // Set the value of ImplicitDef[0] as ProductLowerHalfValue
-    raisedValues->setPhysRegSSAValue(MCID.ImplicitDefs[0], MBBNo,
+    raisedValues->setPhysRegSSAValue(MCID.implicit_defs()[0], MBBNo,
                                      ProductLowerHalfValue);
 
     if (IsSigned) {
@@ -1037,7 +1034,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
           CastInst::SExt, ProductLowerHalfValue, WideTy, "", RaisedBB);
       auto *EqualToFullValue = new ICmpInst(CmpInst::Predicate::ICMP_NE,
                                             LowerSExtended, FullProductValue);
-      RaisedBB->getInstList().push_back(EqualToFullValue);
+      EqualToFullValue->insertInto(RaisedBB, RaisedBB->end());
 
       raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::OF, MBBNo,
                                        EqualToFullValue);
@@ -1051,7 +1048,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
           new ICmpInst(CmpInst::Predicate::ICMP_NE, ProductUpperValue,
                        ZeroValue, "Test_Not_Zero");
 
-      RaisedBB->getInstList().push_back(ZFTest);
+      ZFTest->insertInto(RaisedBB, RaisedBB->end());
       raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::OF, MBBNo,
                                        ZFTest);
       raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::CF, MBBNo,
@@ -1125,7 +1122,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
       raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
 
-      RaisedBB->getInstList().push_back(BinOpInst);
+      BinOpInst->insertInto(RaisedBB, RaisedBB->end());
       DstValue = BinOpInst;
       // Set SF, PF, and ZF based on DstValue.
       raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, DstValue);
@@ -1156,7 +1153,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     if (Src1Value != Src2Value)
       raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
     DstValue = BinOpInst;
     // Clear OF and CF
     raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
@@ -1189,7 +1186,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Now add the neg instruction
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
     // Now set up the flags according to the result
     // Set SF, PF, and ZF based on DstValue.
     raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, DstValue);
@@ -1217,7 +1214,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Add the not instruction
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
     DstValue = BinOpInst;
 
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
@@ -1244,9 +1241,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
            "Unexpected defines in a shl instruction");
     DstReg = DestOp.getReg();
     Value *SrcOpValue = ExplicitSrcValues.at(0);
-    assert((MCID.getNumImplicitUses() == 1) &&
+    assert((MCID.implicit_uses().size() == 1) &&
            "Expect one implicit use in shl instruction");
-    assert((MCID.ImplicitUses[0] == X86::CL) &&
+    assert((MCID.implicit_uses()[0] == X86::CL) &&
            "Expect implicit CL regsiter operand in shl instruction");
     Value *CountValue = getPhysRegValue(MI, X86::CL);
     // Check for undefined use
@@ -1280,7 +1277,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->setInstMetadataRODataIndex(SrcOpValue, BinOpInst);
       raisedValues->setInstMetadataRODataIndex(CountValue, BinOpInst);
       // Add the shl instruction
-      RaisedBB->getInstList().push_back(BinOpInst);
+      BinOpInst->insertInto(RaisedBB, RaisedBB->end());
       DstValue = BinOpInst;
 
       // Affected EFLAGS
@@ -1313,7 +1310,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Add the intrinsic call instruction
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(SrcValue, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
     DstValue = BinOpInst;
 
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
@@ -1331,7 +1328,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
         ConstantInt::get(SrcValue->getType(), 0, false /* isSigned */);
     Instruction *ZFTest = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SrcValue,
                                        ZeroValue, "ZeroFlag");
-    RaisedBB->getInstList().push_back(ZFTest);
+    ZFTest->insertInto(RaisedBB, RaisedBB->end());
     // ZF = (SrcValue==0).
     raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::ZF, MBBNo,
                                      ZFTest);
@@ -1399,7 +1396,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     // raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
     DstValue = BinOpInst;
 
     // Update the value of DstReg
@@ -1636,7 +1633,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Copy any necessary rodata related metadata
     raisedValues->setInstMetadataRODataIndex(Src1Value, BinOpInst);
     // raisedValues->setInstMetadataRODataIndex(Src2Value, BinOpInst);
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
     DstValue = BinOpInst;
 
     // Update the value of DstReg
@@ -2284,7 +2281,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   }
   // Add instruction to block
   getRaisedValues()->setInstMetadataRODataIndex(LoadValue, BinOpInst);
-  RaisedBB->getInstList().push_back(BinOpInst);
+  BinOpInst->insertInto(RaisedBB, RaisedBB->end());
 
   // Clear EFLAGS if any
   int MMBNo = MI.getParent()->getNumber();
@@ -2369,7 +2366,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
     Instruction *CInst = CastInst::Create(
         CastInst::getCastOpcode(MemRefValue, true, PtrTy, true), MemRefValue,
         PtrTy);
-    RaisedBB->getInstList().push_back(CInst);
+    CInst->insertInto(RaisedBB, RaisedBB->end());
     MemRefValue = CInst;
   }
   assert(MemRefValue->getType()->isPointerTy() &&
@@ -2393,7 +2390,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
     // Cast source to float
     Instruction *CInst = CastInst::Create(
         CastInst::getCastOpcode(LdInst, true, FloatTy, true), LdInst, FloatTy);
-    RaisedBB->getInstList().push_back(CInst);
+    CInst->insertInto(RaisedBB, RaisedBB->end());
     // Push value to top of FPU register stack
     pushFPURegisterStack(CInst);
   } break;
@@ -2403,7 +2400,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
     // Cast source to float
     Instruction *CInst = CastInst::Create(
         CastInst::getCastOpcode(LdInst, true, FloatTy, true), LdInst, FloatTy);
-    RaisedBB->getInstList().push_back(CInst);
+    CInst->insertInto(RaisedBB, RaisedBB->end());
     // Push value to top of FPU register stack
     pushFPURegisterStack(CInst);
   }
@@ -2485,7 +2482,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
     Instruction *CInst = CastInst::Create(
         CastInst::getCastOpcode(MemRefValue, true, PtrTy, true), MemRefValue,
         PtrTy);
-    RaisedBB->getInstList().push_back(CInst);
+    CInst->insertInto(RaisedBB, RaisedBB->end());
     MemRefValue = CInst;
   }
 
@@ -2506,7 +2503,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
       Instruction *CInst = CastInst::Create(
           CastInst::getCastOpcode(MemRefValue, true, SrcPtrTy, true),
           MemRefValue, SrcPtrTy);
-      RaisedBB->getInstList().push_back(CInst);
+      CInst->insertInto(RaisedBB, RaisedBB->end());
       MemRefValue = CInst;
     }
     // Create the store
@@ -2584,7 +2581,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
       // Set or copy rodata metadata, if any
       getRaisedValues()->setInstMetadataRODataIndex(MemRefValue, ConvIntToPtr);
-      RaisedBB->getInstList().push_back(ConvIntToPtr);
+      ConvIntToPtr->insertInto(RaisedBB, RaisedBB->end());
       MemRefValue = ConvIntToPtr;
     }
     assert(MemRefValue->getType()->isPointerTy() &&
@@ -2596,7 +2593,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     LoadInst *LdInst =
         new LoadInst(LdTy, MemRefValue, "memload", false, Align());
     LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-    RaisedBB->getInstList().push_back(LdInst);
+    LdInst->insertInto(RaisedBB, RaisedBB->end());
 
     LLVMContext &Ctx(MF.getFunction().getContext());
     Type *MemTy = nullptr;
@@ -2667,7 +2664,7 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
       assert(CInst != nullptr && "Expect cast value to be and instruction");
       ExtInst->copyMetadata(*CInst);
 
-      RaisedBB->getInstList().push_back(ExtInst);
+      ExtInst->insertInto(RaisedBB, RaisedBB->end());
       // Update PhysReg to Value map
       raisedValues->setPhysRegSSAValue(LoadPReg, MI.getParent()->getNumber(),
                                        ExtInst);
@@ -2693,7 +2690,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   if (!MI.getOperand(SrcOpIndex).isImm() &&
       !MI.getOperand(SrcOpIndex).isReg()) {
     MCInstrDesc Desc = MI.getDesc();
-    assert(Desc.getNumImplicitUses() == 1 && "Expected one implicit use");
+    assert(Desc.implicit_uses().size() == 1 && "Expected one implicit use");
     for (unsigned int CurIdx = SrcOpIndex + 1; CurIdx < MI.getNumOperands();
          ++CurIdx) {
       if (MI.getOperand(CurIdx).isUse() && MI.getOperand(CurIdx).isReg()) {
@@ -2772,7 +2769,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
       PtrTy = Type::getIntNPtrTy(Ctx, MemSzInBits);
     }
     IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefVal, PtrTy);
-    RaisedBB->getInstList().push_back(ConvIntToPtr);
+    ConvIntToPtr->insertInto(RaisedBB, RaisedBB->end());
     MemRefVal = ConvIntToPtr;
   }
 
@@ -2949,7 +2946,7 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
       assert(false && "Unhandled non-move mem op instruction");
     }
 
-    RaisedBB->getInstList().push_back(BinOpInst);
+    BinOpInst->insertInto(RaisedBB, RaisedBB->end());
 
     SrcValue = BinOpInst;
 
@@ -2990,7 +2987,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
     CastInst *CInst = CastInst::Create(
         CastInst::getCastOpcode(MemRefVal, false, MemPtrTy, false), MemRefVal,
         MemPtrTy);
-    RaisedBB->getInstList().push_back(CInst);
+    CInst->insertInto(RaisedBB, RaisedBB->end());
     MemRefVal = CInst;
     SrcTy = MemRefVal->getType();
   }
@@ -3021,7 +3018,7 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
     assert(false && "Unhandled instruction type");
   }
 
-  RaisedBB->getInstList().push_back(SrcValue);
+  SrcValue->insertInto(RaisedBB, RaisedBB->end());
 
   // Store the result back in MemRefVal
   new StoreInst(SrcValue, MemRefVal, false, Align(MemOpSize), RaisedBB);
@@ -3063,12 +3060,12 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
 
   // Handle 8-bit division differentrly as it does not use register pairs.
   if (Is8BOperand) {
-    assert(MIDesc.getNumImplicitUses() == 1 &&
-           MIDesc.getNumImplicitDefs() == 3 &&
+    assert(MIDesc.implicit_uses().size() == 1 &&
+           MIDesc.implicit_defs().size() == 3 &&
            MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            "Unexpected number of implicit uses and defs in div instruction");
     // Ensure AX is the implicit use operand
-    MCPhysReg UseDefReg = MIDesc.ImplicitUses[0];
+    MCPhysReg UseDefReg = MIDesc.implicit_uses()[0];
     assert((UseDefReg == X86::AX) &&
            "Expected AX operand of div instruction not found");
     LLVMContext &Context(MF.getFunction().getContext());
@@ -3107,14 +3104,14 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
                                      AXValue);
 
   } else {
-    assert(MIDesc.getNumImplicitUses() == 2 &&
-           MIDesc.getNumImplicitDefs() == 3 &&
+    assert(MIDesc.implicit_uses().size() == 2 &&
+           MIDesc.implicit_defs().size() == 3 &&
            MIDesc.hasImplicitDefOfPhysReg(X86::EFLAGS) &&
            "Unexpected number of implicit uses and defs in div instruction");
-    MCPhysReg UseDefReg0 = MIDesc.ImplicitUses[0];
-    MCPhysReg UseDefReg1 = MIDesc.ImplicitUses[1];
-    assert((UseDefReg0 == MIDesc.ImplicitDefs[0]) &&
-           (UseDefReg1 == MIDesc.ImplicitDefs[1]) &&
+    MCPhysReg UseDefReg0 = MIDesc.implicit_uses()[0];
+    MCPhysReg UseDefReg1 = MIDesc.implicit_uses()[1];
+    assert((UseDefReg0 == MIDesc.implicit_defs()[0]) &&
+           (UseDefReg1 == MIDesc.implicit_defs()[1]) &&
            "Unexpected use/def registers in div instruction");
 
     Value *DividendLowBytes = getPhysRegValue(MI, UseDefReg0);
@@ -3205,7 +3202,7 @@ bool X86MachineInstructionRaiser::raiseBitTestMachineInstr(
          "Inconsistent memory reference operand information specified for "
          "compare instruction");
   MCInstrDesc MCIDesc = MI.getDesc();
-  unsigned NumImplicitUses = MCIDesc.getNumImplicitUses();
+  unsigned NumImplicitUses = MCIDesc.implicit_uses().size();
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
@@ -3239,7 +3236,7 @@ bool X86MachineInstructionRaiser::raiseBitTestMachineInstr(
 
     if (NumImplicitUses == 1) {
       // If an implicit operand is used, that is op1.
-      MCPhysReg UseReg = MCIDesc.ImplicitUses[0];
+      MCPhysReg UseReg = MCIDesc.implicit_uses()[0];
       Op1Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
       Op2Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
     } else {
@@ -3355,7 +3352,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
          "Inconsistent memory reference operand information specified for "
          "compare instruction");
   MCInstrDesc MCIDesc = MI.getDesc();
-  unsigned NumImplicitUses = MCIDesc.getNumImplicitUses();
+  unsigned NumImplicitUses = MCIDesc.implicit_uses().size();
   // Get the BasicBlock corresponding to MachineBasicBlock of MI.
   // Raised instruction is added to this BasicBlock.
   BasicBlock *RaisedBB = getRaisedBasicBlock(MI.getParent());
@@ -3397,7 +3394,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     if (isEffectiveAddrValue(MemRefValue)) {
       PointerType *PtrTy = PointerType::get(NonMemRefOpTy, 0);
       IntToPtrInst *ConvIntToPtr = new IntToPtrInst(MemRefValue, PtrTy);
-      RaisedBB->getInstList().push_back(ConvIntToPtr);
+      ConvIntToPtr->insertInto(RaisedBB, RaisedBB->end());
       MemRefValue = ConvIntToPtr;
     }
     // Load the value from memory location
@@ -3438,7 +3435,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     // sub op1, op2 (i.e., op1 - op2).
     if (NumImplicitUses == 1) {
       // If an implicit operand is used, that is op1.
-      MCPhysReg UseReg = MCIDesc.ImplicitUses[0];
+      MCPhysReg UseReg = MCIDesc.implicit_uses()[0];
       Op1Index = MI.findRegisterUseOperandIdx(UseReg, false, nullptr);
       Op2Index = MCIDesc.getNumDefs() == 0 ? 0 : 1;
     } else {
@@ -3491,7 +3488,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
           CastInst *CInst = CastInst::Create(
               CastInst::getCastOpcode(OpValues[Idx], false, DestTy, false),
               OpValues[Idx], DestTy);
-          RaisedBB->getInstList().push_back(CInst);
+          CInst->insertInto(RaisedBB, RaisedBB->end());
           OpValues[Idx] = CInst;
         }
       }
@@ -3506,7 +3503,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
           CastInst::getCastOpcode(OpValues[0], false, OpValues[1]->getType(),
                                   false),
           OpValues[0], OpValues[1]->getType());
-      RaisedBB->getInstList().push_back(CInst);
+      CInst->insertInto(RaisedBB, RaisedBB->end());
       OpValues[0] = CInst;
     }
   }
@@ -3526,7 +3523,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
                        : BinaryOperator::CreateSub(OpValues[0], OpValues[1]);
   // Casting CmpInst to instruction to be added to the raised basic
   // block is correct since it is known to be specifically of type Instruction.
-  RaisedBB->getInstList().push_back(dyn_cast<Instruction>(CmpInst));
+  dyn_cast<Instruction>(CmpInst)->insertInto(RaisedBB, RaisedBB->end());
 
   if (IsSUBInst) {
     switch (MI.getOpcode()) {
@@ -3572,9 +3569,9 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     }
   }
   // Now update EFLAGS
-  assert(MCIDesc.getNumImplicitDefs() == 1 &&
+  assert(MCIDesc.implicit_defs().size() == 1 &&
          "Compare instruction does not have exactly one implicit def");
-  MCPhysReg ImpDefReg = MCIDesc.ImplicitDefs[0];
+  MCPhysReg ImpDefReg = MCIDesc.implicit_defs()[0];
   assert(ImpDefReg == X86::EFLAGS &&
          "Expected implicit EFLAGS def in compare instruction");
   // Create instructions to set CF, ZF, SF, PF, and OF flags according to the
@@ -3658,7 +3655,7 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
   assert(((MIDesc.getNumDefs() == 1 && MemoryRefValue == nullptr) ||
           (MIDesc.getNumDefs() == 0 && MemoryRefValue != nullptr)) &&
          "Not found expected one destination operand of set instruction");
-  assert(MIDesc.getNumImplicitUses() == 1 &&
+  assert(MIDesc.implicit_uses().size() == 1 &&
          MIDesc.hasImplicitUseOfPhysReg(X86::EFLAGS) &&
          "Not found expected implicit use of eflags in set instruction.");
 
@@ -3693,11 +3690,11 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
 
     // Compare ZF and 0
     CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_CMOVG");
-    RaisedBB->getInstList().push_back(ZFCond);
+    ZFCond->insertInto(RaisedBB, RaisedBB->end());
 
     // Test SF == OF
     CmpInst *SFOFCond = new ICmpInst(Pred, SFValue, OFValue, "SFOFCmp_CMOVG");
-    RaisedBB->getInstList().push_back(SFOFCond);
+    SFOFCond->insertInto(RaisedBB, RaisedBB->end());
     Result =
         BinaryOperator::CreateAnd(ZFCond, SFOFCond, "Cond_CMOVG", RaisedBB);
   } break;
@@ -3729,11 +3726,11 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
 
     // Compare CF and 0
     CmpInst *CFCond = new ICmpInst(Pred, CFValue, FalseValue, "CFCmp_CMOVA");
-    RaisedBB->getInstList().push_back(CFCond);
+    CFCond->insertInto(RaisedBB, RaisedBB->end());
 
     // Compare ZF and 0
     CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, FalseValue, "ZFCmp_CMOVA");
-    RaisedBB->getInstList().push_back(ZFCond);
+    ZFCond->insertInto(RaisedBB, RaisedBB->end());
 
     Result =
         BinaryOperator::CreateAnd(CFCond, ZFCond, "CFAndZF_CMOVA", RaisedBB);
@@ -3761,11 +3758,11 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
     // Check ZF == 1
     Pred = CmpInst::Predicate::ICMP_EQ;
     CmpInst *ZFCond = new ICmpInst(Pred, ZFValue, TrueValue, "ZFCmp_SETLE");
-    RaisedBB->getInstList().push_back(ZFCond);
+    ZFCond->insertInto(RaisedBB, RaisedBB->end());
     // Test SF != OF
     CmpInst *SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue,
                                      OFValue, "SFOFCmp_SETLE");
-    RaisedBB->getInstList().push_back(SFOFCond);
+    SFOFCond->insertInto(RaisedBB, RaisedBB->end());
 
     Result = BinaryOperator::CreateOr(ZFCond, SFOFCond, "Cond_SETLE", RaisedBB);
   } break;
@@ -3851,8 +3848,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   //
   // X86::EFLAGS is the implicit def operand.
   unsigned NumOperands = MI.getNumExplicitOperands() +
-                         MIDesc.getNumImplicitUses() +
-                         MIDesc.getNumImplicitDefs();
+                         MIDesc.implicit_uses().size() +
+                         MIDesc.implicit_defs().size();
 
   assert((NumOperands == 5) && "Unexpected number of operands of BinOp "
                                "instruction with MRI/MRC operand format");
@@ -3915,9 +3912,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   case X86::SHRD16rrCL:
   case X86::SHRD32rrCL:
   case X86::SHRD64rrCL: {
-    assert((MIDesc.getNumImplicitUses() == 1) &&
+    assert((MIDesc.implicit_uses().size() == 1) &&
            "Expect one implicit use in MCR encoded instruction");
-    assert((MIDesc.ImplicitUses[0] == X86::CL) &&
+    assert((MIDesc.implicit_uses()[0] == X86::CL) &&
            "Expect implicit CL regsiter operand in MCR encoded instruction");
     CountValue = getPhysRegValue(MI, X86::CL);
     // Check for undefined use
@@ -3959,7 +3956,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   // Test and set EFLAGs
   AffectedEFlags.insert(EFLAGS::CF);
   // Insert the binary operation instruction
-  RaisedBB->getInstList().push_back(BinOpInstr);
+  BinOpInstr->insertInto(RaisedBB, RaisedBB->end());
   // Test and set affected flags
   for (auto Flag : AffectedEFlags)
     raisedValues->testAndSetEflagSSAValue(Flag, MI, BinOpInstr);
@@ -3990,8 +3987,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
   // The first operand is also as the destination operand.
   // X86::EFLAGS is the implicit def operand.
   unsigned NumOperands = MI.getNumExplicitOperands() +
-                         MIDesc.getNumImplicitUses() +
-                         MIDesc.getNumImplicitDefs();
+                         MIDesc.implicit_uses().size() +
+                         MIDesc.implicit_defs().size();
   assert(((NumOperands == 3) || (NumOperands == 4)) &&
          "Unexpected number of operands of BinOp instruction with RI/I "
          "operand format");
@@ -4048,7 +4045,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
     // A vector holding source operand values.
     SmallVector<Value *, 2> OpValues = {nullptr, nullptr};
-    unsigned NumImplicitDefs = MIDesc.getNumImplicitDefs();
+    unsigned NumImplicitDefs = MIDesc.implicit_defs().size();
     assert((NumImplicitDefs == 0 || NumImplicitDefs == 1 ||
             NumImplicitDefs == 2) &&
            "Encountered instruction unexpected number of implicit defs");
@@ -4079,7 +4076,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     if ((NumImplicitDefs == 2) && (DstPReg == X86::NoRegister)) {
       // Find the implicit dest reg. Register at index 0 is the implicit def
       // physical register. That at index 1 is EFLAGS.
-      DstPReg = MIDesc.ImplicitDefs[0];
+      DstPReg = MIDesc.implicit_defs()[0];
       assert(((DstPReg == X86::AL) || (DstPReg == X86::AX) ||
               (DstPReg == X86::EAX) || (DstPReg == X86::RAX)) &&
              "Expected implicit use of operand AL/AX/EAX/RAX not found");
@@ -4089,13 +4086,13 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
     // Now, find source operand values.
     // First check if there are any implicit use operands of the instruction.
-    unsigned NumImplicitUses = MIDesc.getNumImplicitUses();
+    unsigned NumImplicitUses = MIDesc.implicit_uses().size();
     assert((NumImplicitUses < 3) &&
            "More than two implicit use operands found in BinOp instruction "
            "with RI/I format operands");
     unsigned SrcValIdx = 0;
     for (; SrcValIdx < NumImplicitUses; SrcValIdx++) {
-      OpValues[SrcValIdx] = getPhysRegValue(MI, MIDesc.ImplicitUses[SrcValIdx]);
+      OpValues[SrcValIdx] = getPhysRegValue(MI, MIDesc.implicit_uses()[SrcValIdx]);
       // Check for undefined use
       if (OpValues[SrcValIdx] == nullptr)
         return false;
@@ -4449,7 +4446,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     raisedValues->setInstMetadataRODataIndex(SrcOp1Value, BinOpInstr);
     raisedValues->setInstMetadataRODataIndex(SrcOp2Value, BinOpInstr);
     // Insert the binary operation instruction
-    RaisedBB->getInstList().push_back(BinOpInstr);
+    BinOpInstr->insertInto(RaisedBB, RaisedBB->end());
     // Test and set affected flags
     for (auto Flag : AffectedEFlags)
       raisedValues->testAndSetEflagSSAValue(Flag, MI, BinOpInstr);
@@ -4509,7 +4506,7 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
       Inst->addCase(JTCases[Idx].first, BB);
     }
 
-    CandBB->getInstList().push_back(Inst);
+    Inst->insertInto(CandBB, CandBB->end());
     CTRec->Raised = true;
   } else {
     assert(false && "Support to raise indirect branches to non-jumptable "
@@ -4551,7 +4548,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
   if (MI->isUnconditionalBranch()) {
     // Just create a branch instruction targeting TgtBB
     BranchInst *UncondBr = BranchInst::Create(TgtBB);
-    CandBB->getInstList().push_back(UncondBr);
+    UncondBr->insertInto(CandBB, CandBB->end());
     CTRec->Raised = true;
   } else if (MI->isConditionalBranch()) {
     // Find the fall through basic block
@@ -4616,7 +4613,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Construct a compare instruction
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue, TrueValue,
                                 "CmpCF_JB");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_E: {
       // Test ZF == 1
@@ -4627,7 +4624,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Construct a compare instruction
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue, TrueValue,
                                 "CmpZF_JE");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_NE: {
       // Test ZF == 0
@@ -4638,7 +4635,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Construct a compare instruction
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
                                 FalseValue, "CmpZF_JNE");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_S: {
       // Test SF == 1
@@ -4649,7 +4646,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Construct a compare instruction
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue, TrueValue,
                                 "CmpSF_JS");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_NS: {
       // Test SF == 0
@@ -4660,7 +4657,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Construct a compare instruction
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue,
                                 FalseValue, "CmpSF_JNS");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_A: {
       // CF == 0 and ZF == 0
@@ -4674,13 +4671,13 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Test CF == 0
       Instruction *CFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
                                          FalseValue, "CFCmp_JA");
-      CandBB->getInstList().push_back(CFCond);
+      CFCond->insertInto(CandBB, CandBB->end());
       // Test ZF == 0
       Instruction *ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
                                          FalseValue, "ZFCmp_JA");
-      CandBB->getInstList().push_back(ZFCond);
+      ZFCond->insertInto(CandBB, CandBB->end());
       BranchCond = BinaryOperator::CreateAnd(ZFCond, CFCond, "CFAndZF_JA");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_AE: {
       // CF == 0
@@ -4691,7 +4688,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Compare CF == 0
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
                                 FalseValue, "CFCmp_JAE");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_BE: {
       // CF == 1 or ZF == 1
@@ -4704,13 +4701,13 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Compare CF == 1
       Instruction *CFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, CFValue,
                                          TrueValue, "CFCmp_JBE");
-      CandBB->getInstList().push_back(CFCond);
+      CFCond->insertInto(CandBB, CandBB->end());
       // Compare ZF == 1
       Instruction *ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue,
                                          TrueValue, "ZFCmp_JBE");
-      CandBB->getInstList().push_back(ZFCond);
+      ZFCond->insertInto(CandBB, CandBB->end());
       BranchCond = BinaryOperator::CreateOr(ZFCond, CFCond, "CFAndZF_JBE");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_G: {
       // ZF == 0 and (SF == OF)
@@ -4728,13 +4725,13 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Compare ZF and 0
       ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue, FalseValue,
                             "ZFCmp_JG");
-      CandBB->getInstList().push_back(ZFCond);
+      ZFCond->insertInto(CandBB, CandBB->end());
       // Test SF == OF
       SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue, OFValue,
                               "SFOFCmp_JG");
-      CandBB->getInstList().push_back(SFOFCond);
+      SFOFCond->insertInto(CandBB, CandBB->end());
       BranchCond = BinaryOperator::CreateAnd(ZFCond, SFOFCond, "ZFAndSFOF_JG");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_GE: {
       // SF == OF
@@ -4747,7 +4744,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Compare SF and OF
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, SFValue, OFValue,
                                 "CmpSFOF_JGE");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_L: {
       // SF != OF
@@ -4760,7 +4757,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Test SF != OF
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue, OFValue,
                                 "SFAndOF_JL");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_LE: {
       // ZF == 1 or (SF != OF)
@@ -4778,13 +4775,13 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Compare ZF and 1
       ZFCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, ZFValue, TrueValue,
                             "CmpZF_JLE");
-      CandBB->getInstList().push_back(ZFCond);
+      ZFCond->insertInto(CandBB, CandBB->end());
       // Test SF != OF
       SFOFCond = new ICmpInst(CmpInst::Predicate::ICMP_NE, SFValue, OFValue,
                               "CmpOF_JLE");
-      CandBB->getInstList().push_back(SFOFCond);
+      SFOFCond->insertInto(CandBB, CandBB->end());
       BranchCond = BinaryOperator::CreateOr(ZFCond, SFOFCond, "ZFOrSF_JLE");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     // Parity flag is set by instructions that abstract unordered
     // result of SSE compare instructions.
@@ -4799,7 +4796,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Construct a compare instruction
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, PFValue, TrueValue,
                                 "CmpPF_JP");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_NP: {
       // Test PF == 0
@@ -4810,7 +4807,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
       // Construct a compare instruction
       BranchCond = new ICmpInst(CmpInst::Predicate::ICMP_EQ, PFValue,
                                 FalseValue, "CmpPF_JNP");
-      CandBB->getInstList().push_back(dyn_cast<Instruction>(BranchCond));
+      dyn_cast<Instruction>(BranchCond)->insertInto(CandBB, CandBB->end());
     } break;
     case X86::COND_INVALID:
       assert(false && "Invalid condition on branch");
@@ -4822,7 +4819,7 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
 
     // Create branch instruction
     BranchInst *CondBr = BranchInst::Create(TgtBB, FTBB, BranchCond);
-    CandBB->getInstList().push_back(CondBr);
+    CondBr->insertInto(CandBB, CandBB->end());
     CTRec->Raised = true;
   } else {
     assert(false && "Unhandled type of branch instruction");
@@ -4967,7 +4964,7 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
   // Create return instruction
   Instruction *RetInstr =
       ReturnInst::Create(MF.getFunction().getContext(), RetValue);
-  RaisedBB->getInstList().push_back(RetInstr);
+  RetInstr->insertInto(RaisedBB, RaisedBB->end());
 
   // Make sure that the return type of raisedFunction is void. Else change it to
   // void type as reaching definition computation is more accurate than that
@@ -5051,7 +5048,7 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
 
         // Create a branch instruction targeting SuccBB
         BranchInst *UncondBr = BranchInst::Create(SuccBB);
-        BB->getInstList().push_back(UncondBr);
+        UncondBr->insertInto(BB, BB->end());
       }
     }
   }
@@ -5095,7 +5092,7 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
       CastInst *CInst = CastInst::Create(
           CastInst::getCastOpcode(StVal, false, St0ValTy, false), StVal,
           St0ValTy);
-      RaisedBB->getInstList().push_back(CInst);
+      CInst->insertInto(RaisedBB, RaisedBB->end());
       StVal = CInst;
     }
     // Create fp operation
@@ -5107,7 +5104,7 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
     } else if (Opcode == X86::ADD_FPrST0) {
       FPRegOpInstr = BinaryOperator::CreateFAdd(StVal, St0Val);
     }
-    RaisedBB->getInstList().push_back(FPRegOpInstr);
+    FPRegOpInstr->insertInto(RaisedBB, RaisedBB->end());
     // Update the FP register FPRegIndex with FPRegOpInstr
     setFPURegisterStackValueAt(FPRegIndex, FPRegOpInstr);
     // Pop FPU register stack
@@ -5352,7 +5349,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     if (MI.isBranch())
       dyn_cast<CallInst>(CInst)->setTailCall(true);
 
-    RaisedBB->getInstList().push_back(CInst);
+    CInst->insertInto(RaisedBB, RaisedBB->end());
     // A function call with a non-void return will modify
     // RAX (or its sub-register).
     Type *RetType = CalledFunc->getReturnType();
@@ -5411,7 +5408,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         NonConstMR->changeRaisedFunctionReturnType(RaisedFunction,
                                                    CInst->getType());
       }
-      RaisedBB->getInstList().push_back(RetInstr);
+      RetInstr->insertInto(RaisedBB, RaisedBB->end());
     }
     // Add 'unreachable' instruction after CallInstr if it is a call to glibc
     // function 'void exit(int)'
@@ -5421,7 +5418,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       if (FT->getReturnType()->isVoidTy() && (FT->getNumParams() == 1) &&
           FT->getParamType(0)->isIntegerTy(32)) {
         Instruction *UR = new UnreachableInst(Ctx);
-        RaisedBB->getInstList().push_back(UR);
+        UR->insertInto(RaisedBB, RaisedBB->end());
         // Mark callInst as tail call
         dyn_cast<CallInst>(CInst)->setTailCall(true);
       }
@@ -5433,7 +5430,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
           FT->getParamType(2)->isIntegerTy() &&
           FT->getParamType(3)->isPointerTy()) {
         Instruction *UR = new UnreachableInst(Ctx);
-        RaisedBB->getInstList().push_back(UR);
+        UR->insertInto(RaisedBB, RaisedBB->end());
         // Mark CInst as tail call
         dyn_cast<CallInst>(CInst)->setTailCall(true);
       }
@@ -5517,7 +5514,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
         // Set or copy rodata metadata, if any
         getRaisedValues()->setInstMetadataRODataIndex(MemRefValue,
                                                       ConvIntToPtr);
-        RaisedBB->getInstList().push_back(ConvIntToPtr);
+        ConvIntToPtr->insertInto(RaisedBB, RaisedBB->end());
         MemRefValue = ConvIntToPtr;
       }
       assert(MemRefValue->getType()->isPointerTy() &&
@@ -5531,7 +5528,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
       LoadInst *LdInst =
           new LoadInst(LdTy, MemRefValue, "memload", false, Align());
       LdInst = getRaisedValues()->setInstMetadataRODataContent(LdInst);
-      RaisedBB->getInstList().push_back(LdInst);
+      LdInst->insertInto(RaisedBB, RaisedBB->end());
       MemRefValue = LdInst;
 
       Func = MemRefValue;
@@ -5542,14 +5539,14 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     if (Func->getType() != FuncTy) {
       CastInst *CInst = CastInst::Create(
           CastInst::getCastOpcode(Func, false, FuncTy, false), Func, FuncTy);
-      RaisedBB->getInstList().push_back(CInst);
+      CInst->insertInto(RaisedBB, RaisedBB->end());
       Func = CInst;
     }
 
     // Construct call instruction.
     CallInst *CallInst =
         CallInst::Create(FT, Func, ArrayRef<Value *>(ArgValueVector));
-    RaisedBB->getInstList().push_back(CallInst);
+    CallInst->insertInto(RaisedBB, RaisedBB->end());
 
     // A function call with a non-void return will modify RAX.
     if (ReturnType && !ReturnType->isVoidTy())

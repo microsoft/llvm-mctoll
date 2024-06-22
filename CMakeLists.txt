@@ -24,8 +24,7 @@ set(LLVM_LINK_COMPONENTS
   Option
   Support
   Symbolize
-  ARM
-  X86
+  ${LLVM_TARGETS_TO_BUILD}
   )
 
 add_subdirectory(Raiser)
